@@ -1,0 +1,2124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!-- ⬇️ Set to your Render API base (no trailing slash) -->
+  <meta name="api-base" content="https://vasuida1.onrender.com"/>
+<meta name="business-tz" content="Asia/Shanghai"/>
+  <title>VelOzity Pinpoint</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body{background:#f8fafc;color:#111827}
+    .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
+    .vo-wrap{
+  max-width:none;
+  width:min(96vw,1920px);
+  margin:0 auto;
+  padding:16px 24px;
+  box-sizing:border-box;
+}
+
+#page-dashboard .cmdbar, #capsules{ min-width:0; flex-wrap:wrap; }
+
+    .dot{width:.6rem;height:.6rem;border-radius:9999px;display:inline-block}
+    .heartbeat{animation:heartbeat 1.2s ease-in-out infinite;transform-origin:center}
+    @keyframes heartbeat{0%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}60%{transform:scale(1)}100%{transform:scale(1)}}
+    .cell{width:100%;padding:.4rem .5rem;border:0;outline:none}
+    .cell:focus{box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+    .th{font-size:.75rem;font-weight:600;color:#374151}
+    /* Shorter week capsule */
+    .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
+    .wkcap .m{font-size:10px}
+    .wkcap .d{font-size:16px;font-weight:700;line-height:1.1}
+    .wkcap .t{font-size:11px;margin-top:2px;color:#990033}
+    .wkcap .bar{height:6px;border-radius:9999px;background:#e5e7eb;overflow:hidden;margin-top:4px}
+    .wkcap .bar>div{height:6px;border-radius:9999px;background:#990033;width:0%}
+
+/* Respect .hidden; only style when visible */
+#page-dashboard:not(.hidden){ display:block; }
+#page-dashboard:not(.hidden) > *{
+  position:relative;
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin-bottom:.75rem;
+}
+
+/* segmented toggle visuals (neutral) */
+.seg { color:#303030; }
+.seg.active {
+  background:#fff;
+  color:#303030;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.1);
+}
+.seg:not(.active):hover { background: rgba(0,0,0,.06); }
+
+
+/* --- Command Bar (visual only) --- */
+.cmdbar{
+  display:flex; flex-wrap:wrap; gap:.25rem;
+  padding:.25rem; border-radius:12px;
+  background:#fff; border:1px solid #e5e7eb;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.08);
+}
+.cmd{
+  display:inline-flex; align-items:center; gap:.5rem;
+  font-size:.875rem; line-height:1;
+  padding:.5rem .75rem; border-radius:10px;
+  border:1px solid transparent; background:transparent; color:#374151;
+  transition:background .15s ease, border-color .15s ease, transform .05s ease;
+}
+.cmd:hover{ background:#f9fafb; border-color:#e5e7eb; }
+.cmd:active{ transform:translateY(1px); }
+.cmd:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(153,0,51,.15); }
+
+/* variants */
+.cmd--primary{ background:#990033; color:#fff; }
+.cmd--primary:hover{ filter:brightness(.98); }
+.cmd--danger{ color:#991b1b; background:#fff5f5; border-color:#fecaca; }
+.cmd--ghost{ background:transparent; }
+
+/* Override colors for Upload/Zero buttons ONLY */
+#btn-upload-plan,
+#btn-zero-plan {
+  background: #E2E2E2 !important;
+  color: #303030 !important;
+  border-color: #e5e7eb !important;
+}
+
+#btn-upload-plan:hover,
+#btn-zero-plan:hover {
+  background: #d9d9d9 !important; /* subtle hover */
+}
+
+
+
+/* icon sizing */
+.cmd svg{ width:16px; height:16px; opacity:.85; }
+
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <!-- Top Nav -->
+  <header class="vo-nav">
+    <div class="vo-wrap py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="text-xl font-semibold">VelOzity Pinpoint</div>
+        <div id="vo-today" class="text-gray-500 text-sm"></div>
+      </div>
+      <nav id="nav-toggle" class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300">
+
+<a href="#exec" id="nav-exec"
+   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+  Executive
+</a>
+
+  <a href="#dashboard" id="nav-dash"
+     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+    Operations
+  </a>
+  <a href="#intake" id="nav-intake"
+     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+    Intake
+  </a>
+</nav>
+    </div>
+  </header>
+
+  <main class="vo-wrap py-4">
+    <!-- ================= Operations ================= -->
+    <section id="page-dashboard" class="hidden">
+      <div class="flex items-center justify-between mb-2 basis-full w-full">
+        <div class="text-2xl font-semibold">Operations</div>
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-gray-600">Week start</label>
+<input id="week-start" type="date" class="px-2 py-1 border rounded-md text-sm"/>
+
+<input id="file-plan" type="file" accept=".xlsx,.csv" class="hidden"/>
+
+<div class="cmdbar" role="group" aria-label="Operations actions">
+  <button id="btn-upload-plan" class="cmd cmd--primary" aria-label="Upload Plan" title="Upload planned PO×SKU for the selected week">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"> 
+<path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Upload Plan
+  </button>
+  <button id="btn-zero-plan" class="cmd cmd--danger" aria-label="Zero Plan" title="Clear the plan for this week">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"><path d="M6 18L18 6M6 6l12 12" stroke-width="1.5" stroke-linecap="round"/></svg>
+    Zero Plan
+  </button>
+        </div>
+      </div>
+
+      <!-- Capsules + Actions -->
+      <div class="mb-3 flex flex-wrap items-start gap-3 basis-full w-full">
+  <div id="capsules" class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]"></div>
+  <div class="cmdbar shrink-0" role="group" aria-label="Reports and downloads">
+  <button id="btn-dl-posku" class="cmd cmd--ghost" aria-label="PO × SKU Discrepancy" title="Compare planned vs applied at PO×SKU level">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+      <path d="M3 5h18M3 12h18M3 19h18" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    PO × SKU Discrepancy
+  </button>
+
+  <button id="btn-dl-po" class="cmd cmd--ghost" aria-label="PO Discrepancy" title="Compare planned vs applied at PO level">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+      <path d="M4 6h16M4 12h10M4 18h7" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    PO Discrepancy
+  </button>
+
+  <button id="btn-exec" class="cmd" aria-label="Executive Summary" title="Generate weekly Executive Summary">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+      <path d="M7 4h10a2 2 0 0 1 2 2v12l-4-2-4 2-4-2-4 2V6a2 2 0 0 1 2-2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Executive Summary
+  </button>
+
+  <button id="btn-dl-week-applied" class="cmd cmd--ghost" aria-label="Download Applied" title="Export applied UIDs for this week">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+      <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Download Applied
+  </button>
+        </div>
+      </div>
+
+      <!-- KPI tiles -->
+      <div class="w-full basis-full grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border shadow p-4">
+          <div class="text-base font-semibold text-gray-600">Planned</div>
+          <div class="text-xs text-gray-500" id="planned-range"></div>
+          <div class="text-2xl font-bold tabular-nums" id="planned-total">0</div>
+        </div>
+        <div class="bg-white rounded-2xl border shadow p-4">
+          <div class="text-base font-semibold text-gray-600">Applied</div>
+          <div class="text-xs text-gray-500" id="applied-range"></div>
+          <div class="text-2xl font-bold tabular-nums" id="applied-total">0</div>
+        </div>
+        <div class="bg-white rounded-2xl border shadow p-4">
+          <div class="text-base font-semibold text-gray-600">Completion</div>
+          <div class="text-xs text-gray-500">&nbsp;</div>
+          <div class="text-2xl font-bold tabular-nums" id="pct-week">0%</div>
+        </div>
+        <div class="bg-white rounded-2xl border shadow p-4 flex items-center gap-4">
+          <div id="ops-heart"></div>
+          <div>
+            <div class="text-base font-semibold text-gray-600">Ops Pulse</div>
+            <div class="text-xl font-bold tabular-nums" id="ops-bpm">0</div>
+            <div class="text-[11px] text-gray-500" id="ops-extra">+0 over 40</div>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl border shadow p-4">
+          <div class="text-base font-semibold text-gray-600">Applied averages</div>
+          <div class="text-xs text-gray-500 mb-1">&nbsp;</div>
+          <div class="text-2xl font-bold tabular-nums" id="avg-day">0</div>
+          <div class="text-xs text-gray-500 mt-1">Avg/day • <span id="avg-week">0</span></div>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="w-full basis-full bg-white rounded-2xl border shadow p-4 mb-3">
+        <div class="text-base font-semibold mb-2">Search by PO or SKU</div>
+        <input id="search-input" type="search" aria-label="Search by PO or SKU" placeholder="Type a PO # or SKU Code and pause…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2">
+        <div id="search-results" class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 hidden"></div>
+      </div>
+
+<!-- Top Insights -->
+<div class="w-full basis-full min-w-0 rounded-2xl border shadow p-4 mb-3 text-white" style="background:#303030;border-color:#7a0029">
+  <div class="text-base font-semibold mb-2">Top Insights for Ops</div>
+  <ul id="insights" class="text-sm text-white list-disc pl-5 space-y-1" aria-live="polite">
+    <li>Loading…</li>
+  </ul>
+  <div id="insights-mini" class="mt-2 text-xs text-rose-100"></div>
+</div>
+
+<!-- PO Progress (This Week) -->
+<div class="w-full basis-full min-w-0 bg-white rounded-2xl border shadow p-4 mb-3">
+  <div class="text-base font-semibold mb-2">PO Progress (This Week)</div>
+  <div class="overflow-auto max-h-[480px]">
+    <table class="w-full text-sm" id="po-progress">
+      <thead>
+        <tr class="text-gray-500">
+          <th scope="col" class="text-left py-1 pr-2">PO #</th>
+          <th scope="col" class="text-left py-1 pr-2">Due</th>
+          <th scope="col" class="text-right py-1 pr-2">Planned</th>
+          <th scope="col" class="text-right py-1 pr-2">Applied</th>
+          <th scope="col" class="text-right py-1">%</th>
+        </tr>
+      </thead>
+      <tbody id="po-progress-body">
+        <tr><td colspan="5" class="text-center text-xs text-gray-400 py-3">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+      <!-- Risks -->
+<div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+  <!-- Top PO's at Risk -->
+  <div class="bg-white rounded-2xl border shadow p-4">
+    <div class="text-base font-semibold mb-2">Top PO's at Risk</div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-gray-500">
+          <th class="text-left py-1 pr-2">PO #</th>
+          <th class="text-left py-1 pr-2">Due</th>
+          <th class="text-right py-1 pr-2">Planned</th>
+          <th class="text-right py-1 pr-2">Applied</th>
+          <th class="text-right py-1 pr-2">Rem</th>
+          <th class="text-right py-1">%</th>
+        </tr>
+      </thead>
+      <tbody id="risk-po-body">
+        <tr><td colspan="6" class="text-center text-xs text-gray-400 py-3">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Top SKU's at Risk -->
+  <div class="bg-white rounded-2xl border shadow p-4">
+    <div class="text-base font-semibold mb-2">Top SKU's at Risk</div>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-gray-500">
+          <th class="text-left py-1 pr-2">SKU</th>
+          <th class="text-left py-1 pr-2">Due</th>
+          <th class="text-right py-1 pr-2">Planned</th>
+          <th class="text-right py-1 pr-2">Applied</th>
+          <th class="text-right py-1 pr-2">Rem</th>
+          <th class="text-right py-1">%</th>
+        </tr>
+      </thead>
+      <tbody id="risk-sku-body">
+        <tr><td colspan="6" class="text-center text-xs text-gray-400 py-3">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+    </section>
+
+    <!-- ================= UID Intake ================= -->
+    <section id="page-intake" class="hidden">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-5">
+          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
+            </svg>
+            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
+          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
+<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
+<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
+        </div>
+      </div>
+
+      <!-- Ops ribbon -->
+      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+          <div class="flex gap-3">
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Scans Today</div>
+              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Last Hour</div>
+              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 border rounded-lg p-3">
+            <div id="ops-heart-small"></div>
+            <div>
+              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
+              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="text-sm font-semibold mb-1">Data Quality</div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">Sync states</div>
+            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Alerts</div>
+              <small class="text-gray-500">
+                <span id="ops-last-updated">—</span>
+                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
+                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
+                </span>
+              </small>
+            </div>
+            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intake Table -->
+      <div class="mt-3 overflow-auto">
+        <table class="w-full min-w-[1100px] border-collapse border">
+          <thead class="bg-gray-100">
+          <tr>
+            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
+            <th class="th border px-2 py-1 text-left">Date</th>
+            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
+            <th class="th border px-2 py-1 text-left">PO_Number</th>
+            <th class="th border px-2 py-1 text-left">SKU_Code</th>
+            <th class="th border px-2 py-1 text-left">UID</th>
+            <th class="th border px-2 py-1 text-center">Sync</th>
+          </tr>
+          </thead>
+          <tbody id="intake-body"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3">
+        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
+      </div>
+
+<!-- Quick Delete by UID -->
+<div class="mt-4 bg-white rounded-2xl border shadow p-4">
+  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+  <p class="text-xs text-gray-500 mb-2">
+    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
+  </p>
+  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
+  <div class="mt-2 flex items-center gap-2">
+    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
+    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
+  </div>
+</div>
+    </section>
+
+<!-- ================= Executive (Client) ================= -->
+<section id="page-exec" class="hidden">
+  <div class="flex items-center justify-between mb-3">
+    <div>
+      <div class="text-2xl font-semibold">Executive Summary</div>
+      <div id="exec-sub" class="text-xs text-rose-900/70 mt-0.5"></div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="btn-exec-doc" class="cmd cmd--primary">Download .doc</button>
+      <button id="btn-exec-csv" class="cmd">PO×SKU CSV</button>
+    </div>
+  </div>
+</section>
+  </main>
+
+  <!-- Footer health pill (shows Applied this week) -->
+  <div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
+    <span id="health-pill" class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300">
+      <span id="health-dot" class="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+      Health: <span id="vo-health" class="ml-1">n/a</span>
+    </span>
+    <span id="vo-footer-text">Applied this week: 0</span>
+  </div>
+
+  <script>
+  const BRAND = '#990033';
+const BASE_BPM = 40;
+  const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
+  const $ = (s)=>document.querySelector(s);
+  // Show "Month DD YYYY • <local TZ>" using the viewer's local timezone
+(function setNavToday(){
+  const d = new Date();
+  const month = d.toLocaleString('en-US', { month: 'long' });
+  const day   = String(d.getDate()).padStart(2, '0');
+  const year  = d.getFullYear();
+  const tzShort = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+    .formatToParts(d)
+    .find(p => p.type === 'timeZoneName')?.value || '';
+  $('#vo-today').textContent = `${month} ${day} ${year} • ${tzShort}`;
+})();
+const iso = (d) => {
+  const x = new Date(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const mondayOf = (d=new Date()) => { const x=new Date(d); const day=x.getDay(); const diff=(day===0?-6:1)-day; x.setDate(x.getDate()+diff); x.setHours(0,0,0,0); return x; };
+const fmtInt = (n) => Number(n||0).toLocaleString();
+const toNum = (v) => Number(String(v ?? 0).toString().replace(/,/g, '')) || 0;
+const toUI = (isoStr) =>
+  (isoStr && typeof isoStr === 'string' && isoStr.includes('-'))
+    ? isoStr.split('-').reverse().join('-')
+    : (isoStr || '');
+
+// ---- Business timezone helpers (single source of truth: Asia/Shanghai) ----
+const BUSINESS_TZ = document.querySelector('meta[name="business-tz"]')?.content || 'Asia/Shanghai';
+
+// Format a Date into 'YYYY-MM-DD' in the given IANA TZ
+function ymdInTZ(d, tz = BUSINESS_TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d);
+  const get = k => parts.find(p => p.type === k)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+// Today as 'YYYY-MM-DD' in business TZ
+function todayInTZ(tz = BUSINESS_TZ) { return ymdInTZ(new Date(), tz); }
+
+// Day-of-week (0..6 Sun..Sat) for a given 'YYYY-MM-DD' in business TZ
+function dayOfWeekInTZ(ymd, tz = BUSINESS_TZ) {
+  const dt = new Date(ymd + 'T12:00:00Z'); // midday UTC avoids DST edges
+  const name = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: tz }).format(dt);
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(name);
+}
+
+// Monday anchor (returns Monday 'YYYY-MM-DD' for the given day, in business TZ)
+function mondayOfInTZ(ymd, tz = BUSINESS_TZ) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const anchor = new Date(Date.UTC(y, m - 1, d));
+  const dow = dayOfWeekInTZ(ymd, tz);
+  const offset = dow === 0 ? -6 : (1 - dow);
+  anchor.setUTCDate(anchor.getUTCDate() + offset);
+  return ymdInTZ(anchor, tz);
+}
+
+// Convert a completed_at timestamp -> 'YYYY-MM-DD' in business TZ
+function ymdFromCompletedAtInTZ(completedAt, tz = BUSINESS_TZ) {
+  return completedAt ? ymdInTZ(new Date(completedAt), tz) : '';
+}
+
+function createHeart(size=24, color=BRAND, bpm=40){
+  const s='http://www.w3.org/2000/svg', svg=document.createElementNS(s,'svg');
+  svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('width',size); svg.setAttribute('height',size);
+  const p=document.createElementNS(s,'path');
+  p.setAttribute('d','M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z');
+  p.setAttribute('fill', color); svg.appendChild(p);
+  svg.classList.add('heartbeat'); svg.style.animationDuration = `${(60/Math.max(40,bpm)).toFixed(2)}s`;
+  return svg;
+}
+  // API helpers
+  const state={weekStart:'', plan:[], records:[]};
+  async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
+  async function fetchPlan(w){
+  if(!apiBase) return [];
+  try {
+    return await api(`/plan/weeks/${w}?limit=50000`);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchActualsAll(){
+  if (!apiBase) return [];
+  try {
+    const d = await api(`/records?limit=50000`);
+    return d.records || [];
+  } catch {
+    return [];
+  }
+}
+  async function fetchActuals(f,t){ if(!apiBase) return []; try{const d=await api(`/records?from=${f}&to=${t}&status=complete&limit=50000`); return d.records||[];}catch{return [];} }
+
+// --- Fetch bins for a week (business week start) ---
+async function fetchBins(ws) {
+  if (!apiBase) return [];
+  try {
+    const r = await api(`/bins/weeks/${ws}?limit=50000`);
+    return Array.isArray(r) ? r : (r.bins || []);
+  } catch {
+    return [];
+  }
+}
+
+// --- Compute bin QA (cross-check with applied records) ---
+function computeBinQA(ws, records=[], bins=[]) {
+  // stats from bins
+  const binMap = new Map(); // bin -> { units, weight }
+  let binsCount = 0, totalUnitsFromBins = 0, totalWeightKg = 0;
+
+  for (const b of bins) {
+    const id = String(b.mobile_bin || '').trim();
+    if (!id) continue;
+    binsCount++;
+    const u = Number(b.total_units ?? 0) || 0;
+    const w = Number(b.weight_kg ?? 0) || 0;
+    totalUnitsFromBins += u;
+    totalWeightKg += w;
+
+    const rec = binMap.get(id) || { units: 0, weight: 0 };
+    rec.units += u;
+    rec.weight += w;
+    binMap.set(id, rec);
+  }
+
+  // stats from applied records (this week)
+  const byBin = new Map(); // bin -> units counted from UIDs
+  for (const r of records || []) {
+    if (r.status !== 'complete') continue;
+    const bin = String(r.mobile_bin || '').trim();
+    if (!bin) continue;
+    byBin.set(bin, (byBin.get(bin) || 0) + 1);
+  }
+
+  // anomalies
+  const anomalies = [];
+  const suspicious = [];
+
+  // 1) bin exists in manifest but no UIDs, or vice versa
+  const manifestBins = new Set(binMap.keys());
+  const uidBins = new Set(byBin.keys());
+
+  // bins in manifest but zero UIDs
+  for (const b of manifestBins) {
+    const m = binMap.get(b);
+    const uids = byBin.get(b) || 0;
+    if (uids === 0) anomalies.push({ type: 'no_uids_for_manifest_bin', bin: b, units_manifest: m.units, weight_kg: m.weight });
+  }
+  // bins with UIDs but missing in manifest
+  for (const b of uidBins) {
+    if (!manifestBins.has(b)) anomalies.push({ type: 'uids_without_manifest', bin: b, uids: byBin.get(b) });
+  }
+
+  // 2) count mismatch (UIDs vs manifest units)
+  for (const b of manifestBins) {
+    const m = binMap.get(b);
+    const uids = byBin.get(b) || 0;
+    if (m.units && Math.abs(m.units - uids) > 0) {
+      anomalies.push({ type: 'units_mismatch', bin: b, units_manifest: m.units, uids });
+    }
+  }
+
+  // 3) weight plausibility per unit (very light or very heavy)
+  for (const [b, m] of binMap.entries()) {
+    if (!m.units || !m.weight) continue;
+    const per = m.weight / Math.max(1, m.units);
+    if (per < 0.005 || per > 5) {
+      suspicious.push({ type: 'weight_per_unit_outlier', bin: b, units: m.units, weight_kg: m.weight, kg_per_unit: per });
+    }
+  }
+
+  return {
+    ws,
+    binsCount,
+    totalUnitsFromBins,
+    totalWeightKg,
+    avgWeightPerBin: binsCount ? (totalWeightKg / binsCount) : 0,
+    totalsFromUIDs: Array.from(byBin.values()).reduce((s, v) => s + v, 0),
+    anomalies,
+    suspicious,
+    topOutliers: suspicious.sort((a,b) => Math.abs(b.kg_per_unit - 1) - Math.abs(a.kg_per_unit - 1)).slice(0,5),
+  };
+}
+
+
+  // ---------- Capsules ----------
+  function addDaysISO(s,days){const [y,m,d]=s.split('-').map(Number);const b=new Date(y,m-1,d);b.setDate(b.getDate()+days);return iso(b)}
+  function renderCapsules(baseISO, plannedTotal = 0, appliedTotal = 0, totalsByWeek = null) {
+  const r = $('#capsules');
+  if (!r) return;
+  r.classList.remove('hidden');
+  r.innerHTML = '';
+
+  const list = [-7, 0, 7, 14, 21].map(n => addDaysISO(baseISO, n));
+
+  list.forEach(id => {
+    const d = new Date(id + 'T00:00:00');
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = d.toLocaleString('en-US', { month: 'short' }).toUpperCase().slice(0, 3);
+
+    // Use precomputed totals if provided, otherwise fall back to current week numbers for the selected pill only
+    const stats =
+      (totalsByWeek && totalsByWeek[id]) ||
+      (id === state.weekStart
+        ? { planned: plannedTotal, applied: appliedTotal }
+        : { planned: 0, applied: 0 });
+
+    const el = document.createElement('button');
+    el.className = 'wkcap bg-white hover:scale-[1.02] transition';
+    el.style.borderColor = (id === state.weekStart ? BRAND : 'rgba(0,0,0,.12)');
+    el.innerHTML = `
+      <div class="m" style="color:${id === state.weekStart ? BRAND : '#6b7280'}">${mon}</div>
+      <div class="d">${day}</div>
+      <div class="t" id="cap-total-${id}">${fmtInt(stats.planned || 0)}</div>
+      <div class="bar"><div id="cap-bar-${id}"></div></div>
+    `;
+    el.onclick = () => { $('#week-start').value = id; setWeek(id); };
+    r.appendChild(el);
+
+    const p = (stats.planned > 0)
+      ? Math.min(100, Math.round(((stats.applied || 0) * 100) / stats.planned))
+      : 0;
+
+    const bar = el.querySelector(`#cap-bar-${id}`);
+    if (bar) bar.style.width = `${p}%`;
+  });
+}
+
+  // ---------- Aggregations ----------
+  function aggregate(records){const byPO=new Map(),bySKU=new Map(); for(const r of records){ if(r.status!=='complete') continue; const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim(); if(po) byPO.set(po,(byPO.get(po)||0)+1); if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);} return {byPO,bySKU};}
+  function joinPOProgress(plan, byPO){
+    const map=new Map();
+    for(const p of plan||[]){ const po=String(p.po_number||'').trim(); if(!po) continue; const rec=map.get(po)||{due:p.due_date,planned:0,applied:0}; rec.planned+=toNum(p.target_qty); if(rec.due!==p.due_date) rec.due = rec.due < p.due_date ? rec.due : p.due_date; map.set(po,rec); }
+    for(const [po,ap] of byPO.entries()){ const rec=map.get(po)||{due:'',planned:0,applied:0}; rec.applied+=ap; map.set(po,rec);}
+    const list=[]; for(const [po,rec] of map.entries()){ list.push({po,due:rec.due,planned:rec.planned,applied:rec.applied,pct:rec.planned>0?Math.round(rec.applied*100/rec.planned):100}); }
+    list.sort((a,b)=>String(a.due).localeCompare(String(b.due))); return list;
+  }
+
+  // ---------- Dashboard render ----------
+  function computeRisk(rows){
+  // Show top items with remaining > 0, regardless of week end
+  const out = [];
+  for (const r of rows || []) {
+    const planned = Number(r.planned || 0);
+    const applied = Number(r.applied || 0);
+    const remaining = Math.max(0, planned - applied);
+    if (remaining > 0) {
+      out.push({
+        key: r.po || r.sku || r.key,
+        due_date: r.due || r.due_date || '',
+        planned,
+        applied,
+        remaining,
+        pct: planned > 0 ? Math.round((applied / planned) * 100) : 0,
+      });
+    }
+  }
+  // Prioritize by remaining qty, then earliest due date if available
+  out.sort((a, b) => b.remaining - a.remaining ||
+                     (new Date(a.due_date || '9999-12-31')) -
+                     (new Date(b.due_date || '9999-12-31')));
+  return out.slice(0, 5);
+}
+  
+  function setFooterHealth(pct, appliedWeek){
+    const pill=$('#health-pill'), dot=$('#health-dot');
+    let cls='bg-amber-100 text-amber-900 border-amber-300', d='bg-amber-500', label='On-Plan';
+    if(pct>=100){cls='bg-green-100 text-green-900 border-green-300'; d='bg-green-500'; label='Ahead-of-Plan';}
+    else if(pct<80){cls='bg-rose-100 text-rose-900 border-rose-300'; d='bg-rose-500'; label='At-Risk';}
+    pill.className='inline-flex items-center gap-2 px-3 py-1 rounded-full border '+cls;
+    dot.className='inline-block w-2 h-2 rounded-full '+d;
+    $('#vo-health').textContent=label;
+    $('#vo-footer-text').textContent=`Applied this week: ${fmtInt(appliedWeek)}`;
+  }
+
+  // ---------- Downloads ----------
+  function toCSV(header,rows){
+    const esc=v=>{v=String(v??''); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v;}
+    const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
+    return '\ufeff'+head+'\r\n'+body+'\r\n';
+  }
+  function buildDiscrepancyPOSKU(plan, records){
+    const byPS=new Map();
+    for(const r of records||[]){ if(r.status!=='complete') continue; const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim(); if(!po||!sku) continue; const k=`${po}|||${sku}`; byPS.set(k,(byPS.get(k)||0)+1); }
+    const seen=new Set(); const rows=[];
+    for(const p of plan||[]){ const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim(); if(!po||!sku) continue; const k=`${po}|||${sku}`; if(seen.has(k)) continue; seen.add(k);
+      const planned=toNum(p.target_qty), applied=byPS.get(k)||0;
+      rows.push({'PO':po,'SKU':sku,'Planned':planned,'Applied':applied,'Discrepancy (Applied - Planned)':applied-planned});
+    }
+    return rows;
+  }
+  function buildDiscrepancyPO(joined){
+    return (joined||[]).map(r=>({'PO':r.po,'Planned':r.planned||0,'Applied':r.applied||0,'Discrepancy (Applied - Planned)':(r.applied||0)-(r.planned||0)}));
+  }
+
+async function downloadAppliedWeek() {
+  const ws = state.weekStart;
+  const weDate = new Date(ws);
+  weDate.setDate(weDate.getDate() + 6);
+  const we = iso(weDate);
+
+  // Filter only 'complete' records within this week
+  const records = (state.records || []).filter(r => {
+    if (r.status !== 'complete') return false;
+    const d = toISODate(r.date_local);
+    return d && d >= ws && d <= we;
+  });
+
+  if (!records.length) {
+    alert('No applied UIDs found for this week.');
+    return;
+  }
+
+  // Build export-friendly rows
+  const rows = records.map(r => ({
+    'Date Applied': toUI(r.date_local),
+    'Mobile Bin': r.mobile_bin || '',
+    'SSCC Label': r.sscc_label || '',
+    'PO Number': r.po_number || '',
+    'SKU Code': r.sku_code || '',
+    'UID': r.uid || ''
+  }));
+
+  // Convert to CSV (simple)
+  const header = Object.keys(rows[0]);
+  const esc = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  const csv =
+    '\ufeff' +
+    header.join(',') +
+    '\r\n' +
+    rows.map(r => header.map(h => esc(r[h])).join(',')).join('\r\n');
+
+  // Download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Applied_UIDs_${ws}_to_${we}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 250);
+}
+
+  function buildExecHTML({
+  ws, we,
+  plannedTotal, appliedTotal, pct,
+  uniqueBins,
+  topPOSKU,             // [{po, sku, planned, applied, pct}]
+  topBins,              // [{bin, units, uniqueSkus}]
+  insights,             // [string, ...]
+  binQA                  // { binsCount, totalUnitsFromBins, totalWeightKg, avgWeightPerBin, anomalies[], suspicious[], ... }
+}) {
+  const pretty = s => (s||'').split('-').reverse().join('-');
+
+  const rowsPOSKU = (topPOSKU||[])
+    .map(r=>`<tr>
+      <td>${r.po}</td>
+      <td>${r.sku}</td>
+      <td style="text-align:right">${(r.planned||0).toLocaleString()}</td>
+      <td style="text-align:right">${(r.applied||0).toLocaleString()}</td>
+      <td style="text-align:right">${r.pct}%</td>
+    </tr>`).join('');
+
+  const rowsBins = (topBins||[])
+    .map(r=>`<tr>
+      <td>${r.bin}</td>
+      <td style="text-align:right">${(r.units||0).toLocaleString()}</td>
+      <td style="text-align:right">${(r.uniqueSkus||0).toLocaleString()}</td>
+    </tr>`).join('');
+
+  const bullets = (insights||[])
+    .map(t=>`<li>${t}</li>`).join('');
+
+  // Bin summary rows
+  const binSummary = binQA ? `
+    <table style="width:100%;border-collapse:collapse;margin:8px 0 0 0;font-size:13px">
+      <tbody>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Bins (count)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.binsCount||0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Units (manifest)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.totalUnitsFromBins||0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Weight (kg, total)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.totalWeightKg||0).toFixed(1)}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Avg kg / bin</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.avgWeightPerBin||0).toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">UID Units (this week)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.totalsFromUIDs||0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Anomalies (count)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(((binQA.anomalies||[]).length) + ((binQA.suspicious||[]).length)).toLocaleString()}</td></tr>
+      </tbody>
+    </table>
+  ` : '<div style="color:#888">No bin manifest uploaded for this week.</div>';
+
+  const topOutliers = (binQA?.topOutliers || []).slice(0,5).map(x =>
+    `<li>Bin ${x.bin}: ${x.units.toLocaleString()} units, ${x.weight_kg.toFixed(1)} kg (${x.kg_per_unit.toFixed(3)} kg/unit)</li>`
+  ).join('');
+
+  return `<!doctype html><meta charset="utf-8">
+  <style>
+    @page { size: A4 landscape; margin: 16mm; }
+    body  { font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#111; line-height:1.35; }
+    h1    { margin:0 0 8px; font-size:22px; color:${BRAND}; }
+    h2    { font-size:16px; margin:16px 0 8px; }
+    table { border-collapse:collapse; width:100%; }
+    th, td { border:1px solid #eee; padding:6px 4px; }
+    th    { text-align:left; }
+    .kpi  { margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  </style>
+
+  <div>
+    <h1>VAS Weekly Executive Summary</h1>
+    <div style="color:#555;font-size:12px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
+
+    <!-- KPIs -->
+    <table class="kpi">
+      <tr>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Planned</div>
+          <div style="font-size:20px;font-weight:700">${plannedTotal.toLocaleString()}</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Applied</div>
+          <div style="font-size:20px;font-weight:700">${appliedTotal.toLocaleString()}</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Completion</div>
+          <div style="font-size:20px;font-weight:700">${pct}%</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
+          <div style="font-size:20px;font-weight:700">${uniqueBins.toLocaleString()}</div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="grid">
+      <div>
+        <h2>Top Insights</h2>
+        <ul style="margin:0 0 16px 16px;padding:0">${bullets || '<li style="color:#888">No notable insights.</li>'}</ul>
+
+        <h2>Mobile Bin Summary</h2>
+        ${binSummary}
+        ${topOutliers ? `<div style="margin-top:8px"><strong>Outliers (kg/unit):</strong><ul>${topOutliers}</ul></div>` : ''}
+      </div>
+
+      <div>
+        <h2>PO × SKU — Applied (Top)</h2>
+        <table style="font-size:13px; margin-bottom:16px">
+          <thead>
+            <tr>
+              <th>PO #</th>
+              <th>SKU</th>
+              <th style="text-align:right">Planned</th>
+              <th style="text-align:right">Applied</th>
+              <th style="text-align:right">%</th>
+            </tr>
+          </thead>
+          <tbody>${rowsPOSKU || `<tr><td colspan="5" style="color:#888;padding:10px 4px">No PO × SKU rows found.</td></tr>`}</tbody>
+        </table>
+
+        <h2>Units by Mobile Bin (Top)</h2>
+        <table style="font-size:13px">
+          <thead>
+            <tr>
+              <th>Mobile Bin</th>
+              <th style="text-align:right">Units</th>
+              <th style="text-align:right">Unique SKUs</th>
+            </tr>
+          </thead>
+          <tbody>${rowsBins || `<tr><td colspan="3" style="color:#888;padding:10px 4px">No bin data found.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ----- PO Progress table -----
+function renderPOProgress(rows){
+  const tbody = document.getElementById('po-progress-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!rows || !rows.length){
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-xs text-gray-400 py-3">No data</td></tr>';
+    return;
+  }
+
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'odd:bg-gray-50';
+    tr.innerHTML = `
+      <td class="py-1 pr-2">${r.po}</td>
+      <td class="py-1 pr-2">${r.due ? toUI(r.due) : ''}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.planned||0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.applied||0).toLocaleString()}</td>
+      <td class="py-1 text-right tabular-nums">${r.pct||0}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ----- Risk tables (PO / SKU) -----
+function renderRisk(list, selector){
+  const tbody = document.querySelector(selector);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!list || !list.length){
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-xs text-gray-400 py-3">No items at risk this week.</td></tr>';
+    return;
+  }
+
+  list.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'odd:bg-gray-50';
+    tr.innerHTML = `
+      <td class="py-1 pr-2 truncate" title="${r.key||r.po||''}">${r.key||r.po||''}</td>
+      <td class="py-1 pr-2">${r.due_date ? toUI(r.due_date) : ''}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.planned||0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.applied||0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.remaining||0).toLocaleString()}</td>
+      <td class="py-1 text-right tabular-nums">${r.pct||0}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- Actionable Top Insights (with Duplicates & Bin diversity) ----------
+function renderInsights(records, plan = [], weekStartISO = '') {
+  const ul   = document.getElementById('insights');
+  const mini = document.getElementById('insights-mini');
+  if (!ul) return;
+
+  // --- dates & helpers ---
+  const today = todayISO();
+  const ws    = weekStartISO || (typeof mondayOf === 'function' ? iso(mondayOf(new Date())) : today);
+  const wsDate = new Date(ws + 'T00:00:00');
+  const weDate = new Date(ws + 'T00:00:00'); weDate.setDate(weDate.getDate() + 6);
+  const we = iso(weDate);
+  const dayDiff = (a,b)=> Math.round((new Date(a+'T00:00:00') - new Date(b+'T00:00:00'))/86400000);
+  const clamp01 = n => (n < 1 ? 1 : n);
+
+  // --- applied aggregates (this week window only) ---
+  const inWeek = (r) => {
+  if (r.status !== 'complete') return false;
+  const dl = toISODate(r.date_local);   // normalize to YYYY-MM-DD
+  return dl && dl >= ws && dl <= we;
+};
+  const weekRecords = (records || []).filter(inWeek);
+
+  // per-PO & per-SKU counts in week
+  const appliedPO  = new Map();
+  const appliedSKU = new Map();
+  for (const r of weekRecords) {
+    const po  = String(r.po_number||'').trim();
+    const sku = String(r.sku_code||'').trim();
+    if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
+    if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
+  }
+
+  // --- plan aggregates (planned totals & earliest due) ---
+  const planPO = new Map();   // po -> { planned, due }
+  const planSKU = new Map();  // sku -> { planned, due }
+  let plannedTotal = 0;
+
+  for (const p of plan || []) {
+    const po  = String(p.po_number||'').trim();
+    const sku = String(p.sku_code||'').trim();
+    const due = String(p.due_date||'').trim();
+    const qty = toNum(p.target_qty);
+    plannedTotal += qty;
+
+    if (po) {
+      const cur = planPO.get(po) || { planned:0, due: due || '' };
+      cur.planned += qty;
+      if (!cur.due || (due && new Date(due) < new Date(cur.due))) cur.due = due;
+      planPO.set(po, cur);
+    }
+    if (sku) {
+      const cur = planSKU.get(sku) || { planned:0, due: due || '' };
+      cur.planned += qty;
+      if (!cur.due || (due && new Date(due) < new Date(cur.due))) cur.due = due;
+      planSKU.set(sku, cur);
+    }
+  }
+
+  // --- priority lists (highest remaining, earliest due first) ---
+  function buildPriority(listMap, appliedMap, keyName) {
+    const rows = [];
+    for (const [key, v] of listMap.entries()) {
+      const planned = v.planned || 0;
+      const applied = appliedMap.get(key) || 0;
+      const remaining = Math.max(0, planned - applied);
+      rows.push({ [keyName]: key, planned, applied, remaining, due: v.due || '' });
+    }
+    rows.sort((a, b) =>
+      (b.remaining - a.remaining) || (new Date(a.due||'9999-12-31') - new Date(b.due||'9999-12-31'))
+    );
+    return rows;
+  }
+  const priorityPO  = buildPriority(planPO, appliedPO, 'po');
+  const prioritySKU = buildPriority(planSKU, appliedSKU, 'sku');
+
+
+// --- Mobile bins: unique (this week) + top 5 by SKU diversity (this week) ---
+const binsWeek = new Set(
+  (weekRecords || [])
+    .map(r => String(r.mobile_bin || '').trim())
+    .filter(Boolean)
+);
+
+// diversity across the week: bin -> set(sku)
+const binSkuSet = new Map();
+for (const r of weekRecords) {
+  const bin = String(r.mobile_bin || '').trim();
+  const sku = String(r.sku_code  || '').trim();
+  if (!bin || !sku) continue;
+  if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+  binSkuSet.get(bin).add(sku);
+}
+
+const binsByDiversity = Array.from(binSkuSet.entries())
+  .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
+  .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
+  .slice(0, 5);
+
+  // --- Duplicate UID detection (this week) ---
+  // “Duplicate” is defined as the same (SKU, UID) appearing more than once
+  const pairCounts = new Map();
+  for (const r of weekRecords) {
+    const sku = String(r.sku_code||'').trim();
+    const uid = String(r.uid||'').trim();
+    if (!sku || !uid) continue;
+    const k = `${sku}||${uid}`;
+    pairCounts.set(k, (pairCounts.get(k)||0) + 1);
+  }
+  let dupScanCount = 0;
+  const dupPairs = [];
+  for (const [k, c] of pairCounts.entries()) {
+    if (c > 1) {
+      const [sku, uid] = k.split('||');
+      dupPairs.push({ sku, uid, count: c });
+      dupScanCount += c;
+    }
+  }
+  dupPairs.sort((a,b)=> b.count - a.count);
+  const dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
+
+  // --- Pace calculations (week + due-in-3-days horizon) ---
+  const daysElapsed       = clamp01(7 - clamp01(dayDiff(ws, today) * -1));
+  const appliedSoFar      = weekRecords.length;
+  const avgPerDaySoFar    = Math.round(appliedSoFar / daysElapsed);
+  const daysLeftInWeek    = clamp01(dayDiff(we, today) + 1);
+  const remainingWeek     = Math.max(0, plannedTotal - appliedSoFar);
+  const needPerDayWeek    = Math.ceil(remainingWeek / daysLeftInWeek);
+
+  const due3Date = new Date(today + 'T00:00:00'); due3Date.setDate(due3Date.getDate() + 2);
+  const due3ISO  = iso(due3Date);
+  function sumPlannedDueBy(map) {
+    let sum = 0;
+    for (const v of map.values()) {
+      if (!v.due) continue;
+      if (v.due >= today && v.due <= due3ISO) sum += v.planned || 0;
+    }
+    return sum;
+  }
+  const plannedDue3 = sumPlannedDueBy(planPO);
+  let appliedAgainstDue3 = 0;
+  for (const [po, v] of planPO.entries()) {
+    if (v.due && v.due >= today && v.due <= due3ISO) {
+      appliedAgainstDue3 += appliedPO.get(po) || 0;
+    }
+  }
+  const remainingDue3   = Math.max(0, plannedDue3 - appliedAgainstDue3);
+  const daysLeftForDue3 = clamp01(Math.min(3, dayDiff(due3ISO, today) + 1));
+  const needPerDayDue3  = remainingDue3 ? Math.ceil(remainingDue3 / daysLeftForDue3) : 0;
+
+  // --- Build insight bullets (max 5) ---
+  const bullets = [];
+
+  // 1–2) Priority POs/SKUs to start
+  if (priorityPO.length && priorityPO[0].remaining > 0) {
+    const p = priorityPO[0];
+    bullets.push(`Start with PO ${p.po} (remaining ${p.remaining.toLocaleString()} • due ${p.due ? toUI(p.due) : 'n/a'})`);
+  }
+  if (prioritySKU.length && prioritySKU[0].remaining > 0) {
+    const s = prioritySKU[0];
+    bullets.push(`Focus SKU ${s.sku} (remaining ${s.remaining.toLocaleString()} • due ${s.due ? toUI(s.due) : 'n/a'})`);
+  }
+
+  // 3) Mobile bins: total unique (this week) + top 5 by SKU diversity (this week)
+if (binsByDiversity.length) {
+  const tops = binsByDiversity.map(b => `${b.bin} (${b.uniqueSkus})`).join(', ');
+  bullets.push(`Mobile bins (wk): ${binsWeek.size.toLocaleString()} • Top bins by SKU diversity (wk): ${tops}`);
+} else {
+  bullets.push(`Mobile bins (wk): ${binsWeek.size.toLocaleString()}`);
+}
+
+  // 4) Duplicate UID alert, if any
+  if (dupPairs.length) {
+    bullets.push(
+      `Duplicate UIDs detected: ${dupScanCount.toLocaleString()} scans across ${dupPairs.length} pairs ` +
+      `${dupExamples.length ? `(e.g., ${dupExamples.join(', ')})` : ''}`
+    );
+  } else {
+    bullets.push(`No duplicate UIDs detected this week.`);
+  }
+
+  // 5) Weekly pace vs target (and 3-day horizon if relevant)
+  const weekPace = `Weekly plan pace: need ~${needPerDayWeek.toLocaleString()}/day (current ${avgPerDaySoFar.toLocaleString()}/day)`;
+  if (remainingDue3 > 0) {
+    bullets.push(
+      `${weekPace} • Due≤3d: target ~${needPerDayDue3.toLocaleString()}/day (rem ${remainingDue3.toLocaleString()})`
+    );
+  } else {
+    bullets.push(weekPace);
+  }
+
+  // Render
+  ul.innerHTML = bullets.slice(0, 5).map(t => `<li>${t}</li>`).join('');
+  if (mini) mini.textContent = `Applied so far: ${appliedSoFar.toLocaleString()} • Remaining: ${remainingWeek.toLocaleString()}`;
+}
+
+async function fetchActualsInWeek(ws, we) {
+
+  if (!apiBase) return [];
+  try {
+    // get everything, we’ll filter locally
+    const d = await api(`/records?limit=50000`);
+    const all = d.records || [];
+
+    const startTs = new Date(ws + 'T00:00:00Z').getTime();
+    const endTs   = startTs + 7 * 86400000;
+
+    return all.filter(r => {
+      if (r.status !== 'complete') return false;
+      // Prefer the business date
+      if (r.date_local && r.date_local >= ws && r.date_local <= we) return true;
+      // Fallback to completion timestamp if date_local missing
+      if (r.completed_at) {
+        const t = new Date(r.completed_at).getTime();
+        return t >= startTs && t < endTs;
+      }
+      return false;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate()+6); return iso(d); }
+
+function inWeekByDateLocal(r, ws){
+  if (!r || r.status !== 'complete') return false;
+  const we = weekEndISO(ws);                  // YYYY-MM-DD
+  const dl = String(r.date_local || '').trim();
+  return !!dl && dl >= ws && dl <= we;        // pure string compare on YYYY-MM-DD
+}
+
+function inWeekByCompletedAt(r, ws){
+  if (!r || r.status !== 'complete' || !r.completed_at) return false;
+  const ymd = ymdFromCompletedAtInTZ(r.completed_at); // business-day bucket
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+  const we  = iso(weD);
+  return ymd && ymd >= ws && ymd <= we;
+}
+
+  // ---------- setWeek ----------
+  async function setWeek(ws){
+    state.weekStart=ws; $('#week-start').value=ws;
+    const weDate=new Date(ws); weDate.setDate(weDate.getDate()+6); const we=iso(weDate);
+const [plan, allRecs] = await Promise.all([fetchPlan(ws), fetchActualsAll()]);
+state.plan = Array.isArray(plan) ? plan : [];
+
+const recs = Array.isArray(allRecs) ? allRecs : [];
+// Prefer date_local window; fall back to completed_at only if date_local missing.
+state.records = recs.filter(r =>
+  inWeekByDateLocal(r, ws) || (!r.date_local && inWeekByCompletedAt(r, ws))
+);
+
+const bins = await fetchBins(ws);
+state.bins = Array.isArray(bins) ? bins : [];
+state.binQA = computeBinQA(ws, state.records, state.bins);
+
+    const agg=aggregate(state.records);
+    const plannedTotal = state.plan.reduce((s,p)=> s + toNum(p.target_qty), 0);
+    const appliedTotal = Array.from(agg.byPO.values()).reduce((s,v)=> s+v, 0);
+    const pct = plannedTotal>0? Math.round(appliedTotal*100/plannedTotal) : (state.plan.length?0:100);
+    $('#planned-range').textContent = `${ws} – ${we}`;
+    $('#applied-range').textContent = `${ws} – ${we}`;
+    $('#planned-total').textContent = fmtInt(plannedTotal);
+    $('#applied-total').textContent = fmtInt(appliedTotal);
+    $('#pct-week').textContent = `${pct}%`;
+    $('#avg-week').textContent = fmtInt(appliedTotal);
+    $('#avg-day').textContent = fmtInt(Math.round((appliedTotal||0)/7));
+    // Build capsule totals for the visible week pills [-1, 0, +1, +2, +3] relative to ws
+const capsuleIds = [-7, 0, 7, 14, 21].map(n => addDaysISO(ws, n));
+
+let plansByWeek = {};
+try {
+  const planLists = await Promise.all(capsuleIds.map(id => fetchPlan(id)));
+  planLists.forEach((pl, i) => {
+    plansByWeek[capsuleIds[i]] = Array.isArray(pl) ? pl : [];
+  });
+} catch (e) {
+  plansByWeek = {};
+}
+
+const totalsByWeek = {};
+capsuleIds.forEach(id => {
+  const pTotal = (plansByWeek[id] || []).reduce((s, p) => s + toNum(p.target_qty), 0);
+  // applied: prefer date_local window; fall back to completed_at if missing (same rules as state.records)
+  const aTotal = (recs || []).filter(r =>
+    inWeekByDateLocal(r, id) || (!r.date_local && inWeekByCompletedAt(r, id))
+  ).length;
+  totalsByWeek[id] = { planned: pTotal, applied: aTotal };
+});
+
+// Render capsules with correct bars for ALL pills (not only the selected week)
+renderCapsules(ws, plannedTotal, appliedTotal, totalsByWeek);
+    setFooterHealth(pct, appliedTotal);
+
+    const poRows = joinPOProgress(state.plan, agg.byPO);
+    renderPOProgress(poRows);
+
+    const riskPO = computeRisk(poRows.map(r=>({po:r.po,due:r.due,planned:r.planned,applied:r.applied})));
+    // build per SKU progress
+    const perSKU=new Map();
+    for(const p of state.plan){
+      const sku=String(p.sku_code||'').trim(); if(!sku) continue;
+      const r=perSKU.get(sku)||{due:p.due_date,planned:0,applied:0};
+      r.planned+=toNum(p.target_qty);
+      if(r.due!==p.due_date) r.due = r.due < p.due_date ? r.due : p.due_date;
+      perSKU.set(sku,r);
+    }
+    for(const [sku,v] of agg.bySKU.entries()){const r=perSKU.get(sku)||{due:'',planned:0,applied:0}; r.applied+=v; perSKU.set(sku,r);}
+    const skuRows=Array.from(perSKU.entries()).map(([sku,r])=>({key:sku,due:r.due,planned:r.planned,applied:r.applied}));
+    const riskSKU = computeRisk(skuRows);
+    renderRisk(riskPO,'#risk-po-body');
+    renderRisk(riskSKU,'#risk-sku-body');
+
+// 👉 add/keep this:
+renderInsights(state.records, state.plan, state.weekStart);
+
+    // download buttons
+    $('#btn-dl-posku').onclick=()=>{
+      const rows=buildDiscrepancyPOSKU(state.plan, state.records);
+      const csv=toCSV(['PO','SKU','Planned','Applied','Discrepancy (Applied - Planned)'], rows);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_sku_discrepancy_${ws}.csv`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    };
+    $('#btn-dl-po').onclick=()=>{
+      const rows=buildDiscrepancyPO(poRows);
+      const csv=toCSV(['PO','Planned','Applied','Discrepancy (Applied - Planned)'], rows);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_discrepancy_${ws}.csv`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    };
+
+$('#btn-dl-week-applied').onclick = downloadAppliedWeek;
+
+function generateExecDoc() {
+  const wsISO = state.weekStart;
+  const weD = new Date(wsISO); weD.setDate(weD.getDate() + 6);
+  const weISO = iso(weD);
+
+  const plannedTotal = (state.plan||[]).reduce((s,p)=> s + toNum(p.target_qty), 0);
+  const recs = (state.records||[]).filter(r => r.status === 'complete');
+  const appliedTotal = recs.length;
+  const pct = plannedTotal>0 ? Math.round(appliedTotal*100/plannedTotal) : (state.plan.length?0:100);
+
+  // PO×SKU aggregates
+  const planPOSKU = new Map();
+  for (const p of state.plan||[]) {
+    const po = String(p.po_number||'').trim();
+    const sku = String(p.sku_code||'').trim();
+    if (!po || !sku) continue;
+    const k = `${po}||${sku}`;
+    planPOSKU.set(k, (planPOSKU.get(k)||0) + toNum(p.target_qty));
+  }
+  const appliedPOSKU = new Map();
+  for (const r of recs) {
+    const po = String(r.po_number||'').trim();
+    const sku = String(r.sku_code||'').trim();
+    if (!po || !sku) continue;
+    const k = `${po}||${sku}`;
+    appliedPOSKU.set(k, (appliedPOSKU.get(k)||0) + 1);
+  }
+  const poskuRows = Array.from(appliedPOSKU.entries()).map(([k, applied]) => {
+    const [po, sku] = k.split('||');
+    const planned = planPOSKU.get(k) || 0;
+    const pct = planned>0 ? Math.round(applied*100/planned) : 100;
+    return { po, sku, planned, applied, pct };
+  }).sort((a,b)=> b.applied - a.applied).slice(0, 50);
+
+  // Mobile bins (units + diversity)
+  const binUnits = new Map();
+  const binSkuSet = new Map();
+  for (const r of recs) {
+    const bin = String(r.mobile_bin||'').trim();
+    const sku = String(r.sku_code||'').trim();
+    if (!bin) continue;
+    binUnits.set(bin, (binUnits.get(bin)||0) + 1);
+    if (sku) {
+      if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+      binSkuSet.get(bin).add(sku);
+    }
+  }
+  const uniqueBins = binUnits.size;
+  const topBins = Array.from(binUnits.entries())
+    .map(([bin, units]) => ({ bin, units, uniqueSkus: (binSkuSet.get(bin)||new Set()).size }))
+    .sort((a,b)=> b.units - a.units)
+    .slice(0, 25);
+
+  // Bin QA insight (if available)
+  const insights = [];
+  try {
+    if (state?.binQA && state.binQA.ws === wsISO) {
+      const q = state.binQA;
+      const aCount = (q.anomalies?.length || 0) + (q.suspicious?.length || 0);
+      const top3 = (q.topOutliers || []).slice(0,3).map(x => `${x.bin} (${(x.kg_per_unit).toFixed(3)} kg/unit)`).join(', ');
+      insights.push(
+        `Bin QA: ${q.binsCount.toLocaleString()} bins • ` +
+        `${q.totalUnitsFromBins.toLocaleString()} units • ` +
+        `${q.totalWeightKg.toFixed(1)} kg total • ` +
+        `Anomalies: ${aCount ? aCount : 'none'}${top3 ? ` (e.g., ${top3})` : ''}`
+      );
+    }
+  } catch {}
+
+  const leadPOSKU = poskuRows[0];
+  if (leadPOSKU) {
+    insights.push(`Highest volume: PO ${leadPOSKU.po} × SKU ${leadPOSKU.sku} — ${leadPOSKU.applied.toLocaleString()} applied (${leadPOSKU.pct}% of ${leadPOSKU.planned.toLocaleString()} planned).`);
+  }
+  if (uniqueBins) {
+    const tops = topBins.slice(0,5).map(b => `${b.bin} (${b.units.toLocaleString()})`).join(', ');
+    insights.push(`Mobile bins used: ${uniqueBins.toLocaleString()} • Top bins by units: ${tops}.`);
+  }
+  const avgPerDay = Math.round(appliedTotal/7);
+  const rem = Math.max(0, plannedTotal - appliedTotal);
+  insights.push(`Pace: ~${avgPerDay.toLocaleString()}/day • Remaining vs plan: ${rem.toLocaleString()}.`);
+
+  const html = buildExecHTML({
+    ws: wsISO, we: weISO,
+    plannedTotal, appliedTotal, pct,
+    uniqueBins,
+    topPOSKU: poskuRows,
+    topBins,
+    insights, binQA: state.binQA
+  });
+
+  const blob = new Blob([html], { type: 'application/msword' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `VAS_Executive_Summary_${wsISO}.doc`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 250);
+}
+
+// Bind both buttons to the same generator
+document.getElementById('btn-exec')?.addEventListener('click', generateExecDoc);
+document.getElementById('btn-exec-doc')?.addEventListener('click', generateExecDoc);
+
+// Optional: PO×SKU CSV from the Executive page
+document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
+  const rows = buildDiscrepancyPOSKU(state.plan, state.records);
+  const csv  = toCSV(['PO','SKU','Planned','Applied','Discrepancy (Applied - Planned)'], rows);
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  a.download = `po_sku_week_${state.weekStart}.csv`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),250);
+});
+};
+
+  // ---------- Plan upload / zero (unchanged) ----------
+  $('#btn-upload-plan').onclick=()=>$('#file-plan').click();
+$('#file-plan').addEventListener('change', async (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f || !apiBase) return;
+
+  const weekStart = $('#week-start').value;
+  let rows = [];
+
+  try {
+    if (/\.xlsx?$/i.test(f.name)) {
+      // Excel: read all rows using SheetJS
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    } else {
+      // CSV: parse with SheetJS to avoid truncation/edge cases
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    }
+  } catch (err) {
+    console.error('Parsing failed', err);
+    alert('Could not parse file');
+    return;
+  }
+
+  if (!rows.length) return alert('No rows found.');
+
+  // ---- Point B helpers ----
+  const normalize = (r) => {
+    const n = {};
+    for (const k in r) n[k.toLowerCase().replace(/\s+/g, '_')] = r[k];
+    return n;
+  };
+
+
+  // Convert Excel serials / Dates / strings -> YYYY-MM-DD
+
+
+  const raw = rows.map(normalize);
+  console.log('[plan-upload] parsed rows:', raw.length);
+
+  const items = raw
+    .map(r => ({
+po_number: String(r.po_number ?? r.po ?? '').trim(),
+sku_code:  String(r.sku_code  ?? r.sku  ?? '').trim(),
+      start_date: weekStart,
+      due_date: toISODate(r.due_date ?? r.due ?? ''),
+      target_qty: toNum(r.target_qty ?? r.planned)
+    }))
+    // keep rows that at least have PO + SKU (server can validate due_date)
+    .filter(r => r.po_number && r.sku_code);
+
+  console.log('[plan-upload] valid rows (PO+SKU):', items.length);
+  console.log('[plan-upload] rows with due_date:', items.filter(r => r.due_date).length);
+
+const putRes = await fetch(`${apiBase}/plan/weeks/${weekStart}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(items)
+});
+if (!putRes.ok) {
+  const msg = await putRes.text().catch(() => 'Upload failed');
+  alert(msg);
+  return;
+}
+
+  alert(`Plan uploaded: ${items.length} rows`);
+  setWeek(weekStart);
+});
+  $('#btn-zero-plan').onclick=async()=>{
+    if(!apiBase) return alert('API not configured');
+    const ws=$('#week-start').value;
+    try{
+      let r=await fetch(`${apiBase}/plan/weeks/${ws}/zero`,{method:'POST'});
+      if(!r.ok&&r.status!==404){throw new Error(await r.text())}
+      if(r.status===404){await fetch(`${apiBase}/plan/weeks/${ws}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:'[]'})}
+      alert('Plan zeroed'); setWeek(ws);
+    }catch(e){alert('Zero failed: '+(e.message||e))}
+  };
+
+  // ===================== INTAKE (same features you validated) =====================
+  const intakeRows=[];
+  function newRow(){return {id:crypto.randomUUID(), selected:false, date_local:iso(new Date()), mobile_bin:'', sscc_label:'', po_number:'', sku_code:'', uid:'', status:'draft', sync:'pending', _pending:{}};}
+  function requiredFilled(r){return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;}
+  function syncClass(s){return s==='synced'?'bg-green-500':(s==='pending'?'bg-amber-500':'bg-gray-400');}
+  function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
+
+  function renderIntake(){
+    const tb=$('#intake-body'); tb.innerHTML='';
+    if(!intakeRows.length) intakeRows.push(newRow());
+    let drafts=0, synced=0;
+    intakeRows.forEach((r,i)=>{
+      const tr=document.createElement('tr'); tr.className=i%2?'bg-gray-50':'bg-white';
+      if(r.status!=='complete') drafts++; else synced++;
+      tr.innerHTML=`
+        <td class="border px-2 py-2"><input type="checkbox" ${r.selected?'checked':''} data-id="${r.id}" data-role="sel"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${toUI(r.date_local)}" data-id="${r.id}" data-f="date_local"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.mobile_bin}" data-id="${r.id}" data-f="mobile_bin"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.sscc_label}" data-id="${r.id}" data-f="sscc_label" placeholder="(optional)"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.po_number}" data-id="${r.id}" data-f="po_number"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.sku_code}" data-id="${r.id}" data-f="sku_code"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.uid}" data-id="${r.id}" data-f="uid" data-last="1"/></td>
+        <td class="border px-2 py-2 text-center"><span class="dot ${syncClass(r.sync)}"></span></td>`;
+      tb.appendChild(tr);
+    });
+
+    tb.querySelectorAll('input[data-role="sel"]').forEach(chk=>{
+      chk.addEventListener('change',e=>{
+        const id=e.target.dataset.id; const row=intakeRows.find(x=>x.id===id); if(row){row.selected=e.target.checked;}
+        $('#chk-all').checked = intakeRows.length && intakeRows.every(r=>r.selected);
+      });
+    });
+
+    tb.querySelectorAll('input[data-f]').forEach(inp=>{
+      const id=inp.dataset.id, f=inp.dataset.f;
+      if(f==='uid'){
+        inp.addEventListener('keydown',(ev)=>{
+          if(ev.key==='Tab' && !ev.shiftKey){
+            const idx=intakeRows.findIndex(x=>x.id===id);
+            if(idx===intakeRows.length-1){ setTimeout(()=>{ intakeRows.push(newRow()); renderIntake(); },0); }
+          }
+        });
+      }
+      inp.addEventListener('input',e=>{
+        const row=intakeRows.find(x=>x.id===id); if(!row) return;
+        if (f === 'uid') {
+  row[f] = String(e.target.value ?? '');
+} else if (f === 'date_local') {
+  row[f] = toISODate(String(e.target.value || '').trim());
+} else {
+  row[f] = String(e.target.value || '').trim();
+} // UID verbatim
+        row.status = requiredFilled(row) ? 'complete' : 'draft';
+        row.sync = 'pending';
+      });
+      inp.addEventListener('change', async e=>{
+        const row=intakeRows.find(x=>x.id===id); if(!row) return;
+        if(!apiBase || !requiredFilled(row)){ renderIntake(); return; }
+        try{
+          const res=await fetch(`${apiBase}/records`,{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              id:row.id, date_local:row.date_local, mobile_bin:row.mobile_bin, sscc_label:row.sscc_label,
+              po_number:row.po_number, sku_code:row.sku_code, uid:row.uid
+            })
+          });
+          const j=await res.json().catch(()=>({}));
+          if(res.ok && j.ok){ row.status='complete'; row.sync='synced'; }
+          else { row.sync='pending'; }
+        }catch{ row.sync='pending'; }
+        renderIntake();
+        await loadOpsMetrics(); await refreshDashboardTotals();
+await setWeek(state.weekStart);   // 🔄 keep state.records in sync
+      });
+    });
+
+    // ribbon quick badges
+    $('#ops-drafts').textContent = drafts;
+    $('#ops-sync-badges').innerHTML =
+      `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
+       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
+  }
+
+  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
+  $('#btn-delete-selected').onclick=async()=>{
+    const selected=intakeRows.filter(r=>r.selected);
+    if(!selected.length) return alert('Select at least one row.');
+    if(!confirm(`Delete ${selected.length} row(s)?`)) return;
+
+    if(apiBase){
+      const pairs=selected.filter(r=>r.uid && r.sku_code).map(r=>({uid:r.uid, sku_code:r.sku_code}));
+      if(pairs.length){
+        try{ await fetch(`${apiBase}/records/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pairs)}); }catch(e){ console.warn('Server delete error',e); }
+      }
+    }
+    for(let i=intakeRows.length-1;i>=0;i--){ if(intakeRows[i].selected) intakeRows.splice(i,1); }
+    if(!intakeRows.length) intakeRows.push(newRow());
+    renderIntake();
+    await loadOpsMetrics(); await refreshDashboardTotals();
+  };
+  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+
+function toISODate(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return iso(d);
+  }
+  if (v instanceof Date) return iso(v);
+  const str = String(v).trim();
+  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    const [_, d, mth, y] = m;
+    const yyyy = y.length === 2 ? '20' + y : y;
+    return `${yyyy}-${mth.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const d2 = new Date(str);
+  return isNaN(d2) ? '' : iso(d2);
+}
+
+  // Upload UIDs → table → sync (unchanged)
+  (function wireUploadUIDs(){
+    const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
+    btn.onclick=()=>file.click();
+    file.addEventListener('change', async (e)=>{
+      const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
+      try{
+        let rows=[];
+        if(/\.xlsx?$/i.test(f.name)){
+          const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:'array'}); const ws=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}); rows=ws;
+        }else{
+          const text=await f.text(); const lines=text.split(/\r?\n/).filter(Boolean);
+          const hdr=lines.shift().split(',').map(s=>s.trim()); rows=lines.map(l=>l.split(',')).map(c=>{const o={};hdr.forEach((h,i)=>o[h]=c[i]??'');return o;});
+        }
+        const normRow=(r)=>{const n={}; for(const k in r){n[k.toLowerCase().replace(/\s+/g,'_')]=r[k];}
+          const pick=(...a)=>{for(const x of a){const v=n[x]; if(v!=null && String(v).trim()!=='') return String(v).trim();} return '';}
+          const pickRaw=(...a)=>{for(const x of a){ if(x in n) return String(n[x]??''); } return '';}
+          return {
+  date_local: toISODate(pick('date_local','date')),
+  mobile_bin: pick('mobile_bin','mobile_bin_(box)','mobile_bin (box)'),
+  sscc_label: pick('sscc_label','sscc','sscc_label (box)'),
+  po_number: pick('po_number','po','po#'),
+  sku_code:  pick('sku_code','sku'),
+  uid:       pickRaw('uid','u_id','u id')
+};
+
+};
+        const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==''));
+        if(!items.length) return alert('No valid rows found (need PO_Number, SKU_Code, UID).');
+
+        for(const r of items){
+          const ui=newRow();
+          ui.date_local = r.date_local || iso(new Date()); // r.date_local is already YYYY-MM-DD
+          ui.mobile_bin=r.mobile_bin||'';
+          ui.sscc_label=r.sscc_label||'';
+          ui.po_number=r.po_number;
+          ui.sku_code=r.sku_code;
+          ui.uid=r.uid; // verbatim
+          ui.status=requiredFilled(ui)?'complete':'draft';
+          ui.sync='pending';
+          intakeRows.push(ui);
+
+          if(requiredFilled(ui) && apiBase){
+            try{
+              const res=await fetch(`${apiBase}/records`,{method:'POST',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({id:ui.id,date_local:ui.date_local,mobile_bin:ui.mobile_bin,sscc_label:ui.sscc_label,po_number:ui.po_number,sku_code:ui.sku_code,uid:ui.uid})});
+              const j=await res.json().catch(()=>({})); if(res.ok && j.ok){ui.sync='synced'; ui.status='complete';}
+            }catch{}
+          }
+        }
+        renderIntake();
+        await loadOpsMetrics(); await refreshDashboardTotals();
+      }catch(err){ console.error(err); alert('Upload failed: '+(err?.message||err)); }
+    });
+  })();
+
+
+// ===== Upload Bin Manifest (intake page) =====
+(function wireUploadBins(){
+  const btn  = document.getElementById('btn-upload-bins');
+  const file = document.getElementById('file-bins');
+  if (!btn || !file) return;
+
+  btn.onclick = () => file.click();
+
+  function toNumberOrNull(v) {
+    const n = Number(String(v ?? '').toString().replace(/,/g,'').trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Flexible header mapping
+  function normalizeRow(r) {
+    const n = {};
+    for (const k in r) n[k.toLowerCase().replace(/\s+/g,'_')] = r[k];
+    const pick = (...keys) => {
+      for (const k of keys) {
+        const v = n[k];
+        if (v != null && String(v).trim() !== '') return String(v).trim();
+      }
+      return '';
+    };
+    // Expected columns (lenient): mobile_bin, bin_id, total_units, units, weight_kg, weight, date
+    const id   = pick('mobile_bin','bin_id','bin','bin_no','bin_number');
+    const unitsRaw = pick('total_units','units','qty','quantity');
+    const weightRaw= pick('weight_kg','weight','kg');
+    const dateRaw  = pick('date','date_local','created_at');
+
+    return {
+      mobile_bin: id,
+      total_units: toNumberOrNull(unitsRaw),
+      weight_kg: toNumberOrNull(weightRaw),
+      date_local: toISODate(dateRaw) || todayInTZ()     // default to business day
+    };
+  }
+
+  // lightweight front-end validation
+  function validateBin(b) {
+    const errs = [];
+    if (!b.mobile_bin) errs.push('Missing mobile_bin');
+    if (b.total_units != null && b.total_units < 0) errs.push('total_units < 0');
+    if (b.weight_kg != null && b.weight_kg < 0) errs.push('weight_kg < 0');
+    // soft plausibility (don’t block upload—backend will enforce)
+    if (b.total_units != null && b.weight_kg != null) {
+      const perUnit = b.weight_kg / Math.max(1, b.total_units);
+      if (perUnit < 0.001 || perUnit > 10) {
+        // mark as suspicious; let backend record and flag
+        b._suspicious = true;
+      }
+    }
+    return errs;
+  }
+
+  file.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f || !apiBase) return;
+
+    try {
+      // Parse CSV/XLSX using SheetJS (already loaded on page)
+      let rows = [];
+      if (/\.xlsx?$/i.test(f.name)) {
+        const buf = await f.arrayBuffer();
+        const wb  = XLSX.read(buf, { type: 'array' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      } else {
+        const buf = await f.arrayBuffer();
+        const wb  = XLSX.read(new Uint8Array(buf), { type: 'array' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      }
+
+      if (!rows.length) { alert('No rows found in manifest.'); return; }
+
+      const ws = state.weekStart;   // current Monday anchor (business TZ)
+      const items = rows.map(normalizeRow)
+        .filter(r => r.mobile_bin); // require at least an ID
+
+      // Client-side validate and split into valid + rejected (still send valid)
+      const rejected = [];
+      for (const it of items) {
+        const errs = validateBin(it);
+        if (errs.length) rejected.push({ it, errs });
+      }
+      const valid = items.filter(it => !rejected.find(x => x.it === it));
+
+      if (!valid.length) {
+        alert('No valid bin rows to upload.');
+        return;
+      }
+
+      // Send to backend (bulk upsert)
+      const resp = await fetch(`${apiBase}/bins/weeks/${ws}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(valid)
+      });
+      if (!resp.ok) {
+        const msg = await resp.text().catch(()=> 'Upload failed');
+        alert(msg);
+        return;
+      }
+
+      const summary = await resp.json().catch(()=> ({}));
+      const ok = summary?.ok ?? true;
+      alert(ok
+        ? `Bin manifest uploaded: ${valid.length} row(s).${rejected.length ? `  Rejected: ${rejected.length}` : ''}`
+        : `Upload finished with warnings. Accepted: ${valid.length}${rejected.length ? `, Rejected: ${rejected.length}` : ''}`
+      );
+
+      // Refresh week so bin QA & insights update
+      await setWeek(state.weekStart);
+    } catch (err) {
+      console.error(err);
+      alert('Upload failed: ' + (err?.message || err));
+    }
+  });
+})();
+
+  // ---------- Ops metrics & Ops Pulse ----------
+  function todayISO(){ return todayInTZ(); }
+async function loadOpsMetrics() {
+  if (!apiBase) return;
+  try {
+    // Fetch all recent completed records, up to 50k
+    const res = await fetch(`${apiBase}/records?status=complete&limit=50000`);
+    if (!res.ok) throw new Error(await res.text());
+    const rows = (await res.json()).records || [];
+
+    const now = Date.now();
+    const startToday = new Date();
+    startToday.setHours(0, 0, 0, 0);
+    const hourAgo = now - 3600e3;
+    const halfAgo = now - 1800e3;
+
+    let scansToday = 0, lastHour = 0, rate = 0, drafts = 0, dupes = 0;
+    const syncCounts = {}, seen = new Set();
+
+    for (const r of rows) {
+      const ct = r.completed_at ? new Date(r.completed_at).getTime() : null;
+      const todayByCompletion = !!ct && ct >= startToday.getTime();
+
+      if (r.status === 'complete') {
+        if (todayByCompletion) scansToday++;
+        if (ct && ct >= hourAgo) lastHour++;
+        if (ct && ct >= halfAgo) rate++;
+        if (r.sku_code && r.uid) {
+          const k = r.sku_code + '|' + r.uid;
+          if (seen.has(k)) dupes++;
+          else seen.add(k);
+        }
+      } else drafts++;
+
+      const s = r.sync_state || 'unknown';
+      syncCounts[s] = (syncCounts[s] || 0) + 1;
+    }
+
+    $('#ops-today').textContent = scansToday.toLocaleString();
+    $('#ops-hour').textContent = lastHour.toLocaleString();
+    $('#ops-rate').textContent = (rate * 2).toLocaleString();
+    $('#ops-drafts').textContent = drafts.toLocaleString();
+    $('#ops-dupes').textContent = dupes.toLocaleString();
+    $('#ops-last-updated').textContent = new Date().toLocaleTimeString();
+
+    // Pulse animation + hearts
+    const bpm = Math.max(40, Math.min(200, rate * 2));
+    $('#intake-bpm').textContent = bpm;
+
+    const small = $('#ops-heart-small');
+    if (small) {
+      small.innerHTML = '';
+      small.appendChild(createHeart(18, BRAND, bpm));
+    }
+
+    const big = $('#ops-heart');
+    if (big) {
+      big.innerHTML = '';
+      big.appendChild(createHeart(24, BRAND, bpm));
+      $('#ops-bpm').textContent = bpm;
+      const delta = bpm - 40;
+      $('#ops-extra').textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
+    }
+
+    const wrap = $('#ops-sync-badges');
+    if (wrap) {
+      wrap.innerHTML = '';
+      Object.entries(syncCounts)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([name, count]) => {
+          const span = document.createElement('span');
+          span.className =
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
+            (name === 'synced'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : name === 'pending'
+              ? 'border-amber-200 bg-amber-50 text-amber-700'
+              : 'border-gray-200 bg-gray-50 text-gray-700');
+          span.textContent = `${name}: ${count}`;
+          wrap.appendChild(span);
+        });
+    }
+
+    const alerts = [];
+    if (drafts > 0)
+      alerts.push(
+        `There ${drafts === 1 ? 'is' : 'are'} ${drafts} draft${
+          drafts === 1 ? '' : 's'
+        } to complete.`
+      );
+    if (dupes > 0)
+      alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
+    $('#ops-alerts').innerHTML = alerts.length
+      ? alerts.map((t) => `<li>${t}</li>`).join('')
+      : '<li class="text-gray-400">No alerts.</li>';
+  } catch (e) {
+    console.warn('Ops ribbon metrics load failed:', e);
+  }
+}
+
+  function startSSE(){
+    if(!apiBase) return;
+    try{
+      const ev=new EventSource(`${apiBase}/events/scan`);
+      $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
+      ev.onmessage=async()=>{ await loadOpsMetrics(); await refreshDashboardTotals(); };
+      ev.onerror = ()=>{ try{ev.close();}catch{}; $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500'); setTimeout(startSSE,3000); };
+    }catch{}
+  }
+
+  // ---------- Dashboard weekly refresh from completion timestamps ----------
+async function refreshDashboardTotals(){
+  if(!apiBase) return;
+  const ws = state.weekStart;
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+  const we  = iso(weD);
+
+  const res = await fetch(`${apiBase}/records?limit=50000`);
+  if(!res.ok) return;
+  const all = (await res.json()).records || [];
+
+  const inWeek = all.filter(r => {
+    if (r.status !== 'complete') return false;
+    if (r.completed_at) {
+      const ymd = ymdFromCompletedAtInTZ(r.completed_at); // CN business day
+      return ymd >= ws && ymd <= we;
+    }
+    // Fallback: use provided date_local (already Y-M-D)
+    const dl = toISODate(r.date_local);
+    return dl && dl >= ws && dl <= we;
+  });
+
+  const appliedTotal = inWeek.length;
+  const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
+  const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
+
+  $('#planned-total').textContent = plannedTotal.toLocaleString();
+  $('#applied-total').textContent = appliedTotal.toLocaleString();
+  $('#pct-week').textContent = pct+'%';
+  $('#avg-week').textContent = appliedTotal.toLocaleString();
+  $('#avg-day').textContent = Math.round((appliedTotal||0)/7).toLocaleString();
+  setFooterHealth(pct, appliedTotal);
+}
+
+  // ---------- Simple Search ----------
+  (function attachSearch(){
+    const el=$('#search-input'); if(!el) return; let t=null;
+    el.addEventListener('input',(e)=>{
+      clearTimeout(t);
+      t=setTimeout(()=>{
+        const term=String(e.target.value||'').trim();
+        const wrap=$('#search-results'); if(!term){wrap.classList.add('hidden'); wrap.innerHTML=''; return;}
+        const agg=aggregate(state.records); const rows=[];
+        const plannedPO=state.plan.filter(p=>String(p.po_number).trim()===term).reduce((s,p)=>s+toNum(p.target_qty),0);
+        let appliedPO=0; for(const [k,v] of agg.byPO.entries()){ if(k===term) appliedPO+=v; }
+        if(plannedPO||appliedPO) rows.push({scope:'PO',planned:plannedPO,applied:appliedPO,pct:plannedPO>0?Math.round((appliedPO/plannedPO)*100):0});
+        const plannedSKU=state.plan.filter(p=>String(p.sku_code).trim()===term).reduce((s,p)=>s+toNum(p.target_qty),0);
+        let appliedSKU=0; for(const [k,v] of agg.bySKU.entries()){ if(k===term) appliedSKU+=v; }
+        if(plannedSKU||appliedSKU) rows.push({scope:'SKU',planned:plannedSKU,applied:appliedSKU,pct:plannedSKU>0?Math.round((appliedSKU/plannedSKU)*100):0});
+        wrap.classList.remove('hidden');
+        wrap.innerHTML = rows.length ? rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`).join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
+      },300);
+    });
+  })();
+
+// ========== Delete UIDs (simple utility) ==========
+async function deleteUIDs() {
+  const ta = document.getElementById('uids-to-delete');
+  const status = document.getElementById('delete-uids-status');
+  if (!ta) return;
+  const raw = ta.value.trim();
+  if (!raw) {
+    alert('Please enter at least one UID.');
+    return;
+  }
+
+  // Split by commas, spaces, or newlines
+  const list = raw.split(/[\s,]+/).filter(Boolean);
+  if (!list.length) return alert('No valid UIDs found.');
+
+  if (!confirm(`Delete ${list.length} UID record(s)?`)) return;
+
+  status.textContent = 'Deleting...';
+
+  try {
+    // Send to backend
+    const res = await fetch(`${apiBase}/records/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(list.map(uid => ({ uid }))) // only UID is needed
+    });
+
+    if (!res.ok) throw new Error(await res.text());
+    // If your API returns {deleted:n}, you can show that instead:
+const body = await res.json().catch(()=>({}));
+const n = typeof body.total_deleted === 'number' ? body.total_deleted : list.length;
+status.textContent = `Deleted ${n} UID(s) successfully.`;
+if (Array.isArray(body.results) && body.results.length) {
+  const lines = body.results.map(r =>
+    `${r.uid}${r.sku_code ? ` (${r.sku_code})` : ''}: ${r.deleted}`
+  );
+  status.textContent += `  [ ${lines.join(' · ')} ]`;
+}
+
+    ta.value = '';
+
+    // Refresh dashboard + intake metrics
+await loadOpsMetrics();
+await refreshDashboardTotals();
+await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
+
+  } catch (e) {
+    console.error(e);
+    status.textContent = 'Error deleting: ' + (e.message || e);
+  }
+}
+
+// ---------- Routing & Init ----------
+(function init(){
+  const ws = mondayOfInTZ(todayInTZ());
+  $('#week-start').value = ws;
+  setWeek(ws);
+
+function syncNav() {
+  const hash = (location.hash || '#dashboard');
+  const dash   = document.getElementById('nav-dash');
+  const intake = document.getElementById('nav-intake');
+  const exec   = document.getElementById('nav-exec');
+  if (!dash || !intake || !exec) return;
+
+  [dash, intake, exec].forEach(el => {
+    el.classList.remove('active');
+    el.removeAttribute('aria-current');
+  });
+
+  if (hash === '#intake') {
+    intake.classList.add('active');
+    intake.setAttribute('aria-current', 'page');
+  } else if (hash === '#exec') {
+    exec.classList.add('active');
+    exec.setAttribute('aria-current', 'page');
+  } else {
+    dash.classList.add('active');
+    dash.setAttribute('aria-current', 'page');
+  }
+}
+
+  function show(hash){
+  document.getElementById('page-dashboard')?.classList.add('hidden');
+  document.getElementById('page-intake')?.classList.add('hidden');
+  document.getElementById('page-exec')?.classList.add('hidden');
+
+  if (hash === '#intake') {
+    document.getElementById('page-intake')?.classList.remove('hidden');
+  } else if (hash === '#exec') {
+    document.getElementById('page-exec')?.classList.remove('hidden');
+    try {
+      const ws = state.weekStart;
+      const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+      const we = iso(weD);
+      const sub = document.getElementById('exec-sub');
+      if (sub) sub.textContent = `${ws} – ${we}`;
+    } catch {}
+  } else {
+    document.getElementById('page-dashboard')?.classList.remove('hidden');
+  }
+  syncNav();
+}
+
+  window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
+  show(location.hash || '#dashboard'); // initial render
+
+  // Intake scaffold + checkbox handler
+  renderIntake();
+  document.getElementById('chk-all')?.addEventListener('change', (e) => {
+    const on = e.target.checked;
+    intakeRows.forEach(r => r.selected = on);
+    renderIntake();
+    document.getElementById('chk-all').checked = on;
+  });
+
+document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
+
+  // pulse hearts + metrics
+  $('#ops-heart').appendChild(createHeart(24, BRAND, 40));
+  $('#ops-heart-small').appendChild(createHeart(18, BRAND, 40));
+  loadOpsMetrics();
+  startSSE();
+})();
+
+  </script>
+
+
+<script>
+(function () {
+  function isReady(s) {
+    return s && (
+      (Array.isArray(s.plan)    && s.plan.length) ||
+      (Array.isArray(s.records) && s.records.length) ||
+      (Array.isArray(s.bins)    && s.bins.length)
+    );
+  }
+  function fire() { window.dispatchEvent(new Event('state:ready')); }
+  var fired = false;
+
+  if (isReady(window.state)) { fired = true; fire(); }
+  var t = setInterval(function () {
+    if (isReady(window.state)) {
+      if (!fired) { fired = true; fire(); }
+      clearInterval(t);
+    }
+  }, 300);
+})();
+</script>
+
+<script>
+(function () {
+  // Re-fire state:ready after Ops switches weeks (or re-populates state)
+  var oldSetWeek = window.setWeek;
+  if (typeof oldSetWeek === 'function') {
+    window.setWeek = async function () {
+      var r = await oldSetWeek.apply(this, arguments);
+      // At this point Ops has updated window.state.{weekStart, plan, records, bins}
+      window.dispatchEvent(new Event('state:ready'));
+      return r;
+    };
+  }
+})();
+</script>
+
+
+<script src="/exec_live_additive.js?v=8" defer></script>
+
+</body>
+</html>
