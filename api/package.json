@@ -10,7 +10,7 @@
     "health": "node -e \"require('http').get(process.env.API || 'http://localhost:4000/health', r=>r.pipe(process.stdout))\""
   },
   "engines": {
-    "node": ">=18"
+    "node": "20.18.0"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.3",
