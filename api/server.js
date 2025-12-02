@@ -288,17 +288,66 @@ function normalizeUploadRow(row) {
 app.post('/records/import', (req, res) => {
   const arr = Array.isArray(req.body) ? req.body : [];
   if (!arr.length) return res.status(400).json({ error: 'array of rows required' });
+
   try {
-    const payload = arr.map(normalizeUploadRow)
-      .filter(r => r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid);
-    const trx = db.transaction(rows => { for (const r of rows) upsertByComposite.run(r); });
+    const normalized = arr.map(normalizeUploadRow);
+
+    const payload = [];
+    const rejected = [];
+
+    normalized.forEach((r, index) => {
+      const missing = [];
+      if (!r.date_local) missing.push('date_local');
+      if (!r.po_number) missing.push('po_number');
+      if (!r.sku_code)  missing.push('sku_code');
+      if (!r.uid)       missing.push('uid');
+
+      if (missing.length) {
+        rejected.push({
+          index,
+          po_number: r.po_number,
+          sku_code:  r.sku_code,
+          uid:       r.uid,
+          reason:    'Missing ' + missing.join(', ')
+        });
+      } else {
+        // NOTE: mobile_bin is allowed to be empty on import; can be fixed later in intake UI
+        payload.push(r);
+      }
+    });
+
+    if (!payload.length) {
+      return res.json({
+        ok:       true,
+        inserted: 0,
+        total:    arr.length,
+        rejected: rejected.length,
+        errors:   rejected
+      });
+    }
+
+    const trx = db.transaction(rows => {
+      for (const r of rows) upsertByComposite.run(r);
+    });
     trx(payload);
-    if (payload.length) emitScan(new Date(payload[payload.length - 1].completed_at));
-    return res.json({ ok: true, inserted: payload.length });
+
+    if (payload.length) {
+      emitScan(new Date(payload[payload.length - 1].completed_at));
+    }
+
+    return res.json({
+      ok:       true,
+      inserted: payload.length,
+      total:    arr.length,
+      rejected: rejected.length,
+      errors:   rejected
+    });
   } catch (e) {
+    console.error('Import failed:', e);
     return res.status(500).json({ error: String(e?.message || e) });
   }
 });
+
 
 // --- Fetch records ---
 app.get('/records', (req, res) => {
