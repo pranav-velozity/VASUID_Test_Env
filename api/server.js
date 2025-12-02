@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 4000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // set to your frontend origin(s) in prod
 const DB_DIR = process.env.DB_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DB_DIR, { recursive: true });
-const DB_FILE = process.env.DB_FILE || path.join(DB_DIR, 'uid_ops.sqlite');
+const DB_FILE = process.env.DB_FILE || path.join(DB_DIR, 'uid_ops_testenv.sqlite');
 
 // ---- App ----
 const app = express();
