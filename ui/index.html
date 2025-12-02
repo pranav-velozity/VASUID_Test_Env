@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <!-- ⬇️ Set to your Render API base (no trailing slash) -->
-  <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
+  <meta name="api-base" content="https://vasuida1.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint</title>
 
@@ -1440,7 +1440,10 @@ $('#file-plan').addEventListener('change', async (e) => {
   // ---- Point B helpers ----
   const normalize = (r) => {
     const n = {};
-    for (const k in r) n[k.toLowerCase().replace(/\s+/g, '_')] = r[k];
+for (const k in r) {
+      const key = k.trim().toLowerCase().replace(/\s+/g, '_');
+      n[key] = r[k];
+    }
     return n;
   };
 
@@ -1624,7 +1627,10 @@ function toISODate(v) {
           const text=await f.text(); const lines=text.split(/\r?\n/).filter(Boolean);
           const hdr=lines.shift().split(',').map(s=>s.trim()); rows=lines.map(l=>l.split(',')).map(c=>{const o={};hdr.forEach((h,i)=>o[h]=c[i]??'');return o;});
         }
-        const normRow=(r)=>{const n={}; for(const k in r){n[k.toLowerCase().replace(/\s+/g,'_')]=r[k];}
+        const normRow=(r)=>{const n={}; for(const k in r){
+          const key = k.trim().toLowerCase().replace(/\s+/g,'_');
+          n[key] = r[k];
+        }
           const pick=(...a)=>{for(const x of a){const v=n[x]; if(v!=null && String(v).trim()!=='') return String(v).trim();} return '';}
           const pickRaw=(...a)=>{for(const x of a){ if(x in n) return String(n[x]??''); } return '';}
           return {
@@ -1637,31 +1643,74 @@ function toISODate(v) {
 };
 
 };
-        const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==''));
+
+const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==''));
         if(!items.length) return alert('No valid rows found (need PO_Number, SKU_Code, UID).');
 
-        for(const r of items){
-          const ui=newRow();
-          ui.date_local = r.date_local || iso(new Date()); // r.date_local is already YYYY-MM-DD
-          ui.mobile_bin=r.mobile_bin||'';
-          ui.sscc_label=r.sscc_label||'';
-          ui.po_number=r.po_number;
-          ui.sku_code=r.sku_code;
-          ui.uid=r.uid; // verbatim
-          ui.status=requiredFilled(ui)?'complete':'draft';
-          ui.sync='pending';
+        // Build UI rows & a bulk payload for the backend
+        const payload = [];
+        for (const r of items) {
+          const ui = newRow();
+          ui.date_local  = r.date_local || iso(new Date()); // r.date_local is already YYYY-MM-DD
+          ui.mobile_bin  = r.mobile_bin || '';
+          ui.sscc_label  = r.sscc_label || '';
+          ui.po_number   = r.po_number;
+          ui.sku_code    = r.sku_code;
+          ui.uid         = r.uid; // verbatim
+          ui.status      = requiredFilled(ui) ? 'complete' : 'draft';
+          ui.sync        = 'pending';
           intakeRows.push(ui);
 
-          if(requiredFilled(ui) && apiBase){
-            try{
-              const res=await fetch(`${apiBase}/records`,{method:'POST',headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({id:ui.id,date_local:ui.date_local,mobile_bin:ui.mobile_bin,sscc_label:ui.sscc_label,po_number:ui.po_number,sku_code:ui.sku_code,uid:ui.uid})});
-              const j=await res.json().catch(()=>({})); if(res.ok && j.ok){ui.sync='synced'; ui.status='complete';}
-            }catch{}
+          // Always send to backend; backend will validate required fields
+          payload.push({
+            date_local: ui.date_local,
+            mobile_bin: ui.mobile_bin,
+            sscc_label: ui.sscc_label,
+            po_number:  ui.po_number,
+            sku_code:   ui.sku_code,
+            uid:        ui.uid
+          });
+        }
+
+        if (apiBase && payload.length) {
+          try {
+            const res = await fetch(`${apiBase}/records/import`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const j = await res.json().catch(() => ({}));
+
+            if (res.ok && j.ok) {
+              const insertedCount = j.inserted ?? payload.length;
+              const rejectedCount = j.rejected ?? 0;
+              const newlyAdded = intakeRows.slice(-items.length);
+
+              // Mark UI rows as synced if they look complete on the client side
+              for (const ui of newlyAdded) {
+                if (requiredFilled(ui)) {
+                  ui.sync = 'synced';
+                  ui.status = 'complete';
+                }
+              }
+
+              if (rejectedCount) {
+                console.warn('Some rows were rejected by the server', j.errors || []);
+                alert(`Upload finished.\nInserted: ${insertedCount}\nRejected: ${rejectedCount}`);
+              }
+            } else {
+              alert('Upload failed on server.');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Upload failed: ' + (err?.message || err));
           }
         }
+
         renderIntake();
-        await loadOpsMetrics(); await refreshDashboardTotals();
+        await loadOpsMetrics();
+        await refreshDashboardTotals();
+
       }catch(err){ console.error(err); alert('Upload failed: '+(err?.message||err)); }
     });
   })();
@@ -2121,5 +2170,4 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 <script src="/exec_live_additive.js?v=8" defer></script>
 
 </body>
-
 </html>
