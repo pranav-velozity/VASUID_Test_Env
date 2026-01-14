@@ -173,15 +173,27 @@
     PO Discrepancy
   </button>
 
-<button id="btn-ship-summary" class="btn">
-  <span class="btn-ic" aria-hidden="true">🚚</span>
-  Shipment Report (Summary)
+<button id="btn-ship-summary" class="cmd cmd--ghost"
+  aria-label="Shipment Summary"
+  title="Shipment summary grouped by Supplier, Zendesk, Freight, Facility">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+    <path d="M3 7h13l5 5v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"
+          stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M16 7v5h5" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>
+  Shipment Summary
 </button>
 
-<button id="btn-ship-detail" class="btn">
-  <span class="btn-ic" aria-hidden="true">📦</span>
-  Shipment Report (Detail)
+<button id="btn-ship-detail" class="cmd cmd--ghost"
+  aria-label="Shipment Details"
+  title="Shipment detail by Supplier, Zendesk, Freight, Facility, and PO">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+    <path d="M4 6h16M4 12h12M4 18h8"
+          stroke-width="1.5" stroke-linecap="round"/>
+  </svg>
+  Shipment Details
 </button>
+
 
   <button id="btn-dl-week-applied" class="cmd cmd--ghost" aria-label="Download Applied" title="Export applied UIDs for this week">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
@@ -873,7 +885,7 @@ function buildShipmentSummary(plan = [], records = [], bins = []) {
   for (const b of bins || []) {
     const mb = String(b.mobile_bin ?? b.bin ?? '').trim();
     if (!mb) continue;
-    const w = Number(b.gross_weight ?? b.weight ?? b.gross ?? 0) || 0;
+    const w = Number(b.gross_weight ?? b.weight ?? b.weight_kg ?? 0) || 0;
     binWeight.set(mb, w);
   }
 
@@ -2835,5 +2847,3 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
-
-
