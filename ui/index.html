@@ -23,7 +23,6 @@
   padding:16px 24px;
   box-sizing:border-box;
 }
-
 #page-dashboard .cmdbar, #capsules{ min-width:0; flex-wrap:wrap; }
 
     .dot{width:.6rem;height:.6rem;border-radius:9999px;display:inline-block}
@@ -313,7 +312,6 @@
     <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="zendesk-pct">0%</span></div>
   </div>
 </div>
-
 
       <!-- Risks -->
 <div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -1045,6 +1043,285 @@ function renderPOProgress(rows){
   });
 }
 
+function supplierRingSVG(applied, planned) {
+  const a = toNum(applied);
+  const p = Math.max(1, toNum(planned)); // avoid divide by zero
+  const ratio = Math.min(a / p, 1);
+  const pct = Math.round((a * 100) / p);
+
+  const size = 78;
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = ratio * c;
+
+  // Using currentColor for strokes so Tailwind text colors can control it later
+  return `
+    <div class="flex items-center justify-center w-full">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-label="Supplier progress ring">
+        <circle cx="${size/2}" cy="${size/2}" r="${r}"
+          fill="none" stroke="#E5E7EB" stroke-width="${stroke}" />
+        <circle cx="${size/2}" cy="${size/2}" r="${r}"
+          fill="none" stroke="#111827" stroke-width="${stroke}"
+          stroke-linecap="round"
+          stroke-dasharray="${dash} ${c}"
+          transform="rotate(-90 ${size/2} ${size/2})" />
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+          font-size="16" font-weight="700" fill="#111827">${pct}%</text>
+      </svg>
+    </div>
+  `;
+}
+
+function facilityBarHTML(applied, planned) {
+  const a = toNum(applied);
+  const p = Math.max(0, toNum(planned));
+  const ratio = p > 0 ? Math.min(a / p, 1) : 0;
+  const pct = p > 0 ? Math.round((a * 100) / p) : 0;
+
+  return `
+    <div class="w-full">
+      <div class="h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
+        <div class="h-full bg-gray-900" style="width:${(ratio * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
+        <div class="tabular-nums">${fmtInt(a)} applied</div>
+        <div class="tabular-nums">${pct}%</div>
+      </div>
+    </div>
+  `;
+}
+
+function freightLanesHTML(plannedMap, appliedMap) {
+  // Prefer showing Air + Sea; include Other if it exists
+  const keysAll = Array.from(new Set([...(plannedMap?.keys?.() || []), ...(appliedMap?.keys?.() || [])]));
+
+  const normKey = (k) => String(k || '').toLowerCase();
+  const pick = (contains) => keysAll.find(k => normKey(k).includes(contains));
+
+  const airKey = pick('air') || 'Air';
+  const seaKey = pick('sea') || pick('ocean') || 'Sea';
+
+  // "Other" = everything not air/sea and not blank placeholder unless it’s the only thing
+  const otherKeys = keysAll.filter(k => k !== airKey && k !== seaKey);
+  const showOther = otherKeys.length > 0;
+
+  const lanes = [
+    { label: 'Air', key: airKey, icon: '✈️' },
+    { label: 'Sea', key: seaKey, icon: '🚢' },
+  ];
+
+  if (showOther) {
+    // If multiple others exist, roll them up into one lane
+    lanes.push({ label: 'Other', key: '__OTHER__', icon: '📦' });
+  }
+
+  function laneNumbers(k) {
+    if (k === '__OTHER__') {
+      const planned = otherKeys.reduce((s, kk) => s + (plannedMap.get(kk) || 0), 0);
+      const applied = otherKeys.reduce((s, kk) => s + (appliedMap.get(kk) || 0), 0);
+      return { planned, applied };
+    }
+    return { planned: plannedMap.get(k) || 0, applied: appliedMap.get(k) || 0 };
+  }
+
+  function laneRow(l) {
+    const { planned, applied } = laneNumbers(l.key);
+    const ratio = planned > 0 ? Math.min(applied / planned, 1) : 0;
+
+    return `
+      <div class="flex items-center gap-2">
+        <div class="w-7 text-center" aria-hidden="true">${l.icon}</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between text-[11px] text-gray-600">
+            <div class="font-semibold text-gray-800">${esc(l.label)}</div>
+            <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
+          </div>
+          <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
+            <div class="h-full bg-gray-900" style="width:${(ratio * 100).toFixed(1)}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="w-full flex flex-col gap-2">
+      ${lanes.map(laneRow).join('')}
+    </div>
+  `;
+}
+
+function zendeskBulletHTML(applied, planned) {
+  const a = toNum(applied);
+  const p = toNum(planned);
+
+  // scale: use max of planned/applied so marker stays in view when applied > planned
+  const max = Math.max(1, p, a);
+  const appliedPct = Math.min((a / max) * 100, 100);
+  const markerPct = Math.min((p / max) * 100, 100);
+
+  const over = a > p ? (a - p) : 0;
+
+  return `
+    <div class="w-full">
+      <div class="text-[11px] text-gray-600 mb-2">
+        Target marker = Planned
+        ${over ? `<span class="ml-2 text-gray-900 font-semibold tabular-nums">Over by ${fmtInt(over)}</span>` : ``}
+      </div>
+      <div class="relative h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
+        <div class="h-full bg-gray-900" style="width:${appliedPct.toFixed(1)}%"></div>
+        <div class="absolute top-[-2px] bottom-[-2px] w-[2px] bg-gray-700"
+             style="left:${markerPct.toFixed(1)}%"></div>
+      </div>
+      <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
+        <div class="tabular-nums">${fmtInt(a)} applied</div>
+        <div class="tabular-nums">${fmtInt(p)} planned</div>
+      </div>
+    </div>
+  `;
+}
+
+// ----- Progress Tiles (Supplier / Facility / Freight / Zendesk) -----
+function renderProgressTiles(plan = [], records = []) {
+  const tilesRoot = document.getElementById('ops-progress-tiles');
+  if (!tilesRoot) return;
+
+  // Only count "applied" as completed units
+  const completed = (records || []).filter(r => r.status === 'complete');
+
+  // Index plan by PO+SKU so we can map completed records to their plan metadata
+  const planByKey = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    const sku = String(p.sku_code || '').trim();
+    if (!po || !sku) continue;
+    planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  // Helper: normalize display values (blank -> (Unspecified))
+  const normVal = (v) => {
+    const s = String(v ?? '').trim();
+    return s ? s : '(Unspecified)';
+  };
+
+  // Build planned totals by field value
+  function plannedByField(field) {
+    const m = new Map();
+    for (const p of plan || []) {
+      const key = normVal(p?.[field]);
+      m.set(key, (m.get(key) || 0) + toNum(p.target_qty));
+    }
+    return m;
+  }
+
+  // Build applied totals by field value by looking up each completed record's plan row
+  function appliedByField(field) {
+    const m = new Map();
+    for (const r of completed) {
+      const po = String(r.po_number || '').trim();
+      const sku = String(r.sku_code || '').trim();
+      if (!po || !sku) continue;
+
+      const p = planByKey.get(`${po}|||${sku}`);
+      const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
+      m.set(key, (m.get(key) || 0) + 1);
+    }
+    return m;
+  }
+
+  function pickDefault(plannedMap, appliedMap) {
+    // default = highest planned; tie-breaker = highest applied; final = alpha
+    const keys = Array.from(new Set([...plannedMap.keys(), ...appliedMap.keys()]));
+    if (!keys.length) return '';
+    keys.sort((a, b) => {
+      const pa = plannedMap.get(a) || 0, pb = plannedMap.get(b) || 0;
+      if (pb !== pa) return pb - pa;
+      const aa = appliedMap.get(a) || 0, ab = appliedMap.get(b) || 0;
+      if (ab !== aa) return ab - aa;
+      return a.localeCompare(b);
+    });
+    return keys[0];
+  }
+
+  function fillSelect(selectId, keys, selected) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return null;
+
+    sel.innerHTML = '';
+    if (!keys.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No values';
+      sel.appendChild(opt);
+      return sel;
+    }
+
+    for (const k of keys) {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      sel.appendChild(opt);
+    }
+
+    sel.value = selected || keys[0];
+    return sel;
+  }
+
+  function updateTile(field, selectId, metricId, pctId, vizId) {
+    const plannedMap = plannedByField(field);
+    const appliedMap = appliedByField(field);
+
+    const keys = Array.from(new Set([...plannedMap.keys(), ...appliedMap.keys()]));
+    keys.sort((a, b) => a.localeCompare(b));
+
+    const defaultKey = pickDefault(plannedMap, appliedMap);
+    const sel = fillSelect(selectId, keys, defaultKey);
+
+    const metricEl = document.getElementById(metricId);
+    const pctEl = document.getElementById(pctId);
+    const vizEl = document.getElementById(vizId);
+
+    const render = () => {
+      const k = sel ? sel.value : defaultKey;
+      const planned = plannedMap.get(k) || 0;
+      const applied = appliedMap.get(k) || 0;
+      const pct = planned > 0 ? Math.round((applied * 100) / planned) : (plan.length ? 0 : 100);
+
+      if (metricEl) metricEl.textContent = `${fmtInt(applied)} / ${fmtInt(planned)}`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
+
+     // Supplier gets a circular progress ring; others stay as text for now
+if (vizEl) {
+  if (!planned) {
+    vizEl.textContent = 'No plan for selection';
+} else if (field === 'supplier_name') {
+  vizEl.innerHTML = supplierRingSVG(applied, planned);
+} else if (field === 'facility_name') {
+  vizEl.innerHTML = facilityBarHTML(applied, planned);
+} else if (field === 'freight_type') {
+  vizEl.innerHTML = freightLanesHTML(plannedMap, appliedMap);
+} else if (field === 'zendesk_ticket') {
+  vizEl.innerHTML = zendeskBulletHTML(applied, planned);
+} else {
+  vizEl.textContent = `Applied ${fmtInt(applied)} of ${fmtInt(planned)}`;
+}
+}
+
+    };
+
+    if (sel) sel.onchange = render;
+    render();
+  }
+
+  updateTile('supplier_name',  'supplier-filter', 'supplier-metric', 'supplier-pct', 'supplier-viz');
+  updateTile('facility_name',  'facility-filter', 'facility-metric', 'facility-pct', 'facility-viz');
+  updateTile('freight_type',   'freight-filter',  'freight-metric',  'freight-pct',  'freight-viz');
+  updateTile('zendesk_ticket', 'zendesk-filter',  'zendesk-metric',  'zendesk-pct',  'zendesk-viz');
+}
+
+
+
 // ----- Risk tables (PO / SKU) -----
 function renderRisk(list, selector){
   const tbody = document.querySelector(selector);
@@ -1367,7 +1644,7 @@ renderCapsules(ws, plannedTotal, appliedTotal, totalsByWeek);
     setFooterHealth(pct, appliedTotal);
 
     const poRows = joinPOProgress(state.plan, agg.byPO);
-    renderPOProgress(poRows);
+    renderProgressTiles(state.plan, state.records);
 
     const riskPO = computeRisk(poRows.map(r=>({po:r.po,due:r.due,planned:r.planned,applied:r.applied})));
     // build per SKU progress
@@ -2297,4 +2574,3 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
-
