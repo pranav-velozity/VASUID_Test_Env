@@ -980,7 +980,7 @@ function buildShipmentDetail(plan = [], records = [], bins = []) {
   for (const b of bins || []) {
     const mb = String(b.mobile_bin ?? b.bin ?? '').trim();
     if (!mb) continue;
-    const w = Number(b.gross_weight ?? b.weight ?? b.gross ?? 0) || 0;
+    const w = Number(b.gross_weight ?? b.weight ?? b.weight_kg ?? 0) || 0;
     binWeight.set(mb, w);
   }
 
@@ -2847,3 +2847,4 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
+
