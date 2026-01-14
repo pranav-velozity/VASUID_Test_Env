@@ -180,6 +180,16 @@
     Executive Summary
   </button>
 
+<button id="btn-ship-summary" class="btn">
+  <span class="btn-ic" aria-hidden="true">🚚</span>
+  Shipment Report (Summary)
+</button>
+
+<button id="btn-ship-detail" class="btn">
+  <span class="btn-ic" aria-hidden="true">📦</span>
+  Shipment Report (Detail)
+</button>
+
   <button id="btn-dl-week-applied" class="cmd cmd--ghost" aria-label="Download Applied" title="Export applied UIDs for this week">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
       <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -770,14 +780,26 @@ function computeBinQA(ws, records=[], bins=[]) {
     return '\ufeff'+head+'\r\n'+body+'\r\n';
   }
 function buildDiscrepancyPOSKU(plan, records){
-  const byPS=new Map();
-  for(const r of records||[]){
-    if(r.status!=='complete') continue;
-    const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim();
-    if(!po||!sku) continue;
-    const k=`${po}|||${sku}`;
-    byPS.set(k,(byPS.get(k)||0)+1);
+const byPS=new Map();
+const binsByPS=new Map();
+
+for(const r of records||[]){
+  if(r.status!=='complete') continue;
+
+  const po=String(r.po_number||'').trim();
+  const sku=String(r.sku_code||'').trim();
+  if(!po||!sku) continue;
+
+  const k=`${po}|||${sku}`;
+  byPS.set(k,(byPS.get(k)||0)+1);
+
+  const mb = String(r.mobile_bin || r.bin || '').trim();
+  if (mb) {
+    if (!binsByPS.has(k)) binsByPS.set(k, new Set());
+    binsByPS.get(k).add(mb);
   }
+}
+
 
   const seen=new Set(); const rows=[];
   for(const p of plan||[]){
@@ -789,17 +811,22 @@ function buildDiscrepancyPOSKU(plan, records){
 
     const planned=toNum(p.target_qty), applied=byPS.get(k)||0;
 
-    rows.push({
-      'PO': po,
-      'SKU': sku,
-      'Supplier Name': p.supplier_name || '',
-      'Facility Name': p.facility_name || '',
-      'Freight Type': p.freight_type || '',
-      'Zendesk Ticket #': p.zendesk_ticket || '',
-      'Planned': planned,
-      'Applied': applied,
-      'Discrepancy (Applied - Planned)': applied - planned
-    });
+const binSet = binsByPS.get(k) || new Set();
+const binList = Array.from(binSet).sort();
+
+rows.push({
+  'PO': po,
+  'SKU': sku,
+  'Supplier Name': p.supplier_name || '',
+  'Facility Name': p.facility_name || '',
+  'Freight Type': p.freight_type || '',
+  'Zendesk Ticket #': p.zendesk_ticket || '',
+  'Mobile Bin Count': binList.length,
+  'Mobile Bins': binList.join('; '),
+  'Planned': planned,
+  'Applied': applied,
+  'Discrepancy (Applied - Planned)': applied - planned
+});
   }
   return rows;
 }
@@ -837,6 +864,203 @@ function buildDiscrepancyPO(joined, plan){
     };
   });
 }
+
+function buildShipmentSummary(plan = [], records = [], bins = []) {
+  const completed = (records || []).filter(r => r.status === 'complete');
+
+  const planByKey = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    const sku = String(p.sku_code || '').trim();
+    if (!po || !sku) continue;
+    planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  const binWeight = new Map();
+  for (const b of bins || []) {
+    const mb = String(b.mobile_bin ?? b.bin ?? '').trim();
+    if (!mb) continue;
+    const w = Number(b.gross_weight ?? b.weight ?? b.gross ?? 0) || 0;
+    binWeight.set(mb, w);
+  }
+
+  const norm = (v) => {
+    const s = String(v ?? '').trim();
+    return s ? s : '(Unspecified)';
+  };
+
+  const groups = new Map();
+  const binAssignedGroup = new Map();
+
+  for (const r of completed) {
+    const po = String(r.po_number || '').trim();
+    const sku = String(r.sku_code || '').trim();
+    if (!po || !sku) continue;
+
+    const p = planByKey.get(`${po}|||${sku}`) || {};
+    const supplier = norm(p.supplier_name);
+    const zendesk  = norm(p.zendesk_ticket ?? p.zendesk_ticket_number ?? p.zendesk);
+    const freight  = norm(p.freight_type);
+    const facility = norm(p.facility_name);
+
+    const gkey = `${supplier}|||${zendesk}|||${freight}|||${facility}`;
+
+    if (!groups.has(gkey)) {
+      groups.set(gkey, {
+        'Supplier Name': supplier,
+        'Zendesk Ticket #': zendesk,
+        'Freight Type': freight,
+        'Facility Name': facility,
+        _poSet: new Set(),
+        _binSet: new Set(),
+        'Total Units Applied': 0,
+        'Gross Weight': 0
+      });
+    }
+
+    const g = groups.get(gkey);
+    g['Total Units Applied'] += 1;
+    g._poSet.add(po);
+
+    const mb = String(r.mobile_bin || r.bin || '').trim();
+    if (mb) {
+      g._binSet.add(mb);
+      const w = binWeight.get(mb) || 0;
+
+      if (!binAssignedGroup.has(mb)) {
+        binAssignedGroup.set(mb, gkey);
+        g['Gross Weight'] += w;
+      }
+    }
+  }
+
+  const out = [];
+  for (const g of groups.values()) {
+    const binCount = g._binSet.size;
+    out.push({
+      'Supplier Name': g['Supplier Name'],
+      'Zendesk Ticket #': g['Zendesk Ticket #'],
+      'Freight Type': g['Freight Type'],
+      'Facility Name': g['Facility Name'],
+      'Unique PO Count': g._poSet.size,
+      'Total Units Applied': g['Total Units Applied'],
+      'Total Mobile Bins': binCount,
+      'Gross Weight': round2(g['Gross Weight']),
+      'CBM': round3(binCount * 0.046)
+    });
+  }
+
+  out.sort((a, b) =>
+    String(a['Supplier Name']).localeCompare(String(b['Supplier Name'])) ||
+    String(a['Zendesk Ticket #']).localeCompare(String(b['Zendesk Ticket #'])) ||
+    String(a['Freight Type']).localeCompare(String(b['Freight Type'])) ||
+    String(a['Facility Name']).localeCompare(String(b['Facility Name']))
+  );
+
+  return out;
+}
+
+function buildShipmentDetail(plan = [], records = [], bins = []) {
+  const completed = (records || []).filter(r => r.status === 'complete');
+
+  const planByKey = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    const sku = String(p.sku_code || '').trim();
+    if (!po || !sku) continue;
+    planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  const binWeight = new Map();
+  for (const b of bins || []) {
+    const mb = String(b.mobile_bin ?? b.bin ?? '').trim();
+    if (!mb) continue;
+    const w = Number(b.gross_weight ?? b.weight ?? b.gross ?? 0) || 0;
+    binWeight.set(mb, w);
+  }
+
+  const norm = (v) => {
+    const s = String(v ?? '').trim();
+    return s ? s : '(Unspecified)';
+  };
+
+  const groups = new Map();
+  const binAssignedGroup = new Map();
+
+  for (const r of completed) {
+    const po = String(r.po_number || '').trim();
+    const sku = String(r.sku_code || '').trim();
+    if (!po || !sku) continue;
+
+    const p = planByKey.get(`${po}|||${sku}`) || {};
+    const supplier = norm(p.supplier_name);
+    const zendesk  = norm(p.zendesk_ticket ?? p.zendesk_ticket_number ?? p.zendesk);
+    const freight  = norm(p.freight_type);
+    const facility = norm(p.facility_name);
+
+    const gkey = `${supplier}|||${zendesk}|||${freight}|||${facility}|||${po}`;
+
+    if (!groups.has(gkey)) {
+      groups.set(gkey, {
+        'Supplier Name': supplier,
+        'Zendesk Ticket #': zendesk,
+        'Freight Type': freight,
+        'Facility Name': facility,
+        'PO': po,
+        _binSet: new Set(),
+        'Total Units Applied': 0,
+        'Gross Weight': 0
+      });
+    }
+
+    const g = groups.get(gkey);
+    g['Total Units Applied'] += 1;
+
+    const mb = String(r.mobile_bin || r.bin || '').trim();
+    if (mb) {
+      g._binSet.add(mb);
+      const w = binWeight.get(mb) || 0;
+
+      if (!binAssignedGroup.has(mb)) {
+        binAssignedGroup.set(mb, gkey);
+        g['Gross Weight'] += w;
+      } else if (binAssignedGroup.get(mb) === gkey) {
+        // same group ok
+      } else {
+        // collision: do not double-count weight
+      }
+    }
+  }
+
+  const out = [];
+  for (const g of groups.values()) {
+    const binCount = g._binSet.size;
+    out.push({
+      'Supplier Name': g['Supplier Name'],
+      'Zendesk Ticket #': g['Zendesk Ticket #'],
+      'Freight Type': g['Freight Type'],
+      'Facility Name': g['Facility Name'],
+      'PO': g['PO'],
+      'Total Units Applied': g['Total Units Applied'],
+      'Total Mobile Bins': binCount,
+      'Gross Weight': round2(g['Gross Weight']),
+      'CBM': round3(binCount * 0.046)
+    });
+  }
+
+  out.sort((a, b) =>
+    String(a['Supplier Name']).localeCompare(String(b['Supplier Name'])) ||
+    String(a['Zendesk Ticket #']).localeCompare(String(b['Zendesk Ticket #'])) ||
+    String(a['Freight Type']).localeCompare(String(b['Freight Type'])) ||
+    String(a['Facility Name']).localeCompare(String(b['Facility Name'])) ||
+    String(a['PO']).localeCompare(String(b['PO']))
+  );
+
+  return out;
+}
+
+function round2(n){ return Math.round((Number(n)||0) * 100) / 100; }
+function round3(n){ return Math.round((Number(n)||0) * 1000) / 1000; }
 
 
 async function downloadAppliedWeek() {
@@ -1674,13 +1898,62 @@ renderInsights(state.records, state.plan, state.weekStart);
     $('#btn-dl-po').onclick=()=>{
       const rows=buildDiscrepancyPO(poRows, state.plan);
 const csv=toCSV(
-  ['PO','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Planned','Applied','Discrepancy (Applied - Planned)'],
+  ['PO','SKU','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Mobile Bin Count','Mobile Bins','Planned','Applied','Discrepancy (Applied - Planned)'],
   rows
 );
-
       const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_discrepancy_${ws}.csv`; a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),250);
     };
+
+$('#btn-ship-summary').onclick = () => {
+  const rows = buildShipmentSummary(state.plan, state.records, state.bins);
+
+  const csv = toCSV(
+    [
+      'Supplier Name',
+      'Zendesk Ticket #',
+      'Freight Type',
+      'Facility Name',
+      'Unique PO Count',
+      'Total Units Applied',
+      'Total Mobile Bins',
+      'Gross Weight',
+      'CBM'
+    ],
+    rows
+  );
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`shipment_report_summary_${ws}.csv`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),250);
+};
+
+$('#btn-ship-detail').onclick = () => {
+  const rows = buildShipmentDetail(state.plan, state.records, state.bins);
+
+  const csv = toCSV(
+    [
+      'Supplier Name',
+      'Zendesk Ticket #',
+      'Freight Type',
+      'Facility Name',
+      'PO',
+      'Total Units Applied',
+      'Total Mobile Bins',
+      'Gross Weight',
+      'CBM'
+    ],
+    rows
+  );
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=`shipment_report_detail_${ws}.csv`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),250);
+};
 
 $('#btn-dl-week-applied').onclick = downloadAppliedWeek;
 
