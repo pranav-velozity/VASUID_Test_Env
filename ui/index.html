@@ -232,7 +232,8 @@
 <!-- Progress Tiles (This Week) -->
 <div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3" id="ops-progress-tiles">
   <!-- Supplier -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
+style="border-color:#990033;">
     <div class="flex items-center justify-between gap-2 mb-2">
       <div class="text-base font-semibold">Supplier</div>
       <select id="supplier-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Supplier">
@@ -250,7 +251,8 @@
   </div>
 
   <!-- Facility -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
+style="border-color:#990033;">
     <div class="flex items-center justify-between gap-2 mb-2">
       <div class="text-base font-semibold">Facility</div>
       <select id="facility-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Facility">
@@ -268,7 +270,8 @@
   </div>
 
   <!-- Freight Type -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
+style="border-color:#990033;">
     <div class="flex items-center justify-between gap-2 mb-2">
       <div class="text-base font-semibold">Freight Type</div>
       <select id="freight-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Freight Type">
@@ -286,7 +289,8 @@
   </div>
 
   <!-- Zendesk Ticket -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
+style="border-color:#990033;">
     <div class="flex items-center justify-between gap-2 mb-2">
       <div class="text-base font-semibold">Zendesk Ticket</div>
       <select id="zendesk-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Zendesk Ticket">
@@ -1053,7 +1057,7 @@ function supplierRingSVG(applied, planned) {
         <circle cx="${size/2}" cy="${size/2}" r="${r}"
           fill="none" stroke="#E5E7EB" stroke-width="${stroke}" />
         <circle cx="${size/2}" cy="${size/2}" r="${r}"
-          fill="none" stroke="#111827" stroke-width="${stroke}"
+          fill="none" stroke="#990033" stroke-width="${stroke}"
           stroke-linecap="round"
           stroke-dasharray="${dash} ${c}"
           transform="rotate(-90 ${size/2} ${size/2})" />
@@ -1073,7 +1077,7 @@ function facilityBarHTML(applied, planned) {
   return `
     <div class="w-full">
       <div class="h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full bg-gray-900" style="width:${(ratio * 100).toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
       </div>
       <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
         <div class="tabular-nums">${fmtInt(a)} applied</div>
@@ -1129,7 +1133,7 @@ function freightLanesHTML(plannedMap, appliedMap) {
             <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
           </div>
           <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
-            <div class="h-full bg-gray-900" style="width:${(ratio * 100).toFixed(1)}%"></div>
+            <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
           </div>
         </div>
       </div>
@@ -1161,7 +1165,7 @@ function zendeskBulletHTML(applied, planned) {
         ${over ? `<span class="ml-2 text-gray-900 font-semibold tabular-nums">Over by ${fmtInt(over)}</span>` : ``}
       </div>
       <div class="relative h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full bg-gray-900" style="width:${appliedPct.toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:#990033;width:${appliedPct.toFixed(1)}%"></div>
         <div class="absolute top-[-2px] bottom-[-2px] w-[2px] bg-gray-700"
              style="left:${markerPct.toFixed(1)}%"></div>
       </div>
@@ -2565,5 +2569,4 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
-
 
