@@ -488,15 +488,23 @@ app.get('/plan', (req, res) => {
 // ---------- Weekly Plan API (kept) ----------
 function normalizePlanArray(body, fallbackStart) {
   if (!Array.isArray(body)) return [];
-  const norm = body.map(r => ({
-    po_number: String(r?.po_number ?? '').trim(),
-    sku_code:  String(r?.sku_code  ?? '').trim(),
-    start_date: (String(r?.start_date ?? '').trim()) || fallbackStart || '',
-    due_date:   String(r?.due_date   ?? '').trim(),
-    target_qty: Number(r?.target_qty ?? 0) || 0,
-    priority:   r?.priority ? String(r.priority).trim() : undefined,
-    notes:      r?.notes ? String(r.notes).trim() : undefined,
-  })).filter(r => r.po_number && r.sku_code && r.due_date);
+const norm = body.map(r => ({
+  po_number: String(r?.po_number ?? '').trim(),
+  sku_code:  String(r?.sku_code  ?? '').trim(),
+  start_date: (String(r?.start_date ?? '').trim()) || fallbackStart || '',
+  due_date:   String(r?.due_date   ?? '').trim(),
+  target_qty: Number(r?.target_qty ?? 0) || 0,
+
+  // NEW fields
+  supplier_name:  r?.supplier_name  ? String(r.supplier_name).trim()  : undefined,
+  facility_name:  r?.facility_name  ? String(r.facility_name).trim()  : undefined,
+  freight_type:   r?.freight_type   ? String(r.freight_type).trim()   : undefined,
+  zendesk_ticket: r?.zendesk_ticket ? String(r.zendesk_ticket).trim() : undefined,
+
+  priority:   r?.priority ? String(r.priority).trim() : undefined,
+  notes:      r?.notes ? String(r.notes).trim() : undefined,
+})).filter(r => r.po_number && r.sku_code && r.due_date);
+
   return norm;
 }
 
@@ -677,4 +685,6 @@ app.listen(PORT, () => {
   console.log(`DB file: ${DB_FILE}`);
   console.log(`CORS origin(s): ${allowList.join(', ')}`);
 });
+
+
 
