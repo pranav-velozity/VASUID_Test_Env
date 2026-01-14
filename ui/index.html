@@ -8,12 +8,12 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint</title>
 
-  <!-- Tailwind -->
+ <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
-  <style>
+ <style>
     body{background:#f8fafc;color:#111827}
     .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
     .vo-wrap{
@@ -721,19 +721,75 @@ function computeBinQA(ws, records=[], bins=[]) {
     const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
     return '\ufeff'+head+'\r\n'+body+'\r\n';
   }
-  function buildDiscrepancyPOSKU(plan, records){
-    const byPS=new Map();
-    for(const r of records||[]){ if(r.status!=='complete') continue; const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim(); if(!po||!sku) continue; const k=`${po}|||${sku}`; byPS.set(k,(byPS.get(k)||0)+1); }
-    const seen=new Set(); const rows=[];
-    for(const p of plan||[]){ const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim(); if(!po||!sku) continue; const k=`${po}|||${sku}`; if(seen.has(k)) continue; seen.add(k);
-      const planned=toNum(p.target_qty), applied=byPS.get(k)||0;
-      rows.push({'PO':po,'SKU':sku,'Planned':planned,'Applied':applied,'Discrepancy (Applied - Planned)':applied-planned});
+function buildDiscrepancyPOSKU(plan, records){
+  const byPS=new Map();
+  for(const r of records||[]){
+    if(r.status!=='complete') continue;
+    const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim();
+    if(!po||!sku) continue;
+    const k=`${po}|||${sku}`;
+    byPS.set(k,(byPS.get(k)||0)+1);
+  }
+
+  const seen=new Set(); const rows=[];
+  for(const p of plan||[]){
+    const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim();
+    if(!po||!sku) continue;
+    const k=`${po}|||${sku}`;
+    if(seen.has(k)) continue;
+    seen.add(k);
+
+    const planned=toNum(p.target_qty), applied=byPS.get(k)||0;
+
+    rows.push({
+      'PO': po,
+      'SKU': sku,
+      'Supplier Name': p.supplier_name || '',
+      'Facility Name': p.facility_name || '',
+      'Freight Type': p.freight_type || '',
+      'Zendesk Ticket #': p.zendesk_ticket || '',
+      'Planned': planned,
+      'Applied': applied,
+      'Discrepancy (Applied - Planned)': applied - planned
+    });
+  }
+  return rows;
+}
+
+function buildDiscrepancyPO(joined, plan){
+  // pick first non-empty meta per PO from the plan
+  const metaByPO = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    if (!po) continue;
+    if (!metaByPO.has(po)) {
+      metaByPO.set(po, {
+        supplier_name: p.supplier_name || '',
+        facility_name: p.facility_name || '',
+        freight_type: p.freight_type || '',
+        zendesk_ticket: p.zendesk_ticket || '',
+      });
     }
-    return rows;
   }
-  function buildDiscrepancyPO(joined){
-    return (joined||[]).map(r=>({'PO':r.po,'Planned':r.planned||0,'Applied':r.applied||0,'Discrepancy (Applied - Planned)':(r.applied||0)-(r.planned||0)}));
-  }
+
+  return (joined || []).map(r => {
+    const m = metaByPO.get(r.po) || { supplier_name:'', facility_name:'', freight_type:'', zendesk_ticket:'' };
+    const planned = r.planned || 0;
+    const applied = r.applied || 0;
+
+    return {
+      'PO': r.po,
+      'Supplier Name': m.supplier_name,
+      'Facility Name': m.facility_name,
+      'Freight Type': m.freight_type,
+      'Zendesk Ticket #': m.zendesk_ticket,
+      'Planned': planned,
+      'Applied': applied,
+      'Discrepancy (Applied - Planned)': applied - planned
+    };
+  });
+}
+
 
 async function downloadAppliedWeek() {
   const ws = state.weekStart;
@@ -1280,13 +1336,21 @@ renderInsights(state.records, state.plan, state.weekStart);
     // download buttons
     $('#btn-dl-posku').onclick=()=>{
       const rows=buildDiscrepancyPOSKU(state.plan, state.records);
-      const csv=toCSV(['PO','SKU','Planned','Applied','Discrepancy (Applied - Planned)'], rows);
+      const csv=toCSV(
+  ['PO','SKU','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Planned','Applied','Discrepancy (Applied - Planned)'],
+  rows
+);
+
       const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_sku_discrepancy_${ws}.csv`; a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),250);
     };
     $('#btn-dl-po').onclick=()=>{
-      const rows=buildDiscrepancyPO(poRows);
-      const csv=toCSV(['PO','Planned','Applied','Discrepancy (Applied - Planned)'], rows);
+      const rows=buildDiscrepancyPO(poRows, state.plan);
+const csv=toCSV(
+  ['PO','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Planned','Applied','Discrepancy (Applied - Planned)'],
+  rows
+);
+
       const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_discrepancy_${ws}.csv`; a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),250);
     };
@@ -1455,15 +1519,22 @@ for (const k in r) {
   console.log('[plan-upload] parsed rows:', raw.length);
 
   const items = raw
-    .map(r => ({
-po_number: String(r.po_number ?? r.po ?? '').trim(),
-sku_code:  String(r.sku_code  ?? r.sku  ?? '').trim(),
-      start_date: weekStart,
-      due_date: toISODate(r.due_date ?? r.due ?? ''),
-      target_qty: toNum(r.target_qty ?? r.planned)
-    }))
-    // keep rows that at least have PO + SKU (server can validate due_date)
-    .filter(r => r.po_number && r.sku_code);
+  .map(r => ({
+    po_number: String(r.po_number ?? r.po ?? '').trim(),
+    sku_code:  String(r.sku_code  ?? r.sku  ?? '').trim(),
+    start_date: weekStart,
+    due_date: toISODate(r.due_date ?? r.due ?? ''),
+    target_qty: toNum(r.target_qty ?? r.planned),
+
+    // NEW fields (pulled from spreadsheet columns)
+    supplier_name:  String(r.supplier_name ?? r.supplier ?? '').trim() || undefined,
+    facility_name:  String(r.facility_name ?? r.facility ?? '').trim() || undefined,
+    freight_type:   String(r.freight_type ?? r.freight ?? '').trim() || undefined,
+
+    // accept either "zendesk_ticket" or "zendesk_ticket_number" column name
+    zendesk_ticket: String(r.zendesk_ticket ?? r.zendesk_ticket_number ?? r.zendesk ?? '').trim() || undefined,
+  }))
+  .filter(r => r.po_number && r.sku_code);
 
   console.log('[plan-upload] valid rows (PO+SKU):', items.length);
   console.log('[plan-upload] rows with due_date:', items.filter(r => r.due_date).length);
