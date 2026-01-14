@@ -1125,7 +1125,7 @@ function freightLanesHTML(plannedMap, appliedMap) {
         <div class="w-7 text-center" aria-hidden="true">${l.icon}</div>
         <div class="flex-1">
           <div class="flex items-center justify-between text-[11px] text-gray-600">
-            <div class="font-semibold text-gray-800">${esc(l.label)}</div>
+            <div class="font-semibold text-gray-800">${l.label}</div>
             <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
           </div>
           <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
@@ -2565,4 +2565,5 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
+
 
