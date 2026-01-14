@@ -239,26 +239,81 @@
   <div id="insights-mini" class="mt-2 text-xs text-rose-100"></div>
 </div>
 
-<!-- PO Progress (This Week) -->
-<div class="w-full basis-full min-w-0 bg-white rounded-2xl border shadow p-4 mb-3">
-  <div class="text-base font-semibold mb-2">PO Progress (This Week)</div>
-  <div class="overflow-auto max-h-[480px]">
-    <table class="w-full text-sm" id="po-progress">
-      <thead>
-        <tr class="text-gray-500">
-          <th scope="col" class="text-left py-1 pr-2">PO #</th>
-          <th scope="col" class="text-left py-1 pr-2">Due</th>
-          <th scope="col" class="text-right py-1 pr-2">Planned</th>
-          <th scope="col" class="text-right py-1 pr-2">Applied</th>
-          <th scope="col" class="text-right py-1">%</th>
-        </tr>
-      </thead>
-      <tbody id="po-progress-body">
-        <tr><td colspan="5" class="text-center text-xs text-gray-400 py-3">Loading…</td></tr>
-      </tbody>
-    </table>
+<!-- Progress Tiles (This Week) -->
+<div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3" id="ops-progress-tiles">
+  <!-- Supplier -->
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <div class="text-base font-semibold">Supplier</div>
+      <select id="supplier-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Supplier">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div id="supplier-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
+      Graph placeholder
+    </div>
+    <div class="mt-2 flex items-end justify-between">
+      <div class="text-xs text-gray-500">Applied / Planned</div>
+      <div class="text-sm font-semibold tabular-nums" id="supplier-metric">0 / 0</div>
+    </div>
+    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="supplier-pct">0%</span></div>
+  </div>
+
+  <!-- Facility -->
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <div class="text-base font-semibold">Facility</div>
+      <select id="facility-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Facility">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div id="facility-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
+      Graph placeholder
+    </div>
+    <div class="mt-2 flex items-end justify-between">
+      <div class="text-xs text-gray-500">Applied / Planned</div>
+      <div class="text-sm font-semibold tabular-nums" id="facility-metric">0 / 0</div>
+    </div>
+    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="facility-pct">0%</span></div>
+  </div>
+
+  <!-- Freight Type -->
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <div class="text-base font-semibold">Freight Type</div>
+      <select id="freight-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Freight Type">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div id="freight-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
+      Graph placeholder
+    </div>
+    <div class="mt-2 flex items-end justify-between">
+      <div class="text-xs text-gray-500">Applied / Planned</div>
+      <div class="text-sm font-semibold tabular-nums" id="freight-metric">0 / 0</div>
+    </div>
+    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="freight-pct">0%</span></div>
+  </div>
+
+  <!-- Zendesk Ticket -->
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0">
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <div class="text-base font-semibold">Zendesk Ticket</div>
+      <select id="zendesk-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Zendesk Ticket">
+        <option value="">Loading…</option>
+      </select>
+    </div>
+    <div id="zendesk-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
+      Graph placeholder
+    </div>
+    <div class="mt-2 flex items-end justify-between">
+      <div class="text-xs text-gray-500">Applied / Planned</div>
+      <div class="text-sm font-semibold tabular-nums" id="zendesk-metric">0 / 0</div>
+    </div>
+    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="zendesk-pct">0%</span></div>
   </div>
 </div>
+
 
       <!-- Risks -->
 <div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -2242,3 +2297,4 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
+
