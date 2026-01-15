@@ -117,8 +117,8 @@
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
-          <!-- Main (half) -->
-          <div class="lg:col-span-6 bg-white rounded-2xl border shadow p-4 min-w-0">
+          <!-- Main -->
+          <div class="lg:col-span-8 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 260px);">
             <div class="flex items-center gap-3 flex-wrap mb-3">
               <div class="text-base font-semibold">Supplier</div>
               <select id="recv-supplier" class="border rounded-md px-2 py-1 text-sm min-w-[280px]">
@@ -130,18 +130,18 @@
               </div>
             </div>
 
-            <div class="overflow-auto border rounded-xl">
+            <div class="overflow-auto border rounded-xl flex-1">
               <table class="w-full text-sm">
                 <thead class="bg-gray-50">
                   <tr class="text-gray-500">
                     <th class="text-left py-2 px-2">PO</th>
                     <th class="text-left py-2 px-2">Facility</th>
                     <th class="text-left py-2 px-2">Received At</th>
+                    <th class="text-left py-2 px-2">Action</th>
                     <th class="text-right py-2 px-2">Cartons In</th>
                     <th class="text-right py-2 px-2">Damaged</th>
                     <th class="text-right py-2 px-2">Non-compliant</th>
                     <th class="text-right py-2 px-2">Replaced</th>
-                    <th class="text-left py-2 px-2">Action</th>
                   </tr>
                 </thead>
                 <tbody id="recv-body">
@@ -155,17 +155,17 @@
             </div>
           </div>
 
-          <!-- Ticker (half) -->
-          <div class="lg:col-span-6 bg-white rounded-2xl border shadow p-4 min-w-0">
+          <!-- Ticker -->
+          <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 260px); border-color:#990033;">
             <div class="text-base font-semibold mb-2">Live Ticker</div>
-            <div id="recv-ticker" class="space-y-2 text-sm">
+            <div id="recv-ticker" class="space-y-2 text-sm overflow-auto flex-1 pr-1">
               <div class="text-xs text-gray-400">No updates yet for this week.</div>
             </div>
           </div>
         </div>
 
         <!-- Bottom summary bar -->
-        <div class="mt-3 bg-white rounded-2xl border shadow p-4">
+        <div class="bg-white rounded-2xl border shadow p-4" style="position: sticky; bottom: 12px; z-index: 20; border-color:#990033;">
           <div class="flex items-center justify-between flex-wrap gap-3">
             <div class="text-sm">
               <span class="text-gray-500">Expected POs:</span>
@@ -286,7 +286,18 @@
       .map(po => ({ po, planFacility: '(Unplanned)' }));
 
     return [...planned, ...unplanned].sort((a, b) => a.po.localeCompare(b.po));
+  
+  function nowDateTimeLocalValue() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mi = String(d.getMinutes()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
   }
+
+}
 
   function getReceivingByPO(receivingRows) {
     const m = new Map();
@@ -444,8 +455,15 @@
 
     if (receiveBtn) {
       receiveBtn.onclick = () => {
-        // Require user to enter a time; focus the input
-        if (receivedInput) receivedInput.focus();
+        if (!receivedInput) return;
+        // Default to current local date/time (user can adjust)
+        if (!String(receivedInput.value || '').trim()) {
+          receivedInput.value = nowDateTimeLocalValue();
+          receivedInput.style.borderColor = '#990033';
+        }
+        receivedInput.focus();
+        // Save immediately when user clicks Receive
+        debounceSave();
       };
     }
 
@@ -493,23 +511,23 @@
           <td class="py-2 px-2">
             <input data-f="received_at" type="datetime-local" class="border rounded-md px-2 py-1 text-sm" value="${esc(receivedAtLocalInput)}" />
           </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_received" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[84px] text-right tabular-nums" value="${Number(r.cartons_received || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_damaged" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[84px] text-right tabular-nums" value="${Number(r.cartons_damaged || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_noncompliant" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[104px] text-right tabular-nums" value="${Number(r.cartons_noncompliant || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_replaced" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[84px] text-right tabular-nums" value="${Number(r.cartons_replaced || 0)}" />
-          </td>
           <td class="py-2 px-2">
-            <button data-act="receive" class="cmd cmd--ghost" title="Enter actual received time">Receive</button>
+            <button data-act="receive" class="cmd cmd--ghost" style="color:#990033;border-color:#990033" title="Receive (defaults to now)">Receive</button>
+          </td>
+          <td class="py-2 px-2 text-right">
+            <input data-f="cartons_received" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_received || 0)}" />
+          </td>
+          <td class="py-2 px-2 text-right">
+            <input data-f="cartons_damaged" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_damaged || 0)}" />
+          </td>
+          <td class="py-2 px-2 text-right">
+            <input data-f="cartons_noncompliant" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[110px] text-right tabular-nums" value="${Number(r.cartons_noncompliant || 0)}" />
+          </td>
+          <td class="py-2 px-2 text-right">
+            <input data-f="cartons_replaced" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_replaced || 0)}" />
           </td>
         </tr>
-      `;
+      `;      `;
     }).join('');
 
     // wire inputs to autosave
