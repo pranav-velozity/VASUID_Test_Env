@@ -463,12 +463,27 @@
           receivedInput.style.borderColor = '#990033';
         }
 
-        // Save immediately (no debounce) so the confirmation is captured right away.
+        // Optimistic UI update (so the user sees the confirmation immediately)
+        const payload = currentPayload();
+        const idx = M.receivingRows.findIndex(r => String(r.po_number || '').trim() === po);
+        const merged = Object.assign({}, existing || {}, payload, { week_start: ws, updated_at: nowISO() });
+        if (idx >= 0) M.receivingRows[idx] = merged;
+        else M.receivingRows.push(merged);
+
+        addTicker(`Received PO ${po} for ${supplier} at ${payload.facility_name || planFacility || ''}`);
+        renderCurrentSupplierView();
+
+        // Persist immediately (no debounce)
         try {
-          await saveNow();
+          await api(`/receiving/weeks/${encodeURIComponent(ws)}`, {
+            method: 'PUT',
+            body: JSON.stringify([payload])
+          });
         } catch (e) {
           console.warn('[receiving] save error', e);
+          addTicker(`⚠️ Save failed for PO ${po} (check network)`);
         }
+
       };
     }
 
