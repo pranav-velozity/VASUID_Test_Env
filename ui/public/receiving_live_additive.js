@@ -118,7 +118,7 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
           <!-- Main -->
-          <div class="lg:col-span-8 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 260px);">
+          <div class="lg:col-span-8 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px);">
             <div class="flex items-center gap-3 flex-wrap mb-3">
               <div class="text-base font-semibold">Supplier</div>
               <select id="recv-supplier" class="border rounded-md px-2 py-1 text-sm min-w-[280px]">
@@ -151,12 +151,12 @@
             </div>
 
             <div class="mt-3 text-xs text-gray-500">
-              Click <span class="font-semibold">Receive</span>, enter the actual received time, then adjust carton/QC counts. Changes auto-save.
+              Enter carton/QC counts, then click <span class="font-semibold">Receive</span> to confirm (it will stamp "Received At" with now if empty). Changes auto-save.
             </div>
           </div>
 
           <!-- Ticker -->
-          <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 260px); border-color:#990033;">
+          <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
             <div class="text-base font-semibold mb-2">Live Ticker</div>
             <div id="recv-ticker" class="space-y-2 text-sm overflow-auto flex-1 pr-1">
               <div class="text-xs text-gray-400">No updates yet for this week.</div>
@@ -165,7 +165,7 @@
         </div>
 
         <!-- Bottom summary bar -->
-        <div class="bg-white rounded-2xl border shadow p-4" style="position: sticky; bottom: 12px; z-index: 20; border-color:#990033;">
+        <div class="bg-white rounded-2xl border shadow p-4" style="position: sticky; bottom: 16px; z-index: 20; border-color:#990033; margin-top: 14px; padding: 18px;">
           <div class="flex items-center justify-between flex-wrap gap-3">
             <div class="text-sm">
               <span class="text-gray-500">Expected POs:</span>
@@ -454,16 +454,21 @@
     }
 
     if (receiveBtn) {
-      receiveBtn.onclick = () => {
+      receiveBtn.onclick = async () => {
         if (!receivedInput) return;
-        // Default to current local date/time (user can adjust)
+
+        // Receive = confirm receipt. If "Received At" is empty, default to NOW (viewer local).
         if (!String(receivedInput.value || '').trim()) {
           receivedInput.value = nowDateTimeLocalValue();
           receivedInput.style.borderColor = '#990033';
         }
-        receivedInput.focus();
-        // Save immediately when user clicks Receive
-        debounceSave();
+
+        // Save immediately (no debounce) so the confirmation is captured right away.
+        try {
+          await saveNow();
+        } catch (e) {
+          console.warn('[receiving] save error', e);
+        }
       };
     }
 
