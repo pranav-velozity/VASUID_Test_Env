@@ -1,4 +1,4 @@
-/* receiving_live_additive.js (v2) - Receiving page (editable, week nav, summary, ticker scaffold)
+/* receiving_live_additive.js (v7) - Receiving page (editable, week nav, summary, ticker scaffold)
    - Loaded via <script src="/receiving_live_additive.js" defer></script> from index.html
    - Binds to global week selector (#week-start / window.state.weekStart)
    - Loads plan + receiving rows for selected week
@@ -225,14 +225,22 @@
   function showReceivingIfHash() {
     const pageReceiving = ensureReceivingPage();
     const show = (location.hash || '').toLowerCase().includes('receiving');
-    const pageDashboard = document.getElementById('page-dashboard');
 
+    // IMPORTANT: Only take control when we're on #receiving.
+    // When the hash is something else (e.g., #exec, #intake), we must NOT
+    // force the dashboard visible, otherwise we break other modules' routing.
     if (show) {
+      const pageDashboard = document.getElementById('page-dashboard');
+      const pageExec = document.getElementById('page-exec');
+      const pageIntake = document.getElementById('page-intake');
+
       if (pageDashboard) pageDashboard.classList.add('hidden');
+      if (pageExec) pageExec.classList.add('hidden');
+      if (pageIntake) pageIntake.classList.add('hidden');
+
       pageReceiving.classList.remove('hidden');
     } else {
       pageReceiving.classList.add('hidden');
-      if (pageDashboard) pageDashboard.classList.remove('hidden');
     }
   }
 
