@@ -527,7 +527,7 @@
             <input data-f="cartons_replaced" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_replaced || 0)}" />
           </td>
         </tr>
-      `;      `;
+      `;
     }).join('');
 
     // wire inputs to autosave
