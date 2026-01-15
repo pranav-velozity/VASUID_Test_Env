@@ -123,6 +123,26 @@ CREATE TABLE IF NOT EXISTS plans (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
+db.exec(`
+CREATE TABLE IF NOT EXISTS receiving(
+  week_start TEXT NOT NULL,
+  po_number TEXT NOT NULL,
+  supplier_name TEXT,
+  facility_name TEXT,
+  received_at_utc TEXT,
+  received_at_local TEXT,
+  received_tz TEXT,
+  cartons_received INTEGER DEFAULT 0,
+  cartons_damaged INTEGER DEFAULT 0,
+  cartons_noncompliant INTEGER DEFAULT 0,
+  cartons_replaced INTEGER DEFAULT 0,
+  updated_at TEXT,
+  PRIMARY KEY(week_start, po_number)
+);
+CREATE INDEX IF NOT EXISTS idx_receiving_week ON receiving(week_start);
+CREATE INDEX IF NOT EXISTS idx_receiving_supplier ON receiving(week_start, supplier_name);
+`);
+
 
 const selectRecordById = db.prepare('SELECT * FROM records WHERE id = ?');
 const selectByComposite = db.prepare('SELECT id FROM records WHERE po_number = ? AND sku_code = ? AND uid = ?');
@@ -657,6 +677,82 @@ binsRouter.get('/weeks/:ws', async (req, res) => {
 
 app.use('/bins', binsRouter);
 
+const receivingRouter = express.Router();
+
+function normalizeReceivingArray(body, ws) {
+  if (!Array.isArray(body)) return [];
+  return body.map(r => ({
+    week_start: ws,
+    po_number: String(r?.po_number ?? r?.po ?? '').trim(),
+    supplier_name: r?.supplier_name ? String(r.supplier_name).trim() : (r?.supplier ? String(r.supplier).trim() : ''),
+    facility_name: r?.facility_name ? String(r.facility_name).trim() : (r?.facility ? String(r.facility).trim() : ''),
+    received_at_utc: r?.received_at_utc ? String(r.received_at_utc).trim() : '',
+    received_at_local: r?.received_at_local ? String(r.received_at_local).trim() : '',
+    received_tz: r?.received_tz ? String(r.received_tz).trim() : '',
+    cartons_received: Number(r?.cartons_received ?? r?.cartons_in ?? 0) || 0,
+    cartons_damaged: Number(r?.cartons_damaged ?? r?.damaged ?? 0) || 0,
+    cartons_noncompliant: Number(r?.cartons_noncompliant ?? r?.noncompliant ?? r?.non_compliant ?? 0) || 0,
+    cartons_replaced: Number(r?.cartons_replaced ?? r?.replaced ?? 0) || 0,
+    updated_at: new Date().toISOString(),
+  })).filter(x => x.po_number);
+}
+
+// GET /receiving/weeks/:ws
+receivingRouter.get('/weeks/:ws', (req, res) => {
+  const ws = req.params.ws;
+  const rows = db.prepare(`SELECT * FROM receiving WHERE week_start=? ORDER BY supplier_name, po_number`).all(ws);
+  res.json(rows);
+});
+
+// PUT /receiving/weeks/:ws  (UPSERT array)
+receivingRouter.put('/weeks/:ws', (req, res) => {
+  const ws = req.params.ws;
+  const rows = normalizeReceivingArray(req.body, ws);
+
+  const stmt = db.prepare(`
+    INSERT INTO receiving(
+      week_start, po_number, supplier_name, facility_name,
+      received_at_utc, received_at_local, received_tz,
+      cartons_received, cartons_damaged, cartons_noncompliant, cartons_replaced,
+      updated_at
+    ) VALUES (
+      @week_start, @po_number, @supplier_name, @facility_name,
+      @received_at_utc, @received_at_local, @received_tz,
+      @cartons_received, @cartons_damaged, @cartons_noncompliant, @cartons_replaced,
+      @updated_at
+    )
+    ON CONFLICT(week_start, po_number) DO UPDATE SET
+      supplier_name=excluded.supplier_name,
+      facility_name=excluded.facility_name,
+      received_at_utc=excluded.received_at_utc,
+      received_at_local=excluded.received_at_local,
+      received_tz=excluded.received_tz,
+      cartons_received=excluded.cartons_received,
+      cartons_damaged=excluded.cartons_damaged,
+      cartons_noncompliant=excluded.cartons_noncompliant,
+      cartons_replaced=excluded.cartons_replaced,
+      updated_at=excluded.updated_at
+  `);
+
+  const tx = db.transaction((arr) => {
+    for (const r of arr) stmt.run(r);
+  });
+
+  tx(rows);
+  res.json({ ok: true, week_start: ws, rows: rows.length });
+});
+
+// Alias GET /receiving?weekStart=YYYY-MM-DD  (like bins/plan)
+receivingRouter.get('/', (req, res) => {
+  const ws = String(req.query.weekStart || '').trim();
+  if (!ws) return res.status(400).json({ error: 'weekStart required' });
+  const rows = db.prepare(`SELECT * FROM receiving WHERE week_start=? ORDER BY supplier_name, po_number`).all(ws);
+  res.json(rows);
+});
+
+app.use('/receiving', receivingRouter);
+
+
 /* ===== BEGIN: /bins?weekStart=YYYY-MM-DD alias =====
    Returns the same as GET /bins/weeks/:ws
    (works for /api/bins too thanks to the /api alias above)
@@ -677,14 +773,13 @@ app.get('/bins', (req, res) => {
 });
 /* ===== END: /bins alias ===== */
 
-
-
 // ---- Start ----
 app.listen(PORT, () => {
   console.log(`UID Ops backend listening on http://localhost:${PORT}`);
   console.log(`DB file: ${DB_FILE}`);
   console.log(`CORS origin(s): ${allowList.join(', ')}`);
 });
+
 
 
 
