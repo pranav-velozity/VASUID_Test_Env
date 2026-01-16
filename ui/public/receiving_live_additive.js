@@ -1,10 +1,11 @@
-/* receiving_live_additive.js (v8) - Receiving page (additive)
-   - Loaded via <script src="/receiving_live_additive.js" defer></script> from index.html
+/* receiving_live_additive.js (v9) - Receiving page (additive)
+   - Loaded via <script src="/receiving_live_additive.js" defer></script>
    - Hash route: only controls UI when #receiving is active
    - Week binding: #week-start / window.state.weekStart
    - Loads plan + receiving rows for selected week
    - Batch receive: header "Received At" + "Receive Selected" applies timestamp to checked POs
-   - Autosaves cartons/QC + facility per PO
+   - Autosave: facility + cartons/QC per PO. (v9 change: autosave never re-renders the table)
+   - Ticker: business-meaningful events only (no autosave spam)
    - Displays viewer-local time; SLA cutoff uses Asia/Shanghai Monday 12:00 (UTC+8)
 */
 
@@ -14,7 +15,6 @@
   const BUSINESS_UTC_OFFSET_HOURS = 8; // Asia/Shanghai is UTC+8, no DST
 
   function $(sel) { return document.querySelector(sel); }
-
   function esc(s) {
     return String(s ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -31,8 +31,6 @@
     return r.json();
   }
 
-  function nowISO() { return new Date().toISOString(); }
-
   function fmtLocalFromUtc(isoUtc) {
     if (!isoUtc) return '';
     const d = new Date(isoUtc);
@@ -43,7 +41,16 @@
     }).format(d);
   }
 
-  // Read the week currently selected by the app
+  function dtLocalNow() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  }
+
   function getWeekStart() {
     const wsFromState = (window.state && window.state.weekStart) ? window.state.weekStart : '';
     const wsFromInput = $('#week-start') ? $('#week-start').value : '';
@@ -60,31 +67,6 @@
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  function dtLocalNow() {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-  }
-
-  function toDateTimeLocalValue(isoUtc) {
-    // For <input type="datetime-local"> in viewer local time
-    if (!isoUtc) return '';
-    const d = new Date(isoUtc);
-    if (Number.isNaN(d.getTime())) return '';
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const mi = String(d.getMinutes()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-  }
-
-  function uniq(arr) { return Array.from(new Set(arr)); }
-
   function businessCutoffUtcISO(weekStartISO) {
     // Monday 12:00 in Asia/Shanghai => 04:00 UTC (same date) because UTC+8
     const hourUtc = 12 - BUSINESS_UTC_OFFSET_HOURS; // 4
@@ -92,32 +74,24 @@
     return `${weekStartISO}T${hh}:00:00.000Z`;
   }
 
-  // --- State cache for module ---
-  const M = {
-    ws: '',
-    planRows: [],
-    receivingRows: [],
-    suppliers: [],
-    selectedSupplier: '',
-    // per-PO save debounce timers
-    saveTimers: new Map()
-  };
+  function uniq(arr) { return Array.from(new Set(arr)); }
 
-  // -------------------- Ticker (deduped, meaningful) --------------------
-  let _tickerSeen = new Set();
+  // -------------------- Ticker (business events only) --------------------
+  const _tickerSeen = new Set();
+  let _tickerWeekKey = '';
 
-  function resetTicker() {
-    _tickerSeen = new Set();
+  function clearTicker() {
+    _tickerSeen.clear();
+    _tickerWeekKey = '';
     const el = document.getElementById('recv-ticker');
-    if (el) el.innerHTML = '<div class="text-xs text-gray-400">No updates yet for this week.</div>';
+    if (el) el.innerHTML = `<div class="text-xs text-gray-400">No updates yet for this week.</div>`;
   }
 
   function addTicker(msg, opts = {}) {
     const el = document.getElementById('recv-ticker');
     if (!el) return;
 
-    const key = (opts.key || msg || '').trim();
-    if (!key) return;
+    const key = (opts.key || msg).trim();
     if (_tickerSeen.has(key)) return;
     _tickerSeen.add(key);
 
@@ -127,19 +101,57 @@
       hour: '2-digit', minute: '2-digit'
     }).format(ts);
 
-    const card = document.createElement('div');
-    card.className = 'border rounded-xl p-3 bg-white';
-    card.innerHTML = `<div class="text-xs text-gray-400 mb-1">${when}</div><div class="text-sm">${esc(msg)}</div>`;
-
-    // If the placeholder exists, remove it before adding cards
-    if (el.children.length === 1 && el.firstElementChild?.classList?.contains('text-gray-400')) {
+    // remove "No updates" placeholder
+    if (el.children.length === 1 && el.children[0].classList?.contains('text-gray-400')) {
       el.innerHTML = '';
     }
 
+    const card = document.createElement('div');
+    card.className = 'border rounded-xl p-3 bg-white';
+    card.innerHTML = `<div class="text-xs text-gray-400 mb-1">${when}</div><div class="text-sm">${esc(msg)}</div>`;
     el.prepend(card);
 
     while (el.children.length > 25) el.removeChild(el.lastChild);
   }
+
+  // -------------------- Save status (quiet autosave feedback) --------------------
+  let _saveStatusTimer = null;
+  function setSaveStatus(text, tone) {
+    const el = document.getElementById('recv-save-status');
+    if (!el) return;
+
+    el.textContent = text || '';
+    el.className = 'text-xs';
+
+    // Tone via inline styles to avoid tailwind compile issues
+    if (tone === 'saving') {
+      el.style.color = '#6b7280'; // gray-500
+    } else if (tone === 'saved') {
+      el.style.color = '#16a34a'; // green-600
+    } else if (tone === 'error') {
+      el.style.color = '#dc2626'; // red-600
+    } else {
+      el.style.color = '#6b7280';
+    }
+
+    if (_saveStatusTimer) clearTimeout(_saveStatusTimer);
+    if (text) {
+      _saveStatusTimer = setTimeout(() => {
+        const el2 = document.getElementById('recv-save-status');
+        if (el2) el2.textContent = '';
+      }, tone === 'error' ? 4000 : 1500);
+    }
+  }
+
+  // -------------------- State cache --------------------
+  const M = {
+    ws: '',
+    planRows: [],
+    receivingRows: [],
+    suppliers: [],
+    selectedSupplier: '',
+    saveTimers: new Map()
+  };
 
   function ensureReceivingPage() {
     let page = document.getElementById('page-receiving');
@@ -177,14 +189,13 @@
                 <label class="text-sm text-gray-600">Received At</label>
                 <input id="recv-batch-dt" type="datetime-local" class="border rounded-md px-2 py-1 text-sm" aria-label="Batch received at" />
                 <button id="recv-batch-now" class="cmd cmd--ghost" title="Set to now">Now</button>
-                <button id="recv-batch-receive" class="cmd cmd--ghost" style="border:1px solid #990033;color:#990033" title="Apply received time to selected POs">
-                  Receive Selected
-                </button>
+                <button id="recv-batch-receive" class="cmd cmd--ghost" style="border:1px solid #990033;color:#990033" title="Apply received time to selected POs">Receive Selected</button>
               </div>
 
               <div class="text-sm text-gray-500">
                 POs: <span class="font-semibold tabular-nums" id="recv-po-count">0</span>
                 • Received: <span class="font-semibold tabular-nums" id="recv-po-received">0</span>
+                <span class="ml-2" id="recv-save-status"></span>
               </div>
             </div>
 
@@ -209,7 +220,7 @@
             </div>
 
             <div class="mt-3 text-xs text-gray-500">
-              Tip: Enter carton/QC counts, select one or more POs, set <span class="font-semibold">Received At</span>, then click <span class="font-semibold">Receive Selected</span>. Carton/QC edits auto-save.
+              Tip: Enter carton/QC counts, select one or more POs, set <span class="font-semibold">Received At</span>, then click <span class="font-semibold">Receive Selected</span>. Facility/carton/QC edits auto-save.
             </div>
           </div>
 
@@ -250,7 +261,6 @@
       </div>
     `;
 
-    // Insert after dashboard so it behaves like a "page"
     const dashboard = document.getElementById('page-dashboard');
     if (dashboard && dashboard.parentNode) {
       dashboard.parentNode.insertBefore(page, dashboard.nextSibling);
@@ -258,7 +268,7 @@
       document.body.appendChild(page);
     }
 
-    // Week nav buttons
+    // Prev/Next week
     const prevBtn = document.getElementById('recv-prev-week');
     const nextBtn = document.getElementById('recv-next-week');
     const weekInput = document.getElementById('week-start');
@@ -277,8 +287,39 @@
       if (window.state) window.state.weekStart = newWs;
     };
 
-    // Wire header controls once
-    wireHeaderControls();
+    // Header controls
+    const btnNow = document.getElementById('recv-batch-now');
+    const batchDt = document.getElementById('recv-batch-dt');
+    if (btnNow && batchDt) btnNow.onclick = () => { batchDt.value = dtLocalNow(); };
+
+    const checkAll = document.getElementById('recv-check-all');
+    if (checkAll) {
+      checkAll.onchange = () => {
+        document.querySelectorAll('.recv-row-check').forEach(cb => { cb.checked = checkAll.checked; });
+      };
+    }
+
+    // Delegated autosave for facility + cartons/QC
+    const tbody = document.getElementById('recv-body');
+    if (tbody) {
+      tbody.addEventListener('input', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLElement)) return;
+        if (!t.classList.contains('recv-num') && !t.classList.contains('recv-facility')) return;
+        const po = t.getAttribute('data-po') || '';
+        if (!po) return;
+        queueAutosave(po);
+      });
+
+      tbody.addEventListener('change', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLElement)) return;
+        if (!t.classList.contains('recv-num') && !t.classList.contains('recv-facility')) return;
+        const po = t.getAttribute('data-po') || '';
+        if (!po) return;
+        queueAutosave(po);
+      });
+    }
 
     return page;
   }
@@ -331,8 +372,17 @@
     sel.value = selected && suppliers.includes(selected) ? selected : suppliers[0];
   }
 
+  function getReceivingByPO(receivingRows) {
+    const m = new Map();
+    for (const r of receivingRows || []) {
+      const po = String(r.po_number || '').trim();
+      if (!po) continue;
+      m.set(po, r);
+    }
+    return m;
+  }
+
   function buildPOListForSupplier(planRows, receivingRows, supplier) {
-    // Deduplicate planned POs (plan can have multiple SKU rows per PO)
     const plannedMap = new Map();
     for (const p of planRows || []) {
       if (String(p.supplier_name || '').trim() !== supplier) continue;
@@ -354,21 +404,10 @@
     return [...planned, ...unplanned].sort((a, b) => a.po.localeCompare(b.po));
   }
 
-  function getReceivingByPO(receivingRows) {
-    const m = new Map();
-    for (const r of receivingRows || []) {
-      const po = String(r.po_number || '').trim();
-      if (!po) continue;
-      m.set(po, r);
-    }
-    return m;
-  }
-
-  function computeSummaryAll(planRows, receivingRows, ws) {
-    const cutoffUtc = businessCutoffUtcISO(ws);
+  function computeSummaryAll(planRows, receivingRows) {
+    const cutoffUtc = businessCutoffUtcISO(M.ws);
     const cutoff = new Date(cutoffUtc);
 
-    // expected: ALL planned POs for the week (deduped)
     const plannedMap = new Map();
     for (const p of planRows || []) {
       const po = String(p.po_number || '').trim();
@@ -403,7 +442,6 @@
       const el = document.getElementById(id);
       if (el) el.textContent = String(v);
     };
-
     set('recv-sum-expected', sum.expected);
     set('recv-sum-received', sum.received);
     set('recv-sum-cartons', sum.cartons);
@@ -418,80 +456,15 @@
     }
   }
 
-  function readRowPayload(ws, supplier, po, planFacility) {
-    const row = document.querySelector(`tr[data-po="${CSS.escape(po)}"]`);
+  function renderCountsForSupplier(planRows, receivingRows, supplier) {
+    const receivingByPO = getReceivingByPO(receivingRows);
+    const rows = buildPOListForSupplier(planRows, receivingRows, supplier);
+    const receivedCount = rows.reduce((acc, x) => acc + (receivingByPO.get(x.po)?.received_at_utc ? 1 : 0), 0);
 
-    const getVal = (selector) => {
-      const el = row ? row.querySelector(selector) : null;
-      return el ? String(el.value || '').trim() : '';
-    };
-
-    const getNum = (selector) => {
-      const el = row ? row.querySelector(selector) : null;
-      return el ? (Number(el.value || 0) || 0) : 0;
-    };
-
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'viewer-local';
-
-    return {
-      po_number: po,
-      supplier_name: supplier,
-      facility_name: getVal('input[data-f="facility"]') || planFacility || '',
-      received_at_local: '',
-      received_at_utc: '',
-      received_tz: tz,
-      cartons_received: getNum('input[data-f="cartons_received"]'),
-      cartons_damaged: getNum('input[data-f="cartons_damaged"]'),
-      cartons_noncompliant: getNum('input[data-f="cartons_noncompliant"]'),
-      cartons_replaced: getNum('input[data-f="cartons_replaced"]')
-    };
-  }
-
-  function upsertReceivingRow(ws, payload) {
-    const po = String(payload.po_number || '').trim();
-    if (!po) return;
-
-    const idx = M.receivingRows.findIndex(r => String(r.po_number || '').trim() === po);
-    const merged = Object.assign({}, (idx >= 0 ? M.receivingRows[idx] : {}), payload, {
-      week_start: ws,
-      updated_at: nowISO()
-    });
-
-    if (idx >= 0) M.receivingRows[idx] = merged;
-    else M.receivingRows.push(merged);
-  }
-
-  function debounceSave(ws, supplier, po, planFacility) {
-    const key = `${ws}|||${po}`;
-    if (M.saveTimers.has(key)) clearTimeout(M.saveTimers.get(key));
-
-    M.saveTimers.set(key, setTimeout(async () => {
-      try {
-        const payload = readRowPayload(ws, supplier, po, planFacility);
-        await api(`/receiving/weeks/${encodeURIComponent(ws)}`, {
-          method: 'PUT',
-          body: JSON.stringify([payload])
-        });
-        upsertReceivingRow(ws, payload);
-        addTicker(`Saved ${po} cartons/QC`, { key: `save:${ws}:${po}:${payload.cartons_received}:${payload.cartons_damaged}:${payload.cartons_noncompliant}:${payload.cartons_replaced}` });
-        renderCurrentSupplierView();
-      } catch (e) {
-        console.warn('[receiving] save error', e);
-        addTicker(`⚠️ Save failed for ${po}`, { key: `savefail:${ws}:${po}` });
-      }
-    }, 500));
-  }
-
-  function wireRowInputs(ws, supplier, po, planFacility) {
-    const row = document.querySelector(`tr[data-po="${CSS.escape(po)}"]`);
-    if (!row) return;
-
-    const inputs = row.querySelectorAll('input[data-f]');
-    inputs.forEach(inp => {
-      inp.onchange = () => debounceSave(ws, supplier, po, planFacility);
-      inp.onblur = () => debounceSave(ws, supplier, po, planFacility);
-      inp.oninput = () => debounceSave(ws, supplier, po, planFacility);
-    });
+    const poCountEl = document.getElementById('recv-po-count');
+    const poRecvEl = document.getElementById('recv-po-received');
+    if (poCountEl) poCountEl.textContent = String(rows.length);
+    if (poRecvEl) poRecvEl.textContent = String(receivedCount);
   }
 
   function renderTableForSupplier(planRows, receivingRows, supplier) {
@@ -501,167 +474,200 @@
     const receivingByPO = getReceivingByPO(receivingRows);
     const rows = buildPOListForSupplier(planRows, receivingRows, supplier);
 
-    const receivedCount = rows.reduce((acc, x) => acc + (receivingByPO.get(x.po)?.received_at_utc ? 1 : 0), 0);
-    const poCountEl = document.getElementById('recv-po-count');
-    const poRecvEl = document.getElementById('recv-po-received');
-    if (poCountEl) poCountEl.textContent = String(rows.length);
-    if (poRecvEl) poRecvEl.textContent = String(receivedCount);
+    renderCountsForSupplier(planRows, receivingRows, supplier);
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-xs text-gray-400 py-6">No POs for this supplier in this week\'s plan.</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-xs text-gray-400 py-6">No POs for this supplier in this week’s plan.</td></tr>`;
       return;
     }
 
     tbody.innerHTML = rows.map(x => {
       const r = receivingByPO.get(x.po) || {};
       return `
-        <tr class="border-t" data-po="${esc(x.po)}">
-          <td class="py-2 px-2">
-            <input class="recv-row-check" type="checkbox" data-po="${esc(x.po)}" />
-          </td>
-          <td class="py-2 px-2 font-semibold">${esc(x.po)}</td>
-          <td class="py-2 px-2">
-            <input class="border rounded px-2 py-1 text-sm w-[160px]"
-                   data-po="${esc(x.po)}" data-f="facility"
-                   value="${esc(r.facility_name || x.planFacility || '')}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input class="border rounded px-2 py-1 text-sm w-[90px] text-right"
-                   data-po="${esc(x.po)}" data-f="cartons_received"
-                   value="${Number(r.cartons_received || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input class="border rounded px-2 py-1 text-sm w-[90px] text-right"
-                   data-po="${esc(x.po)}" data-f="cartons_damaged"
-                   value="${Number(r.cartons_damaged || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input class="border rounded px-2 py-1 text-sm w-[110px] text-right"
-                   data-po="${esc(x.po)}" data-f="cartons_noncompliant"
-                   value="${Number(r.cartons_noncompliant || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input class="border rounded px-2 py-1 text-sm w-[90px] text-right"
-                   data-po="${esc(x.po)}" data-f="cartons_replaced"
-                   value="${Number(r.cartons_replaced || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-sm text-gray-600">
-            ${esc(fmtLocalFromUtc(r.received_at_utc) || '')}
-          </td>
-        </tr>
-      `;
+<tr class="border-t" data-po="${esc(x.po)}">
+  <td class="py-2 px-2"><input class="recv-row-check" type="checkbox" data-po="${esc(x.po)}" /></td>
+  <td class="py-2 px-2 font-semibold">${esc(x.po)}</td>
+  <td class="py-2 px-2">
+    <input class="recv-facility border rounded px-2 py-1 text-sm w-[160px]" data-po="${esc(x.po)}" value="${esc(r.facility_name || x.planFacility || '')}" />
+  </td>
+  <td class="py-2 px-2 text-right"><input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right" data-field="cartons_received" data-po="${esc(x.po)}" value="${Number(r.cartons_received || 0)}" /></td>
+  <td class="py-2 px-2 text-right"><input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right" data-field="cartons_damaged" data-po="${esc(x.po)}" value="${Number(r.cartons_damaged || 0)}" /></td>
+  <td class="py-2 px-2 text-right"><input class="recv-num border rounded px-2 py-1 text-sm w-[110px] text-right" data-field="cartons_noncompliant" data-po="${esc(x.po)}" value="${Number(r.cartons_noncompliant || 0)}" /></td>
+  <td class="py-2 px-2 text-right"><input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right" data-field="cartons_replaced" data-po="${esc(x.po)}" value="${Number(r.cartons_replaced || 0)}" /></td>
+  <td class="py-2 px-2 text-sm text-gray-600" data-cell="last-received">${esc(fmtLocalFromUtc(r.received_at_utc) || '')}</td>
+</tr>`;
     }).join('');
-
-    // Wire row autosaves
-    for (const x of rows) {
-      wireRowInputs(M.ws, supplier, x.po, x.planFacility);
-    }
   }
 
   function renderCurrentSupplierView() {
     const ws = M.ws;
     if (!ws) return;
-
     const sel = document.getElementById('recv-supplier');
     const supplier = sel ? sel.value : M.selectedSupplier;
     if (!supplier) return;
 
     M.selectedSupplier = supplier;
     renderTableForSupplier(M.planRows, M.receivingRows, supplier);
-
-    const sum = computeSummaryAll(M.planRows, M.receivingRows, ws);
-    renderSummary(sum);
+    renderSummary(computeSummaryAll(M.planRows, M.receivingRows));
   }
 
-  function wireHeaderControls() {
-    const page = document.getElementById('page-receiving');
-    if (!page || page.dataset.wired === '1') return;
-    page.dataset.wired = '1';
+  function mergeReceivingRow(po, patch) {
+    const idx = M.receivingRows.findIndex(r => String(r.po_number || '').trim() === po);
+    const merged = Object.assign({}, (idx >= 0 ? M.receivingRows[idx] : {}), patch, { po_number: po, week_start: M.ws, updated_at: new Date().toISOString() });
+    if (idx >= 0) M.receivingRows[idx] = merged;
+    else M.receivingRows.push(merged);
+    return merged;
+  }
 
-    const btnNow = document.getElementById('recv-batch-now');
-    const batchDt = document.getElementById('recv-batch-dt');
-    const btnReceive = document.getElementById('recv-batch-receive');
-    const checkAll = document.getElementById('recv-check-all');
+  function getUIValuesForPO(po) {
+    const supplier = (document.getElementById('recv-supplier') || {}).value || '';
+    const facEl = document.querySelector(`.recv-facility[data-po="${CSS.escape(po)}"]`);
+    const facility = facEl ? facEl.value.trim() : '';
 
-    if (btnNow && batchDt) btnNow.onclick = () => { batchDt.value = dtLocalNow(); };
+    const getNum = (field) => {
+      const el = document.querySelector(`.recv-num[data-po="${CSS.escape(po)}"][data-field="${field}"]`);
+      return el ? (Number(el.value || 0) || 0) : 0;
+    };
 
-    if (checkAll) {
-      checkAll.onchange = () => {
-        document.querySelectorAll('.recv-row-check').forEach(cb => { cb.checked = checkAll.checked; });
-      };
-    }
+    return {
+      supplier_name: supplier,
+      facility_name: facility,
+      cartons_received: getNum('cartons_received'),
+      cartons_damaged: getNum('cartons_damaged'),
+      cartons_noncompliant: getNum('cartons_noncompliant'),
+      cartons_replaced: getNum('cartons_replaced')
+    };
+  }
 
-    if (btnReceive) {
-      btnReceive.onclick = async () => {
-        const ws = getWeekStart();
-        const sel = document.getElementById('recv-supplier');
-        const supplier = (sel && sel.value) ? sel.value : '';
+  function queueAutosave(po) {
+    const key = `${M.ws}|||${po}`;
+    if (M.saveTimers.has(key)) clearTimeout(M.saveTimers.get(key));
 
-        const dtVal = batchDt ? String(batchDt.value || '').trim() : '';
-        if (!dtVal) { alert('Please select Received At date/time.'); return; }
+    setSaveStatus('Saving…', 'saving');
 
-        const checked = Array.from(document.querySelectorAll('.recv-row-check'))
-          .filter(cb => cb.checked)
-          .map(cb => cb.getAttribute('data-po'))
-          .filter(Boolean);
+    M.saveTimers.set(key, setTimeout(async () => {
+      try {
+        const base = getUIValuesForPO(po);
+        const existing = M.receivingRows.find(r => String(r.po_number || '').trim() === po) || {};
 
-        if (!checked.length) { alert('Select at least one PO.'); return; }
-
-        // Optimistic update: update local cache first so UI/summary/ticker update immediately
-        const payload = checked.map(po => {
-          const row = document.querySelector(`tr[data-po="${CSS.escape(po)}"]`);
-          const get = (f) => row ? row.querySelector(`input[data-f="${f}"]`) : null;
-
-          const facility = (get('facility')?.value || '').trim();
-          const cartons_received = Number(get('cartons_received')?.value || 0) || 0;
-          const cartons_damaged = Number(get('cartons_damaged')?.value || 0) || 0;
-          const cartons_noncompliant = Number(get('cartons_noncompliant')?.value || 0) || 0;
-          const cartons_replaced = Number(get('cartons_replaced')?.value || 0) || 0;
-
-          const utcISO = new Date(dtVal).toISOString();
-
-          return {
-            po_number: po,
-            supplier_name: supplier,
-            facility_name: facility,
-            received_at_utc: utcISO,
-            received_at_local: dtVal,
-            received_tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'viewer-local',
-            cartons_received,
-            cartons_damaged,
-            cartons_noncompliant,
-            cartons_replaced
-          };
+        // build payload: preserve received_* fields if they exist
+        const payload = Object.assign({}, {
+          po_number: po,
+          supplier_name: base.supplier_name,
+          facility_name: base.facility_name,
+          received_at_utc: existing.received_at_utc || '',
+          received_at_local: existing.received_at_local || '',
+          received_tz: existing.received_tz || '',
+          cartons_received: base.cartons_received,
+          cartons_damaged: base.cartons_damaged,
+          cartons_noncompliant: base.cartons_noncompliant,
+          cartons_replaced: base.cartons_replaced
         });
 
-        payload.forEach(p => upsertReceivingRow(ws, p));
-        addTicker(`Received ${payload.length} PO(s) for ${supplier} at ${fmtLocalFromUtc(payload[0].received_at_utc)}`, { key: `batch:${ws}:${supplier}:${payload.length}:${payload[0].received_at_utc}` });
-        renderCurrentSupplierView();
+        // optimistic state update (no table re-render)
+        mergeReceivingRow(po, payload);
+        renderSummary(computeSummaryAll(M.planRows, M.receivingRows));
+        renderCountsForSupplier(M.planRows, M.receivingRows, (document.getElementById('recv-supplier') || {}).value || M.selectedSupplier);
 
-        try {
-          await api(`/receiving/weeks/${encodeURIComponent(ws)}`, {
-            method: 'PUT',
-            body: JSON.stringify(payload)
-          });
-          addTicker(`Saved batch receive (${payload.length})`, { key: `batchsave:${ws}:${supplier}:${payload.length}:${payload[0].received_at_utc}` });
-        } catch (e) {
-          console.warn(e);
-          addTicker(`⚠️ Failed to save batch receive: ${e.message || e}`, { key: `batchfail:${ws}:${supplier}:${payload.length}` });
-          alert('Save failed. Check connection / server logs.');
-        }
-      };
+        await api(`/receiving/weeks/${encodeURIComponent(M.ws)}`, {
+          method: 'PUT',
+          body: JSON.stringify([payload])
+        });
+
+        setSaveStatus('Saved', 'saved');
+      } catch (e) {
+        console.warn('[receiving] autosave error', e);
+        setSaveStatus('Save failed', 'error');
+      }
+    }, 450));
+  }
+
+  async function handleBatchReceive() {
+    const ws = getWeekStart();
+    const supplier = (document.getElementById('recv-supplier') || {}).value || '';
+    const batchDt = document.getElementById('recv-batch-dt');
+    const dtVal = batchDt ? batchDt.value : '';
+
+    if (!dtVal) { alert('Please select Received At date/time.'); return; }
+
+    const checked = Array.from(document.querySelectorAll('.recv-row-check'))
+      .filter(cb => cb.checked)
+      .map(cb => cb.getAttribute('data-po'))
+      .filter(Boolean);
+
+    if (!checked.length) { alert('Select at least one PO.'); return; }
+
+    const utcISO = new Date(dtVal).toISOString();
+
+    // optimistic UI + state update (no full re-render)
+    const payload = checked.map(po => {
+      const base = getUIValuesForPO(po);
+      const prev = M.receivingRows.find(r => String(r.po_number || '').trim() === po) || {};
+      const merged = mergeReceivingRow(po, {
+        po_number: po,
+        supplier_name: supplier,
+        facility_name: base.facility_name,
+        received_at_utc: utcISO,
+        received_at_local: dtVal,
+        received_tz: prev.received_tz || 'viewer-local',
+        cartons_received: base.cartons_received,
+        cartons_damaged: base.cartons_damaged,
+        cartons_noncompliant: base.cartons_noncompliant,
+        cartons_replaced: base.cartons_replaced
+      });
+
+      // update "Last Received" cell in-place
+      const row = document.querySelector(`tr[data-po="${CSS.escape(po)}"]`);
+      const cell = row ? row.querySelector('[data-cell="last-received"]') : null;
+      if (cell) cell.textContent = fmtLocalFromUtc(merged.received_at_utc);
+
+      return merged;
+    });
+
+    renderSummary(computeSummaryAll(M.planRows, M.receivingRows));
+    renderCountsForSupplier(M.planRows, M.receivingRows, supplier);
+
+    // ticker: summarize tangible outcomes
+    const totalReplaced = payload.reduce((a, r) => a + (Number(r.cartons_replaced || 0) || 0), 0);
+    const totalDamaged = payload.reduce((a, r) => a + (Number(r.cartons_damaged || 0) || 0), 0);
+    const totalNonc = payload.reduce((a, r) => a + (Number(r.cartons_noncompliant || 0) || 0), 0);
+
+    const parts = [];
+    if (totalReplaced) parts.push(`${totalReplaced} replaced`);
+    if (totalDamaged) parts.push(`${totalDamaged} damaged`);
+    if (totalNonc) parts.push(`${totalNonc} non-compliant`);
+    const qcPart = parts.length ? ` • QC: ${parts.join(', ')}` : '';
+
+    addTicker(`Received ${payload.length} PO(s) for ${supplier} at ${fmtLocalFromUtc(utcISO)}${qcPart}`, { key: `batch:${ws}:${supplier}:${utcISO}:${payload.length}` });
+
+    // persist
+    try {
+      setSaveStatus('Saving…', 'saving');
+      await api(`/receiving/weeks/${encodeURIComponent(ws)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      setSaveStatus('Saved', 'saved');
+    } catch (e) {
+      console.warn(e);
+      setSaveStatus('Save failed', 'error');
+      addTicker(`⚠️ Batch receive save failed (${e.message || e})`, { key: `batchfail:${ws}:${utcISO}` });
+      alert('Save failed. Check connection / server logs.');
     }
   }
 
   async function loadWeek(ws) {
     if (!ws) return;
-
     M.ws = ws;
     const lbl = document.getElementById('recv-week-label');
     if (lbl) lbl.textContent = ws;
 
-    resetTicker();
-    addTicker(`Loaded week ${ws}`, { key: `loaded:${ws}` });
+    // reset ticker once per week load
+    if (_tickerWeekKey !== ws) {
+      clearTicker();
+      _tickerWeekKey = ws;
+      addTicker(`Loaded week ${ws}`, { key: `loaded:${ws}` });
+    }
 
     const [plan, receiving] = await Promise.all([
       api(`/plan?weekStart=${encodeURIComponent(ws)}`),
@@ -669,11 +675,9 @@
     ]);
 
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
-    const receivingRows = Array.isArray(receiving) ? receiving : [];
-
     M.planRows = planRows;
-    M.receivingRows = receivingRows;
-    M.suppliers = buildSuppliers(planRows, receivingRows);
+    M.receivingRows = Array.isArray(receiving) ? receiving : [];
+    M.suppliers = buildSuppliers(planRows, M.receivingRows);
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
 
@@ -686,18 +690,17 @@
       };
     }
 
+    const btnReceive = document.getElementById('recv-batch-receive');
+    if (btnReceive) btnReceive.onclick = handleBatchReceive;
+
     renderCurrentSupplierView();
   }
 
   // Watch: week changes & hash changes
   let lastWS = '';
-
   async function tick() {
     try {
       showReceivingIfHash();
-      const isReceiving = (location.hash || '').toLowerCase().includes('receiving');
-      if (!isReceiving) return;
-
       const ws = getWeekStart();
       if (ws && ws !== lastWS) {
         lastWS = ws;
@@ -706,6 +709,7 @@
       }
     } catch (e) {
       console.warn('[receiving] load error:', e);
+      addTicker(`⚠️ Receiving load error (${e.message || e})`, { key: `loaderr:${lastWS}` });
     }
   }
 
