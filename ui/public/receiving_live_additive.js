@@ -57,6 +57,34 @@
     }).format(d);
   }
 
+// -------------------- Ticker (deduped, meaningful) --------------------
+const _tickerSeen = new Set();
+let _tickerWeekKey = ''; // so "Loaded week" only logs once per week
+
+function addTicker(msg, opts = {}) {
+  const el = document.getElementById('recv-ticker');
+  if (!el) return;
+
+  const key = (opts.key || msg).trim();
+  if (_tickerSeen.has(key)) return;
+  _tickerSeen.add(key);
+
+  const ts = opts.ts ? new Date(opts.ts) : new Date();
+  const when = new Intl.DateTimeFormat(undefined, {
+    month:'2-digit', day:'2-digit', year:'numeric',
+    hour:'2-digit', minute:'2-digit'
+  }).format(ts);
+
+  const card = document.createElement('div');
+  card.className = 'border rounded-xl p-3 bg-white';
+  card.innerHTML = `<div class="text-xs text-gray-400 mb-1">${when}</div><div class="text-sm">${esc(msg)}</div>`;
+  el.prepend(card);
+
+  // cap
+  while (el.children.length > 25) el.removeChild(el.lastChild);
+}
+
+
   function toDateTimeLocalValue(isoUtc) {
     // For <input type="datetime-local"> in viewer local time
     if (!isoUtc) return '';
@@ -341,7 +369,8 @@
   }
 
   function renderTicker() {
-    const el = document.getElementById('recv-ticker');
+    const el = 
+('recv-ticker');
     if (!el) return;
 
     if (!M.ticker.length) {
@@ -360,37 +389,40 @@
     }).join('');
   }
 
-  function computeSummary(planRows, receivingRows, supplier) {
-    const cutoffUtc = businessCutoffUtcISO(M.ws);
-    const cutoff = new Date(cutoffUtc);
+function computeSummaryAll(planRows, receivingRows) {
+  const cutoffUtc = businessCutoffUtcISO(M.ws);
+  const cutoff = new Date(cutoffUtc);
 
-    // expected: planned POs for supplier (deduped)
-    const plannedMap = new Map();
-    for (const p of planRows || []) {
-      if (String(p.supplier_name || '').trim() !== supplier) continue;
-      const po = String(p.po_number || '').trim();
-      if (!po) continue;
-      plannedMap.set(po, true);
-    }
-    const expected = plannedMap.size;
-
-    const receivingByPO = getReceivingByPO(receivingRows);
-    let received = 0;
-    let cartons = 0;
-    let ontime = 0;
-    for (const po of plannedMap.keys()) {
-      const r = receivingByPO.get(po);
-      if (r && r.received_at_utc) {
-        received += 1;
-        cartons += Number(r.cartons_received || 0) || 0;
-        const d = new Date(r.received_at_utc);
-        if (!Number.isNaN(d.getTime()) && d.getTime() <= cutoff.getTime()) ontime += 1;
-      }
-    }
-    const delayed = Math.max(0, received - ontime);
-
-    return { expected, received, cartons, ontime, delayed, cutoffUtc };
+  // expected: ALL planned POs for the week (deduped)
+  const plannedMap = new Map();
+  for (const p of planRows || []) {
+    const po = String(p.po_number || '').trim();
+    if (!po) continue;
+    plannedMap.set(po, true);
   }
+  const expected = plannedMap.size;
+
+  const receivingByPO = getReceivingByPO(receivingRows);
+
+  let received = 0;
+  let cartons = 0;
+  let ontime = 0;
+
+  for (const po of plannedMap.keys()) {
+    const r = receivingByPO.get(po);
+    if (r && r.received_at_utc) {
+      received += 1;
+      cartons += Number(r.cartons_received || 0) || 0;
+
+      const d = new Date(r.received_at_utc);
+      if (!Number.isNaN(d.getTime()) && d.getTime() <= cutoff.getTime()) ontime += 1;
+    }
+  }
+
+  const delayed = Math.max(0, received - ontime);
+  return { expected, received, cartons, ontime, delayed, cutoffUtc };
+}
+
 
   function renderSummary(sum) {
     const set = (id, v) => {
@@ -601,7 +633,7 @@
 
     M.selectedSupplier = supplier;
     renderTableForSupplier(M.planRows, M.receivingRows, supplier);
-    const sum = computeSummary(M.planRows, M.receivingRows, supplier);
+    const sum = computeSummaryAll(M.planRows, M.receivingRows);
     renderSummary(sum);
   }
 
@@ -617,9 +649,15 @@
     ]);
 
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
+if (_tickerWeekKey !== ws) {
+  _tickerWeekKey = ws;
+  addTicker(`Loaded week ${ws}`, { key: `loaded:${ws}` });
     M.planRows = planRows;
     M.receivingRows = Array.isArray(receiving) ? receiving : [];
     M.suppliers = buildSuppliers(planRows, M.receivingRows);
+
+
+}
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
     const sel = document.getElementById('recv-supplier');
@@ -627,6 +665,7 @@
       sel.onchange = () => {
         M.selectedSupplier = sel.value;
         addTicker(`Viewing supplier ${sel.value}`);
+addTicker(`Viewing supplier ${sel.value}`, { key: `view:${ws}:${sel.value}` });
         renderCurrentSupplierView();
       };
     }
