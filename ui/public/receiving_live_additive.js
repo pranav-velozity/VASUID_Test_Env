@@ -634,6 +634,82 @@
     // initial render
     renderCurrentSupplierView();
 
+// Header controls wiring
+const btnNow = document.getElementById('recv-batch-now');
+const batchDt = document.getElementById('recv-batch-dt');
+const btnReceive = document.getElementById('recv-batch-receive');
+const checkAll = document.getElementById('recv-check-all');
+
+if (btnNow && batchDt) btnNow.onclick = () => { batchDt.value = dtLocalNow(); };
+
+if (checkAll) {
+  checkAll.onchange = () => {
+    document.querySelectorAll('.recv-row-check').forEach(cb => { cb.checked = checkAll.checked; });
+  };
+}
+
+if (btnReceive) {
+  btnReceive.onclick = async () => {
+    const ws = getWeekStart();
+    const supplier = (document.getElementById('recv-supplier') || {}).value || '';
+    const dtVal = batchDt ? batchDt.value : '';
+    if (!dtVal) { alert('Please select Received At date/time.'); return; }
+
+    // which POs are checked
+    const checked = Array.from(document.querySelectorAll('.recv-row-check'))
+      .filter(cb => cb.checked)
+      .map(cb => cb.getAttribute('data-po'))
+      .filter(Boolean);
+
+    if (!checked.length) { alert('Select at least one PO.'); return; }
+
+    // Build upsert payload from current UI values
+    const payload = checked.map(po => {
+      const facEl = document.querySelector(`.recv-facility[data-po="${CSS.escape(po)}"]`);
+      const facility = facEl ? facEl.value.trim() : '';
+
+      const getNum = (field) => {
+        const el = document.querySelector(`.recv-num[data-po="${CSS.escape(po)}"][data-field="${field}"]`);
+        return el ? (Number(el.value || 0) || 0) : 0;
+      };
+
+      // Treat dtVal as local time entered by user; store utc ISO
+      const utcISO = new Date(dtVal).toISOString();
+
+      return {
+        po_number: po,
+        supplier_name: supplier,
+        facility_name: facility,
+        received_at_utc: utcISO,
+        received_at_local: dtVal,
+        received_tz: 'viewer-local',
+        cartons_received: getNum('cartons_received'),
+        cartons_damaged: getNum('cartons_damaged'),
+        cartons_noncompliant: getNum('cartons_noncompliant'),
+        cartons_replaced: getNum('cartons_replaced')
+      };
+    });
+
+    try {
+      await api(`/receiving/weeks/${encodeURIComponent(ws)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+
+      addTicker(`Received ${payload.length} PO(s) for ${supplier} @ ${payload[0].facility_name || '—'} at ${fmtLocalFromUtc(payload[0].received_at_utc)}`);
+
+      // force reload of receiving rows to reflect last-received column + footer
+      lastWS = '';
+      await tick();
+    } catch (e) {
+      console.warn(e);
+      addTicker(`⚠️ Failed to save batch receive: ${e.message || e}`);
+      alert('Save failed. Check connection / server logs.');
+    }
+  };
+}
+
+
     // reset ticker when switching weeks
     M.ticker = [];
     renderTicker();
@@ -656,6 +732,16 @@
       console.warn('[receiving] load error:', e);
     }
   }
+
+function dtLocalNow() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
 
   window.addEventListener('hashchange', () => {
     showReceivingIfHash();
