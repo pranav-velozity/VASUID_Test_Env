@@ -124,6 +124,18 @@
               <select id="recv-supplier" class="border rounded-md px-2 py-1 text-sm min-w-[280px]">
                 <option value="">Loading…</option>
               </select>
+<div class="flex items-center gap-2 flex-wrap">
+  <label class="text-sm text-gray-600">Received At</label>
+  <input id="recv-batch-dt" type="datetime-local"
+         class="border rounded-md px-2 py-1 text-sm"
+         aria-label="Batch received at" />
+  <button id="recv-batch-now" class="cmd cmd--ghost" title="Set to now">Now</button>
+  <button id="recv-batch-receive" class="cmd cmd--ghost"
+          style="border:1px solid #990033;color:#990033"
+          title="Apply received time to selected POs">
+    Receive Selected
+  </button>
+</div>
               <div class="text-sm text-gray-500">
                 POs: <span class="font-semibold tabular-nums" id="recv-po-count">0</span>
                 • Received: <span class="font-semibold tabular-nums" id="recv-po-received">0</span>
@@ -133,16 +145,19 @@
             <div class="overflow-auto border rounded-xl flex-1">
               <table class="w-full text-sm">
                 <thead class="bg-gray-50">
-                  <tr class="text-gray-500">
-                    <th class="text-left py-2 px-2">PO</th>
-                    <th class="text-left py-2 px-2">Facility</th>
-                    <th class="text-left py-2 px-2">Received At</th>
-                    <th class="text-left py-2 px-2">Action</th>
-                    <th class="text-right py-2 px-2">Cartons In</th>
-                    <th class="text-right py-2 px-2">Damaged</th>
-                    <th class="text-right py-2 px-2">Non-compliant</th>
-                    <th class="text-right py-2 px-2">Replaced</th>
-                  </tr>
+<tr class="text-gray-500">
+  <th class="text-left py-2 px-2 w-[40px]">
+    <input id="recv-check-all" type="checkbox" />
+  </th>
+  <th class="text-left py-2 px-2">PO</th>
+  <th class="text-left py-2 px-2">Facility</th>
+  <th class="text-right py-2 px-2">Cartons In</th>
+  <th class="text-right py-2 px-2">Damaged</th>
+  <th class="text-right py-2 px-2">Non-compliant</th>
+  <th class="text-right py-2 px-2">Replaced</th>
+  <th class="text-left py-2 px-2">Last Received</th>
+</tr>
+
                 </thead>
                 <tbody id="recv-body">
                   <tr><td colspan="8" class="text-center text-xs text-gray-400 py-6">Loading…</td></tr>
@@ -531,31 +546,43 @@
       const receivedAtLocalInput = toDateTimeLocalValue(r.received_at_utc);
 
       return `
-        <tr class="border-t" data-po="${esc(x.po)}">
-          <td class="py-2 px-2 font-semibold">${esc(x.po)}</td>
-          <td class="py-2 px-2">
-            <input data-f="facility" class="border rounded-md px-2 py-1 text-sm w-full max-w-[180px]" value="${esc(facility)}" />
-          </td>
-          <td class="py-2 px-2">
-            <input data-f="received_at" type="datetime-local" class="border rounded-md px-2 py-1 text-sm" value="${esc(receivedAtLocalInput)}" />
-          </td>
-          <td class="py-2 px-2">
-            <button data-act="receive" class="cmd cmd--ghost" style="color:#990033;border-color:#990033" title="Receive (defaults to now)">Receive</button>
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_received" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_received || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_damaged" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_damaged || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_noncompliant" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[110px] text-right tabular-nums" value="${Number(r.cartons_noncompliant || 0)}" />
-          </td>
-          <td class="py-2 px-2 text-right">
-            <input data-f="cartons_replaced" type="number" min="0" class="border rounded-md px-2 py-1 text-sm w-[96px] text-right tabular-nums" value="${Number(r.cartons_replaced || 0)}" />
-          </td>
-        </tr>
-      `;
+<tr class="border-t">
+  <td class="py-2 px-2">
+    <input class="recv-row-check" type="checkbox" data-po="${esc(x.po)}" />
+  </td>
+  <td class="py-2 px-2 font-semibold">${esc(x.po)}</td>
+  <td class="py-2 px-2">
+    <input class="recv-facility border rounded px-2 py-1 text-sm w-[160px]"
+           data-po="${esc(x.po)}"
+           value="${esc(r.facility_name || x.planFacility || '')}" />
+  </td>
+
+  <td class="py-2 px-2 text-right">
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
+           data-field="cartons_received" data-po="${esc(x.po)}"
+           value="${Number(r.cartons_received || 0)}" />
+  </td>
+  <td class="py-2 px-2 text-right">
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
+           data-field="cartons_damaged" data-po="${esc(x.po)}"
+           value="${Number(r.cartons_damaged || 0)}" />
+  </td>
+  <td class="py-2 px-2 text-right">
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[110px] text-right"
+           data-field="cartons_noncompliant" data-po="${esc(x.po)}"
+           value="${Number(r.cartons_noncompliant || 0)}" />
+  </td>
+  <td class="py-2 px-2 text-right">
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
+           data-field="cartons_replaced" data-po="${esc(x.po)}"
+           value="${Number(r.cartons_replaced || 0)}" />
+  </td>
+
+  <td class="py-2 px-2 text-sm text-gray-600">
+    ${esc(fmtLocalFromUtc(r.received_at_utc) || '')}
+  </td>
+</tr>
+`;
     }).join('');
 
     // wire inputs to autosave
