@@ -1,11 +1,11 @@
-/* receiving_live_additive.js (v10) - Receiving page (additive)
+/* receiving_live_additive.js (v11) - Receiving page (additive)
    - Loaded via <script src="/receiving_live_additive.js" defer></script>
    - Hash route: only controls UI when #receiving is active
    - Week binding: #week-start / window.state.weekStart
    - Loads plan + receiving rows for selected week
    - Batch receive: header "Received At" + "Receive Selected" applies timestamp to checked POs
    - Autosave: facility + cartons/QC per PO. (v9 change: autosave never re-renders the table)
-   - Ticker: business-meaningful events only (no autosave spam)
+   - Exceptions panel: supplier-level outliers (view-only)
    - Displays viewer-local time; SLA cutoff uses Asia/Shanghai Monday 12:00 (UTC+8)
 */
 
@@ -18,7 +18,8 @@
   function esc(s) {
     return String(s ?? '')
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
 
@@ -76,42 +77,118 @@
 
   function uniq(arr) { return Array.from(new Set(arr)); }
 
-  // -------------------- Ticker (business events only) --------------------
-  const _tickerSeen = new Set();
-  let _tickerWeekKey = '';
+  // -------------------- Exceptions panel (view-only) --------------------
+  // Goal: show actionable weekly outliers by supplier (no ticker/log spam)
+  function computeSupplierStats(planRows, receivingRows) {
+    const cutoffUtc = businessCutoffUtcISO(M.ws);
+    const cutoff = new Date(cutoffUtc);
+    const now = new Date();
 
-  function clearTicker() {
-    _tickerSeen.clear();
-    _tickerWeekKey = '';
-    const el = document.getElementById('recv-ticker');
-    if (el) el.innerHTML = `<div class="text-xs text-gray-400">No updates yet for this week.</div>`;
-  }
-
-  function addTicker(msg, opts = {}) {
-    const el = document.getElementById('recv-ticker');
-    if (!el) return;
-
-    const key = (opts.key || msg).trim();
-    if (_tickerSeen.has(key)) return;
-    _tickerSeen.add(key);
-
-    const ts = opts.ts ? new Date(opts.ts) : new Date();
-    const when = new Intl.DateTimeFormat(undefined, {
-      month: '2-digit', day: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
-    }).format(ts);
-
-    // remove "No updates" placeholder
-    if (el.children.length === 1 && el.children[0].classList?.contains('text-gray-400')) {
-      el.innerHTML = '';
+    // planned POs (deduped) by supplier
+    const plannedBySupplier = new Map(); // supplier -> Set(po)
+    for (const p of planRows || []) {
+      const supplier = String(p.supplier_name || '').trim();
+      const po = String(p.po_number || '').trim();
+      if (!supplier || !po) continue;
+      if (!plannedBySupplier.has(supplier)) plannedBySupplier.set(supplier, new Set());
+      plannedBySupplier.get(supplier).add(po);
     }
 
-    const card = document.createElement('div');
-    card.className = 'border rounded-xl p-3 bg-white';
-    card.innerHTML = `<div class="text-xs text-gray-400 mb-1">${when}</div><div class="text-sm">${esc(msg)}</div>`;
-    el.prepend(card);
+    const receivingByPO = getReceivingByPO(receivingRows);
 
-    while (el.children.length > 25) el.removeChild(el.lastChild);
+    const stats = [];
+    for (const [supplier, poSet] of plannedBySupplier.entries()) {
+      let expectedPOs = poSet.size;
+      let receivedPOs = 0;
+      let delayedPOs = 0;
+      let cartonsIn = 0;
+      let damaged = 0;
+      let noncompliant = 0;
+      let replaced = 0;
+
+      for (const po of poSet) {
+        const r = receivingByPO.get(po);
+        const hasReceived = !!(r && r.received_at_utc);
+        if (hasReceived) {
+          receivedPOs += 1;
+          cartonsIn += Number(r.cartons_received || 0) || 0;
+          damaged += Number(r.cartons_damaged || 0) || 0;
+          noncompliant += Number(r.cartons_noncompliant || 0) || 0;
+          replaced += Number(r.cartons_replaced || 0) || 0;
+
+          const d = new Date(r.received_at_utc);
+          if (!Number.isNaN(d.getTime()) && d.getTime() > cutoff.getTime()) delayedPOs += 1;
+        } else {
+          // If we are past cutoff and it still isn't received, it's delayed.
+          if (now.getTime() > cutoff.getTime()) delayedPOs += 1;
+        }
+      }
+
+      stats.push({
+        supplier,
+        expectedPOs,
+        receivedPOs,
+        delayedPOs,
+        cartonsIn,
+        damaged,
+        noncompliant,
+        replaced,
+        cutoffUtc
+      });
+    }
+
+    return stats;
+  }
+
+  function topN(arr, n, keyFn) {
+    return (arr || [])
+      .slice()
+      .sort((a, b) => (keyFn(b) - keyFn(a)) || String(a.supplier).localeCompare(String(b.supplier)))
+      .slice(0, n);
+  }
+
+  function renderExceptionsPanel() {
+    const el = document.getElementById('recv-exceptions');
+    if (!el) return;
+    const stats = computeSupplierStats(M.planRows, M.receivingRows);
+    if (!stats.length) {
+      el.innerHTML = `<div class="text-xs text-gray-400">No planned suppliers for this week.</div>`;
+      return;
+    }
+
+    const topDelayed = topN(stats, 5, s => s.delayedPOs);
+    const topNonc = topN(stats, 5, s => s.noncompliant);
+    const topDam = topN(stats, 5, s => s.damaged);
+    const topRepl = topN(stats, 5, s => s.replaced);
+
+    const row = (label, items, fmt) => {
+      const rows = items
+        .filter(x => fmt(x).value > 0)
+        .map(x => {
+          const v = fmt(x);
+          return `<div class="flex items-center justify-between gap-3 py-1">
+            <div class="truncate" title="${esc(x.supplier)}">${esc(x.supplier)}</div>
+            <div class="tabular-nums font-semibold whitespace-nowrap">${esc(v.text)}</div>
+          </div>`;
+        })
+        .join('');
+      return `
+        <div class="border rounded-xl p-3">
+          <div class="text-sm font-semibold mb-2">${esc(label)}</div>
+          ${rows || `<div class="text-xs text-gray-400">No items.</div>`}
+        </div>
+      `;
+    };
+
+    el.innerHTML = `
+      <div class="text-xs text-gray-500 mb-2">Week cutoff (business): <span class="font-semibold">${esc(fmtLocalFromUtc(businessCutoffUtcISO(M.ws)))}</span></div>
+      <div class="space-y-2">
+        ${row('Most delayed POs', topDelayed, (x) => ({ value: x.delayedPOs, text: `${x.delayedPOs} / ${x.expectedPOs}` }))}
+        ${row('Most non-compliant cartons', topNonc, (x) => ({ value: x.noncompliant, text: `${x.noncompliant}` }))}
+        ${row('Most damaged cartons', topDam, (x) => ({ value: x.damaged, text: `${x.damaged}` }))}
+        ${row('Most replaced cartons', topRepl, (x) => ({ value: x.replaced, text: `${x.replaced}` }))}
+      </div>
+    `;
   }
 
   // -------------------- Save status (quiet autosave feedback) --------------------
@@ -121,8 +198,8 @@
     if (!el) return;
 
     el.textContent = text || '';
-el.style.opacity = text ? '1' : '0';
-el.style.display = 'inline-block';
+    el.style.opacity = text ? '1' : '0';
+    el.style.display = 'inline-block';
     el.className = 'text-xs';
 
     // Tone via inline styles to avoid tailwind compile issues
@@ -235,11 +312,12 @@ el.style.display = 'inline-block';
             </div>
           </div>
 
-          <!-- Ticker -->
+          <!-- Exceptions (view-only) -->
           <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
-            <div class="text-base font-semibold mb-2">Live Ticker</div>
-            <div id="recv-ticker" class="space-y-2 text-sm overflow-auto flex-1 pr-1">
-              <div class="text-xs text-gray-400">No updates yet for this week.</div>
+            <div class="text-base font-semibold mb-2">Exceptions</div>
+            <div class="text-xs text-gray-500 mb-2">Supplier-level outliers for this week (view-only).</div>
+            <div id="recv-exceptions" class="space-y-2 text-sm overflow-auto flex-1 pr-1">
+              <div class="text-xs text-gray-400">Loading…</div>
             </div>
           </div>
         </div>
@@ -446,20 +524,18 @@ el.style.display = 'inline-block';
     let received = 0;
     let cartons = 0;
     let ontime = 0;
-let damaged = 0;
-let noncompliant = 0;
-let replaced = 0;
-
+    let damaged = 0;
+    let noncompliant = 0;
+    let replaced = 0;
 
     for (const po of plannedMap.keys()) {
       const r = receivingByPO.get(po);
       if (r && r.received_at_utc) {
         received += 1;
         cartons += Number(r.cartons_received || 0) || 0;
-damaged += Number(r.cartons_damaged || 0) || 0;
-noncompliant += Number(r.cartons_noncompliant || 0) || 0;
-replaced += Number(r.cartons_replaced || 0) || 0;
-
+        damaged += Number(r.cartons_damaged || 0) || 0;
+        noncompliant += Number(r.cartons_noncompliant || 0) || 0;
+        replaced += Number(r.cartons_replaced || 0) || 0;
 
         const d = new Date(r.received_at_utc);
         if (!Number.isNaN(d.getTime()) && d.getTime() <= cutoff.getTime()) ontime += 1;
@@ -468,7 +544,6 @@ replaced += Number(r.cartons_replaced || 0) || 0;
 
     const delayed = Math.max(0, received - ontime);
     return { expected, received, cartons, damaged, noncompliant, replaced, ontime, delayed, cutoffUtc };
-
   }
 
   function renderSummary(sum) {
@@ -479,10 +554,9 @@ replaced += Number(r.cartons_replaced || 0) || 0;
     set('recv-sum-expected', sum.expected);
     set('recv-sum-received', sum.received);
     set('recv-sum-cartons', sum.cartons);
-set('recv-sum-damaged', sum.damaged ?? 0);
-set('recv-sum-nonc', sum.noncompliant ?? 0);
-set('recv-sum-replaced', sum.replaced ?? 0);
-
+    set('recv-sum-damaged', sum.damaged ?? 0);
+    set('recv-sum-nonc', sum.noncompliant ?? 0);
+    set('recv-sum-replaced', sum.replaced ?? 0);
     set('recv-sum-ontime', sum.ontime);
     set('recv-sum-delayed', sum.delayed);
 
@@ -493,7 +567,6 @@ set('recv-sum-replaced', sum.replaced ?? 0);
       else healthEl.textContent = 'Delayed';
     }
   }
-
 
   function renderCountsForSupplier(planRows, receivingRows, supplier) {
     const receivingByPO = getReceivingByPO(receivingRows);
@@ -607,6 +680,7 @@ set('recv-sum-replaced', sum.replaced ?? 0);
         mergeReceivingRow(po, payload);
         renderSummary(computeSummaryAll(M.planRows, M.receivingRows));
         renderCountsForSupplier(M.planRows, M.receivingRows, (document.getElementById('recv-supplier') || {}).value || M.selectedSupplier);
+        renderExceptionsPanel();
 
         await api(`/receiving/weeks/${encodeURIComponent(M.ws)}`, {
           method: 'PUT',
@@ -665,19 +739,7 @@ set('recv-sum-replaced', sum.replaced ?? 0);
 
     renderSummary(computeSummaryAll(M.planRows, M.receivingRows));
     renderCountsForSupplier(M.planRows, M.receivingRows, supplier);
-
-    // ticker: summarize tangible outcomes
-    const totalReplaced = payload.reduce((a, r) => a + (Number(r.cartons_replaced || 0) || 0), 0);
-    const totalDamaged = payload.reduce((a, r) => a + (Number(r.cartons_damaged || 0) || 0), 0);
-    const totalNonc = payload.reduce((a, r) => a + (Number(r.cartons_noncompliant || 0) || 0), 0);
-
-    const parts = [];
-    if (totalReplaced) parts.push(`${totalReplaced} replaced`);
-    if (totalDamaged) parts.push(`${totalDamaged} damaged`);
-    if (totalNonc) parts.push(`${totalNonc} non-compliant`);
-    const qcPart = parts.length ? ` • QC: ${parts.join(', ')}` : '';
-
-    addTicker(`Received ${payload.length} PO(s) for ${supplier} at ${fmtLocalFromUtc(utcISO)}${qcPart}`, { key: `batch:${ws}:${supplier}:${utcISO}:${payload.length}` });
+    renderExceptionsPanel();
 
     // persist
     try {
@@ -690,7 +752,6 @@ set('recv-sum-replaced', sum.replaced ?? 0);
     } catch (e) {
       console.warn(e);
       setSaveStatus('Save failed', 'error');
-      addTicker(`⚠️ Batch receive save failed (${e.message || e})`, { key: `batchfail:${ws}:${utcISO}` });
       alert('Save failed. Check connection / server logs.');
     }
   }
@@ -700,13 +761,6 @@ set('recv-sum-replaced', sum.replaced ?? 0);
     M.ws = ws;
     const lbl = document.getElementById('recv-week-label');
     if (lbl) lbl.textContent = ws;
-
-    // reset ticker once per week load
-    if (_tickerWeekKey !== ws) {
-      clearTicker();
-      _tickerWeekKey = ws;
-      addTicker(`Loaded week ${ws}`, { key: `loaded:${ws}` });
-    }
 
     const [plan, receiving] = await Promise.all([
       api(`/plan?weekStart=${encodeURIComponent(ws)}`),
@@ -724,8 +778,8 @@ set('recv-sum-replaced', sum.replaced ?? 0);
     if (sel) {
       sel.onchange = () => {
         M.selectedSupplier = sel.value;
-        addTicker(`Viewing supplier ${sel.value}`, { key: `view:${ws}:${sel.value}` });
         renderCurrentSupplierView();
+        renderExceptionsPanel();
       };
     }
 
@@ -733,6 +787,7 @@ set('recv-sum-replaced', sum.replaced ?? 0);
     if (btnReceive) btnReceive.onclick = handleBatchReceive;
 
     renderCurrentSupplierView();
+    renderExceptionsPanel();
   }
 
   // Watch: week changes & hash changes
@@ -748,7 +803,6 @@ set('recv-sum-replaced', sum.replaced ?? 0);
       }
     } catch (e) {
       console.warn('[receiving] load error:', e);
-      addTicker(`⚠️ Receiving load error (${e.message || e})`, { key: `loaderr:${lastWS}` });
     }
   }
 
