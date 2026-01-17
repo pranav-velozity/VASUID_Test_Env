@@ -248,20 +248,34 @@ el.style.display = 'inline-block';
         <div class="bg-white rounded-2xl border shadow p-4" style="position: sticky; bottom: 16px; z-index: 20; border-color:#990033; margin-top: 14px; padding: 18px;">
           <div class="flex items-center justify-between flex-wrap gap-3">
             <div class="text-sm">
-              <span class="text-gray-500">Expected POs:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-expected">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">Received:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-received">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">Cartons In:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-cartons">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">On-time by cutoff:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-ontime">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">Delayed:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-delayed">0</span>
+<!-- PO metrics -->
+<span class="text-gray-500">Expected POs:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-expected">0</span>
+<span class="text-gray-300 px-2">|</span>
+<span class="text-gray-500">Received:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-received">0</span>
+<span class="text-gray-300 px-2">|</span>
+<span class="text-gray-500">On-time by cutoff:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-ontime">0</span>
+<span class="text-gray-300 px-2">|</span>
+<span class="text-gray-500">Delayed:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-delayed">0</span>
+
+<span class="text-gray-300 px-2">|</span>
+
+<!-- Carton metrics -->
+<span class="text-gray-500">Cartons In:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-cartons">0</span>
+<span class="text-gray-300 px-2">|</span>
+<span class="text-gray-500">Damaged:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-damaged">0</span>
+<span class="text-gray-300 px-2">|</span>
+<span class="text-gray-500">Non-compliant:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-nonc">0</span>
+<span class="text-gray-300 px-2">|</span>
+<span class="text-gray-500">Replaced:</span>
+<span class="font-semibold tabular-nums" id="recv-sum-replaced">0</span>
+
             </div>
             <div class="text-sm">
               <span class="text-gray-500">Health:</span>
@@ -432,12 +446,20 @@ el.style.display = 'inline-block';
     let received = 0;
     let cartons = 0;
     let ontime = 0;
+let damaged = 0;
+let noncompliant = 0;
+let replaced = 0;
+
 
     for (const po of plannedMap.keys()) {
       const r = receivingByPO.get(po);
       if (r && r.received_at_utc) {
         received += 1;
         cartons += Number(r.cartons_received || 0) || 0;
+damaged += Number(r.cartons_damaged || 0) || 0;
+noncompliant += Number(r.cartons_noncompliant || 0) || 0;
+replaced += Number(r.cartons_replaced || 0) || 0;
+
 
         const d = new Date(r.received_at_utc);
         if (!Number.isNaN(d.getTime()) && d.getTime() <= cutoff.getTime()) ontime += 1;
@@ -445,7 +467,8 @@ el.style.display = 'inline-block';
     }
 
     const delayed = Math.max(0, received - ontime);
-    return { expected, received, cartons, ontime, delayed, cutoffUtc };
+    return { expected, received, cartons, damaged, noncompliant, replaced, ontime, delayed, cutoffUtc };
+
   }
 
   function renderSummary(sum) {
@@ -456,6 +479,10 @@ el.style.display = 'inline-block';
     set('recv-sum-expected', sum.expected);
     set('recv-sum-received', sum.received);
     set('recv-sum-cartons', sum.cartons);
+set('recv-sum-damaged', sum.damaged ?? 0);
+set('recv-sum-nonc', sum.noncompliant ?? 0);
+set('recv-sum-replaced', sum.replaced ?? 0);
+
     set('recv-sum-ontime', sum.ontime);
     set('recv-sum-delayed', sum.delayed);
 
