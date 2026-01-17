@@ -75,6 +75,102 @@
     return `${weekStartISO}T${hh}:00:00.000Z`;
   }
 
+  function buildWeekPOIndex(planRows) {
+    // Deduplicate planned POs (plan can have multiple SKU rows per PO)
+    const poIndex = new Map();
+    for (const p of planRows || []) {
+      const po = String(p.po_number || '').trim();
+      if (!po) continue;
+      if (!poIndex.has(po)) {
+        poIndex.set(po, {
+          po,
+          supplier: String(p.supplier_name || '').trim(),
+          planFacility: String(p.facility_name || '').trim()
+        });
+      }
+    }
+    return poIndex;
+  }
+
+  function getReceivingByPO(receivingRows) {
+    const m = new Map();
+    for (const r of receivingRows || []) {
+      const po = String(r.po_number || '').trim();
+      if (!po) continue;
+      m.set(po, r);
+    }
+    return m;
+  }
+
+  function computePOStatus(receivedAtUtc, cutoffUtc) {
+    if (!receivedAtUtc) return '';
+    const d = new Date(receivedAtUtc);
+    const c = new Date(cutoffUtc);
+    if (Number.isNaN(d.getTime()) || Number.isNaN(c.getTime())) return '';
+    return (d.getTime() <= c.getTime()) ? 'On-time' : 'Delayed';
+  }
+
+  function csvEscape(v) {
+    const s = String(v ?? '');
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function downloadTextFile(filename, content, mime = 'text/plain') {
+    const blob = new Blob([content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 0);
+  }
+
+  function buildWeekExportRows(planRows, receivingRows, weekStartISO) {
+    const cutoffUtc = businessCutoffUtcISO(weekStartISO);
+    const cutoff = new Date(cutoffUtc);
+    const now = new Date();
+
+    const poIndex = buildWeekPOIndex(planRows);
+    const recvByPO = getReceivingByPO(receivingRows);
+
+    const rows = [];
+    for (const { po, supplier, planFacility } of poIndex.values()) {
+      const r = recvByPO.get(po) || {};
+      const receivedAtUtc = String(r.received_at_utc || '').trim();
+
+      let status = '';
+      if (receivedAtUtc) status = computePOStatus(receivedAtUtc, cutoffUtc);
+      else status = (now.getTime() > cutoff.getTime()) ? 'Not received (Delayed)' : 'Not received';
+
+      rows.push({
+        week_start: weekStartISO,
+        supplier_name: supplier,
+        facility_name: String(r.facility_name || planFacility || '').trim(),
+        po_number: po,
+        cartons_in: Number(r.cartons_received || 0) || 0,
+        damaged: Number(r.cartons_damaged || 0) || 0,
+        non_compliant: Number(r.cartons_noncompliant || 0) || 0,
+        replaced: Number(r.cartons_replaced || 0) || 0,
+        received_at_utc: receivedAtUtc,
+        last_received_local: fmtLocalFromUtc(receivedAtUtc),
+        cutoff_utc: cutoffUtc,
+        status
+      });
+    }
+
+    // stable sort: supplier then PO
+    rows.sort((a, b) =>
+      String(a.supplier_name).localeCompare(String(b.supplier_name)) ||
+      String(a.po_number).localeCompare(String(b.po_number))
+    );
+
+    return rows;
+  }
+
   function uniq(arr) { return Array.from(new Set(arr)); }
 
   // -------------------- Exceptions panel (view-only) --------------------
@@ -271,6 +367,17 @@
                 <button id="recv-batch-receive" class="cmd cmd--ghost" style="border:1px solid #990033;color:#990033" title="Apply received time to selected POs">Receive Selected</button>
               </div>
 
+<button id="recv-dl-week-csv" class="cmd cmd--ghost"
+        title="Download week receiving as CSV (Excel)">
+  Download Week (CSV)
+</button>
+
+<button id="recv-dl-supplier-pdf" class="cmd cmd--ghost"
+        title="Open supplier summary for printing to PDF">
+  Supplier Summary (PDF)
+</button>
+
+
 <div class="text-sm text-gray-500 flex items-center gap-2">
   <div>
     POs: <span class="font-semibold tabular-nums" id="recv-po-count">0</span>
@@ -357,7 +464,8 @@
             </div>
             <div class="text-sm">
               <span class="text-gray-500">Health:</span>
-              <span class="font-semibold" id="recv-sum-health">—</span>
+<span id="recv-sum-health"
+      class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border"> — </span>
             </div>
           </div>
         </div>
@@ -399,6 +507,140 @@
     if (checkAll) {
       checkAll.onchange = () => {
         document.querySelectorAll('.recv-row-check').forEach(cb => { cb.checked = checkAll.checked; });
+      };
+    }
+
+    // Downloads (week-level, all suppliers)
+    const btnCsv = document.getElementById('recv-dl-week-csv');
+    const btnPdf = document.getElementById('recv-dl-supplier-pdf');
+
+    if (btnCsv) {
+      btnCsv.onclick = () => {
+        const ws = getWeekStart();
+        if (!ws) return;
+
+        const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
+        const header = [
+          'week_start','supplier_name','facility_name','po_number',
+          'cartons_in','damaged','non_compliant','replaced',
+          'last_received_local','received_at_utc','cutoff_utc','status'
+        ];
+
+        const lines = [
+          header.join(','),
+          ...rows.map(r => header.map(h => csvEscape(r[h])).join(','))
+        ];
+
+        downloadTextFile(`receiving_week_${ws}.csv`, lines.join('\n'), 'text/csv');
+      };
+    }
+
+    if (btnPdf) {
+      btnPdf.onclick = () => {
+        const ws = getWeekStart();
+        if (!ws) return;
+
+        const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
+        const bySupplier = new Map();
+        for (const r of rows) {
+          if (!bySupplier.has(r.supplier_name)) bySupplier.set(r.supplier_name, []);
+          bySupplier.get(r.supplier_name).push(r);
+        }
+
+        const cutoffLocal = fmtLocalFromUtc(businessCutoffUtcISO(ws));
+        const suppliers = Array.from(bySupplier.keys()).sort((a,b)=>a.localeCompare(b));
+
+        const pageCss = `
+          <style>
+            body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; margin:24px;}
+            h1{font-size:18px;margin:0 0 4px;}
+            .meta{color:#666;font-size:12px;margin-bottom:14px;}
+            .supplier{page-break-after:always; margin-bottom:18px;}
+            .supplier:last-child{page-break-after:auto;}
+            h2{font-size:14px;margin:12px 0 6px;}
+            .kpis{display:flex;gap:16px;flex-wrap:wrap;color:#333;font-size:12px;margin:6px 0 10px;}
+            .kpis b{font-variant-numeric:tabular-nums;}
+            table{width:100%;border-collapse:collapse;font-size:12px;}
+            th,td{border:1px solid #e5e7eb;padding:6px 8px;text-align:left;vertical-align:top;}
+            th{background:#f9fafb;color:#374151;}
+            .right{text-align:right;font-variant-numeric:tabular-nums;}
+            .delayed{color:#b91c1c;font-weight:600;}
+          </style>
+        `;
+
+        const supplierPages = suppliers.map(supplier => {
+          const rs = bySupplier.get(supplier) || [];
+          const expected = rs.length;
+          const received = rs.filter(x => x.received_at_utc).length;
+          const delayed = rs.filter(x => x.status === 'Delayed' || x.status === 'Not received (Delayed)').length;
+          const cartons = rs.reduce((a,x)=>a + (x.cartons_in||0),0);
+          const damaged = rs.reduce((a,x)=>a + (x.damaged||0),0);
+          const nonc = rs.reduce((a,x)=>a + (x.non_compliant||0),0);
+          const repl = rs.reduce((a,x)=>a + (x.replaced||0),0);
+
+          const rowsHtml = rs.map(x => `
+            <tr>
+              <td>${esc(x.po_number)}</td>
+              <td>${esc(x.facility_name)}</td>
+              <td class="right">${x.cartons_in}</td>
+              <td class="right">${x.damaged}</td>
+              <td class="right">${x.non_compliant}</td>
+              <td class="right">${x.replaced}</td>
+              <td>${esc(x.last_received_local || '')}</td>
+              <td class="${(x.status || '').includes('Delayed') ? 'delayed' : ''}">${esc(x.status)}</td>
+            </tr>
+          `).join('');
+
+          return `
+            <div class="supplier">
+              <h2>${esc(supplier)}</h2>
+              <div class="kpis">
+                <div>Expected POs: <b>${expected}</b></div>
+                <div>Received: <b>${received}</b></div>
+                <div>Delayed: <b class="delayed">${delayed}</b></div>
+                <div>Cartons In: <b>${cartons}</b></div>
+                <div>Damaged: <b>${damaged}</b></div>
+                <div>Non-compliant: <b>${nonc}</b></div>
+                <div>Replaced: <b>${repl}</b></div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>PO</th>
+                    <th>Facility</th>
+                    <th class="right">Cartons</th>
+                    <th class="right">Damaged</th>
+                    <th class="right">Non-comp</th>
+                    <th class="right">Replaced</th>
+                    <th>Last Received</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          `;
+        }).join('');
+
+        const html = `
+          <!doctype html>
+          <html><head><meta charset="utf-8" />
+            <title>Receiving Supplier Summary — ${esc(ws)}</title>
+            ${pageCss}
+          </head>
+          <body>
+            <h1>Receiving — Supplier Summary</h1>
+            <div class="meta">Week: ${esc(ws)} • Business cutoff (local): ${esc(cutoffLocal || '')}</div>
+            ${supplierPages}
+            <script>window.print();</script>
+          </body></html>
+        `;
+
+        const w = window.open('', '_blank');
+        if (!w) return;
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
       };
     }
 
@@ -565,6 +807,34 @@
       if (sum.expected === 0) healthEl.textContent = '—';
       else if (sum.ontime >= sum.expected) healthEl.textContent = 'On-track';
       else healthEl.textContent = 'Delayed';
+
+    // minimalist emphasis (no motion)
+    const cls = (id, on, onCls, offCls) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = on ? onCls : offCls;
+    };
+
+    // Health pill
+    const healthEl = document.getElementById('recv-sum-health');
+    const health = (sum.expected === 0) ? '—' : ((sum.delayed > 0) ? 'Delayed' : 'On-track');
+    if (healthEl) {
+      healthEl.textContent = health;
+      healthEl.className =
+        (health === 'Delayed')
+          ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border border-red-300 text-red-700 bg-red-50'
+          : (health === 'On-track')
+            ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border border-green-300 text-green-700 bg-green-50'
+            : 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-500 bg-gray-50';
+    }
+
+    // Emphasize problem metrics
+    cls('recv-sum-delayed', (Number(sum.delayed) || 0) > 0, 'font-semibold tabular-nums text-red-700', 'font-semibold tabular-nums text-gray-800');
+    cls('recv-sum-nonc', (Number(sum.noncompliant) || 0) > 0, 'font-semibold tabular-nums text-red-700', 'font-semibold tabular-nums text-gray-800');
+    cls('recv-sum-damaged', (Number(sum.damaged) || 0) > 0, 'font-semibold tabular-nums text-amber-700', 'font-semibold tabular-nums text-gray-800');
+    cls('recv-sum-replaced', (Number(sum.replaced) || 0) > 0, 'font-semibold tabular-nums text-red-700', 'font-semibold tabular-nums text-gray-800');
+
+
     }
   }
 
