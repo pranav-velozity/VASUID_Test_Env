@@ -1,4 +1,4 @@
-/* receiving_live_additive.js (v9) - Receiving page (additive)
+/* receiving_live_additive.js (v10) - Receiving page (additive)
    - Loaded via <script src="/receiving_live_additive.js" defer></script>
    - Hash route: only controls UI when #receiving is active
    - Week binding: #week-start / window.state.weekStart
@@ -121,6 +121,8 @@
     if (!el) return;
 
     el.textContent = text || '';
+el.style.opacity = text ? '1' : '0';
+el.style.display = 'inline-block';
     el.className = 'text-xs';
 
     // Tone via inline styles to avoid tailwind compile issues
@@ -192,11 +194,20 @@
                 <button id="recv-batch-receive" class="cmd cmd--ghost" style="border:1px solid #990033;color:#990033" title="Apply received time to selected POs">Receive Selected</button>
               </div>
 
-              <div class="text-sm text-gray-500">
-                POs: <span class="font-semibold tabular-nums" id="recv-po-count">0</span>
-                • Received: <span class="font-semibold tabular-nums" id="recv-po-received">0</span>
-                <span class="ml-2" id="recv-save-status"></span>
-              </div>
+<div class="text-sm text-gray-500 flex items-center gap-2">
+  <div>
+    POs: <span class="font-semibold tabular-nums" id="recv-po-count">0</span>
+    • Received: <span class="font-semibold tabular-nums" id="recv-po-received">0</span>
+  </div>
+
+  <!-- Permanent reserved slot (prevents layout jump) -->
+  <span id="recv-save-status"
+        class="inline-block text-xs text-gray-400"
+        style="min-width: 90px; opacity: 0;">
+    Saved
+  </span>
+</div>
+
             </div>
 
             <div class="overflow-auto border rounded-xl flex-1">
@@ -455,6 +466,7 @@
       else healthEl.textContent = 'Delayed';
     }
   }
+
 
   function renderCountsForSupplier(planRows, receivingRows, supplier) {
     const receivingByPO = getReceivingByPO(receivingRows);
