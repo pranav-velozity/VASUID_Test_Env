@@ -1,4 +1,4 @@
-/* receiving_live_additive.js (v12) - Receiving page (editable, week nav, summary, ticker scaffold)
+/* receiving_live_additive.js (v7) - Receiving page (editable, week nav, summary, ticker scaffold)
    - Loaded via <script src="/receiving_live_additive.js" defer></script> from index.html
    - Binds to global week selector (#week-start / window.state.weekStart)
    - Loads plan + receiving rows for selected week
@@ -57,8 +57,32 @@
     }).format(d);
   }
 
-// Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
-function addTicker() {}
+// -------------------- Ticker (deduped, meaningful) --------------------
+const _tickerSeen = new Set();
+let _tickerWeekKey = ''; // so "Loaded week" only logs once per week
+
+function addTicker(msg, opts = {}) {
+  const el = document.getElementById('recv-ticker');
+  if (!el) return;
+
+  const key = (opts.key || msg).trim();
+  if (_tickerSeen.has(key)) return;
+  _tickerSeen.add(key);
+
+  const ts = opts.ts ? new Date(opts.ts) : new Date();
+  const when = new Intl.DateTimeFormat(undefined, {
+    month:'2-digit', day:'2-digit', year:'numeric',
+    hour:'2-digit', minute:'2-digit'
+  }).format(ts);
+
+  const card = document.createElement('div');
+  card.className = 'border rounded-xl p-3 bg-white';
+  card.innerHTML = `<div class="text-xs text-gray-400 mb-1">${when}</div><div class="text-sm">${esc(msg)}</div>`;
+  el.prepend(card);
+
+  // cap
+  while (el.children.length > 25) el.removeChild(el.lastChild);
+}
 
 
   function toDateTimeLocalValue(isoUtc) {
@@ -76,8 +100,21 @@ function addTicker() {}
 
   function uniq(arr) { return Array.from(new Set(arr)); }
 
-  // -------------------- Exports (week-level, all suppliers) --------------------
-  // We generate CSV (Excel-friendly) and a print-to-PDF supplier summary.
+  // -------------------- Exports + Upload (week-level, all suppliers) --------------------
+  // CSV is Excel-friendly and requires no extra libraries.
+  // We expose a human-editable local datetime column: received_at_local (YYYY-MM-DD HH:MM).
+  function fmtLocalSimpleFromUtc(isoUtc) {
+    if (!isoUtc) return '';
+    const d = new Date(isoUtc);
+    if (Number.isNaN(d.getTime())) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
+  }
+
   function csvEscape(v) {
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -94,6 +131,58 @@ function addTicker() {}
       URL.revokeObjectURL(a.href);
       a.remove();
     }, 0);
+  }
+
+  function parseCsv(text) {
+    // Minimal CSV parser supporting quoted fields.
+    const rows = [];
+    let i = 0;
+    const len = text.length;
+    const readLine = () => {
+      const out = [];
+      let cur = '';
+      let inQ = false;
+      while (i < len) {
+        const ch = text[i++];
+        if (inQ) {
+          if (ch === '"') {
+            if (text[i] === '"') { cur += '"'; i++; }
+            else inQ = false;
+          } else cur += ch;
+        } else {
+          if (ch === '"') inQ = true;
+          else if (ch === ',') { out.push(cur); cur = ''; }
+          else if (ch === '\n') { break; }
+          else if (ch === '\r') { if (text[i] === '\n') i++; break; }
+          else cur += ch;
+        }
+      }
+      out.push(cur);
+      return out;
+    };
+    // Skip empty leading lines
+    while (i < len && (text[i] === '\n' || text[i] === '\r')) i++;
+    while (i < len) rows.push(readLine());
+    return rows.filter(r => r.some(c => String(c || '').trim() !== ''));
+  }
+
+  function parseLocalDateTimeToISO(s) {
+    // Accept:
+    // - YYYY-MM-DD HH:MM
+    // - YYYY-MM-DDTHH:MM
+    // - MM/DD/YYYY HH:MM AM/PM (best-effort via Date())
+    const raw = String(s || '').trim();
+    if (!raw) return '';
+
+    let d;
+    const m1 = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
+    if (m1) {
+      d = new Date(`${m1[1]}-${m1[2]}-${m1[3]}T${m1[4]}:${m1[5]}`);
+    } else {
+      d = new Date(raw);
+    }
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString();
   }
 
   function buildWeekPOIndex(planRows) {
@@ -140,21 +229,20 @@ function addTicker() {}
 
       rows.push({
         week_start: weekStartISO,
-        supplier_name: supplier,
+        supplier_name: String(r.supplier_name || supplier || '').trim(),
         facility_name: String(r.facility_name || planFacility || '').trim(),
         po_number: po,
         cartons_in: Number(r.cartons_received || 0) || 0,
         damaged: Number(r.cartons_damaged || 0) || 0,
         non_compliant: Number(r.cartons_noncompliant || 0) || 0,
         replaced: Number(r.cartons_replaced || 0) || 0,
+        received_at_local: fmtLocalSimpleFromUtc(receivedAtUtc),
         received_at_utc: receivedAtUtc,
-        last_received_local: fmtLocalFromUtc(receivedAtUtc),
         cutoff_utc: cutoffUtc,
         status
       });
     }
 
-    // stable sort: supplier then PO
     rows.sort((a, b) =>
       String(a.supplier_name).localeCompare(String(b.supplier_name)) ||
       String(a.po_number).localeCompare(String(b.po_number))
@@ -230,10 +318,11 @@ function addTicker() {}
           title="Download week receiving as CSV (Excel)">
     Download Week (CSV)
   </button>
-  <button id="recv-dl-supplier-pdf" class="cmd cmd--ghost"
-          title="Open supplier summary for printing to PDF">
-    Supplier Summary (PDF)
+  <button id="recv-ul-week-csv" class="cmd cmd--ghost"
+          title="Upload week receiving CSV (Excel)">
+    Upload Week (CSV)
   </button>
+  <input id="recv-ul-file" type="file" accept=".csv,text/csv" style="display:none" />
 </div>
               <div class="text-sm text-gray-500">
                 POs: <span class="font-semibold tabular-nums" id="recv-po-count">0</span>
@@ -269,13 +358,11 @@ function addTicker() {}
             </div>
           </div>
 
-          <!-- Exceptions (view-only) -->
+          <!-- Ticker -->
           <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
-            <div class="text-base font-semibold mb-1">Exceptions</div>
-            <div class="text-xs text-gray-500 mb-2">Supplier-level outliers for this week (view-only).</div>
-            <div class="text-xs text-gray-500 mb-3">Week cutoff (business): <span class="font-semibold" id="recv-cutoff-local">—</span></div>
-            <div id="recv-exceptions" class="space-y-3 text-sm overflow-auto flex-1 pr-1">
-              <div class="text-xs text-gray-400">Loading…</div>
+            <div class="text-base font-semibold mb-2">Live Ticker</div>
+            <div id="recv-ticker" class="space-y-2 text-sm overflow-auto flex-1 pr-1">
+              <div class="text-xs text-gray-400">No updates yet for this week.</div>
             </div>
           </div>
         </div>
@@ -290,29 +377,18 @@ function addTicker() {}
               <span class="text-gray-500">Received:</span>
               <span class="font-semibold tabular-nums" id="recv-sum-received">0</span>
               <span class="text-gray-300 px-2">|</span>
+              <span class="text-gray-500">Cartons In:</span>
+              <span class="font-semibold tabular-nums" id="recv-sum-cartons">0</span>
+              <span class="text-gray-300 px-2">|</span>
               <span class="text-gray-500">On-time by cutoff:</span>
               <span class="font-semibold tabular-nums" id="recv-sum-ontime">0</span>
               <span class="text-gray-300 px-2">|</span>
               <span class="text-gray-500">Delayed:</span>
               <span class="font-semibold tabular-nums" id="recv-sum-delayed">0</span>
-
-              <span class="text-gray-300 px-2">|</span>
-
-              <span class="text-gray-500">Cartons In:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-cartons">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">Damaged:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-damaged">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">Non-compliant:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-nonc">0</span>
-              <span class="text-gray-300 px-2">|</span>
-              <span class="text-gray-500">Replaced:</span>
-              <span class="font-semibold tabular-nums" id="recv-sum-replaced">0</span>
             </div>
             <div class="text-sm">
               <span class="text-gray-500">Health:</span>
-              <span id="recv-sum-health" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border">—</span>
+              <span class="font-semibold" id="recv-sum-health">—</span>
             </div>
           </div>
         </div>
@@ -421,7 +497,18 @@ function addTicker() {}
       .map(po => ({ po, planFacility: '(Unplanned)' }));
 
     return [...planned, ...unplanned].sort((a, b) => a.po.localeCompare(b.po));
+  
+  function nowDateTimeLocalValue() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mi = String(d.getMinutes()).padStart(2,'0');
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
   }
+
+}
 
   function getReceivingByPO(receivingRows) {
     const m = new Map();
@@ -433,12 +520,38 @@ function addTicker() {}
     return m;
   }
 
-  // (ticker removed)
+  function addTicker(msg) {
+    const t = { at: nowISO(), msg: String(msg || '').trim() };
+    if (!t.msg) return;
+    M.ticker.unshift(t);
+    if (M.ticker.length > 40) M.ticker.length = 40;
+    renderTicker();
+  }
+
+  function renderTicker() {
+    const el = 
+('recv-ticker');
+    if (!el) return;
+
+    if (!M.ticker.length) {
+      el.innerHTML = `<div class="text-xs text-gray-400">No updates yet for this week.</div>`;
+      return;
+    }
+
+    el.innerHTML = M.ticker.map(t => {
+      const when = fmtLocalFromUtc(t.at); // display viewer local
+      return `
+        <div class="border rounded-xl px-3 py-2">
+          <div class="text-xs text-gray-400">${esc(when)}</div>
+          <div class="text-sm">${esc(t.msg)}</div>
+        </div>
+      `;
+    }).join('');
+  }
 
 function computeSummaryAll(planRows, receivingRows) {
   const cutoffUtc = businessCutoffUtcISO(M.ws);
   const cutoff = new Date(cutoffUtc);
-  const now = new Date();
 
   // expected: ALL planned POs for the week (deduped)
   const plannedMap = new Map();
@@ -453,9 +566,6 @@ function computeSummaryAll(planRows, receivingRows) {
 
   let received = 0;
   let cartons = 0;
-  let damaged = 0;
-  let noncompliant = 0;
-  let replaced = 0;
   let ontime = 0;
 
   for (const po of plannedMap.keys()) {
@@ -463,22 +573,14 @@ function computeSummaryAll(planRows, receivingRows) {
     if (r && r.received_at_utc) {
       received += 1;
       cartons += Number(r.cartons_received || 0) || 0;
-      damaged += Number(r.cartons_damaged || 0) || 0;
-      noncompliant += Number(r.cartons_noncompliant || 0) || 0;
-      replaced += Number(r.cartons_replaced || 0) || 0;
 
       const d = new Date(r.received_at_utc);
       if (!Number.isNaN(d.getTime()) && d.getTime() <= cutoff.getTime()) ontime += 1;
     }
   }
 
-  // If we're past cutoff, anything not on-time is effectively delayed.
-  // Before cutoff, only received-after-cutoff entries can be delayed.
-  const delayed = (now.getTime() > cutoff.getTime())
-    ? Math.max(0, expected - ontime)
-    : Math.max(0, received - ontime);
-
-  return { expected, received, cartons, damaged, noncompliant, replaced, ontime, delayed, cutoffUtc };
+  const delayed = Math.max(0, received - ontime);
+  return { expected, received, cartons, ontime, delayed, cutoffUtc };
 }
 
 
@@ -490,45 +592,21 @@ function computeSummaryAll(planRows, receivingRows) {
     set('recv-sum-expected', sum.expected);
     set('recv-sum-received', sum.received);
     set('recv-sum-cartons', sum.cartons);
-    set('recv-sum-damaged', sum.damaged ?? 0);
-    set('recv-sum-nonc', sum.noncompliant ?? 0);
-    set('recv-sum-replaced', sum.replaced ?? 0);
     set('recv-sum-ontime', sum.ontime);
     set('recv-sum-delayed', sum.delayed);
 
-    // Minimalist emphasis (no motion)
     const healthEl = document.getElementById('recv-sum-health');
-    const health = (sum.expected === 0) ? '—' : ((Number(sum.delayed) || 0) > 0 ? 'Delayed' : 'On-track');
     if (healthEl) {
-      healthEl.textContent = health;
-      healthEl.className = (health === 'Delayed')
-        ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border border-red-300 text-red-700 bg-red-50'
-        : (health === 'On-track')
-          ? 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border border-green-300 text-green-700 bg-green-50'
-          : 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border border-gray-200 text-gray-500 bg-gray-50';
+      if (sum.expected === 0) {
+        healthEl.textContent = '—';
+      } else if (sum.received >= sum.expected && sum.ontime >= sum.expected) {
+        healthEl.textContent = 'On-track';
+      } else if (sum.ontime >= sum.expected) {
+        healthEl.textContent = 'On-track';
+      } else {
+        healthEl.textContent = 'Delayed';
+      }
     }
-
-    const setCls = (id, on, onCls, offCls) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.className = on ? onCls : offCls;
-    };
-
-    setCls('recv-sum-delayed', (Number(sum.delayed) || 0) > 0,
-      'font-semibold tabular-nums text-red-700',
-      'font-semibold tabular-nums text-gray-800');
-
-    setCls('recv-sum-nonc', (Number(sum.noncompliant) || 0) > 0,
-      'font-semibold tabular-nums text-red-700',
-      'font-semibold tabular-nums text-gray-800');
-
-    setCls('recv-sum-replaced', (Number(sum.replaced) || 0) > 0,
-      'font-semibold tabular-nums text-red-700',
-      'font-semibold tabular-nums text-gray-800');
-
-    setCls('recv-sum-damaged', (Number(sum.damaged) || 0) > 0,
-      'font-semibold tabular-nums text-amber-700',
-      'font-semibold tabular-nums text-gray-800');
   }
 
   function wireRowInputs(ws, supplier, po, planFacility, existing) {
@@ -717,107 +795,6 @@ function computeSummaryAll(planRows, receivingRows) {
     renderTableForSupplier(M.planRows, M.receivingRows, supplier);
     const sum = computeSummaryAll(M.planRows, M.receivingRows);
     renderSummary(sum);
-    renderExceptionsPanel(M.planRows, M.receivingRows, ws);
-  }
-
-  function computeSupplierStats(planRows, receivingRows, weekStartISO) {
-    const cutoffUtc = businessCutoffUtcISO(weekStartISO);
-    const cutoff = new Date(cutoffUtc);
-    const now = new Date();
-
-    const recvByPO = getReceivingByPO(receivingRows);
-    const seenPO = new Set();
-    const stats = new Map();
-
-    for (const p of planRows || []) {
-      const po = String(p.po_number || '').trim();
-      const supplier = String(p.supplier_name || '').trim() || '—';
-      if (!po) continue;
-      if (seenPO.has(po)) continue; // plan may have multiple rows per PO
-      seenPO.add(po);
-
-      if (!stats.has(supplier)) {
-        stats.set(supplier, {
-          supplier,
-          expected: 0,
-          received: 0,
-          ontime: 0,
-          delayed: 0,
-          cartons: 0,
-          damaged: 0,
-          noncompliant: 0,
-          replaced: 0
-        });
-      }
-      const s = stats.get(supplier);
-      s.expected += 1;
-
-      const r = recvByPO.get(po);
-      if (r && r.received_at_utc) {
-        s.received += 1;
-        s.cartons += Number(r.cartons_received || 0) || 0;
-        s.damaged += Number(r.cartons_damaged || 0) || 0;
-        s.noncompliant += Number(r.cartons_noncompliant || 0) || 0;
-        s.replaced += Number(r.cartons_replaced || 0) || 0;
-
-        const d = new Date(r.received_at_utc);
-        if (!Number.isNaN(d.getTime()) && d.getTime() <= cutoff.getTime()) s.ontime += 1;
-        else s.delayed += 1;
-      } else {
-        // Not received: becomes delayed only after cutoff
-        if (now.getTime() > cutoff.getTime()) s.delayed += 1;
-      }
-    }
-
-    return {
-      cutoffUtc,
-      items: Array.from(stats.values())
-    };
-  }
-
-  function renderExceptionsPanel(planRows, receivingRows, weekStartISO) {
-    const wrap = document.getElementById('recv-exceptions');
-    const cutoffEl = document.getElementById('recv-cutoff-local');
-    if (cutoffEl) cutoffEl.textContent = fmtLocalFromUtc(businessCutoffUtcISO(weekStartISO));
-    if (!wrap) return;
-
-    const { items } = computeSupplierStats(planRows, receivingRows, weekStartISO);
-
-    const top = (arr, keyFn, n = 5) => arr
-      .slice()
-      .sort((a, b) => (keyFn(b) - keyFn(a)) || String(a.supplier).localeCompare(String(b.supplier)))
-      .filter(x => keyFn(x) > 0)
-      .slice(0, n);
-
-    const card = (title, rows, rightFmt) => {
-      const body = rows.length
-        ? rows.map(r => `
-          <div class="flex items-center justify-between py-1">
-            <div class="text-sm text-gray-800 truncate pr-3" title="${esc(r.supplier)}">${esc(r.supplier)}</div>
-            <div class="text-sm font-semibold tabular-nums">${rightFmt(r)}</div>
-          </div>
-        `).join('')
-        : `<div class="text-xs text-gray-400">None</div>`;
-
-      return `
-        <div class="border rounded-2xl p-3 bg-white">
-          <div class="text-sm font-semibold mb-2">${esc(title)}</div>
-          ${body}
-        </div>
-      `;
-    };
-
-    const mostDelayed = top(items, x => Number(x.delayed) || 0);
-    const mostNonc = top(items, x => Number(x.noncompliant) || 0);
-    const mostDamaged = top(items, x => Number(x.damaged) || 0);
-    const mostReplaced = top(items, x => Number(x.replaced) || 0);
-
-    wrap.innerHTML = [
-      card('Most delayed POs', mostDelayed, r => `${r.delayed} / ${r.expected}`),
-      card('Most non-compliant cartons', mostNonc, r => String(r.noncompliant)),
-      card('Most damaged cartons', mostDamaged, r => String(r.damaged)),
-      card('Most replaced cartons', mostReplaced, r => String(r.replaced))
-    ].join('');
   }
 
   async function loadWeek(ws) {
@@ -832,15 +809,23 @@ function computeSummaryAll(planRows, receivingRows) {
     ]);
 
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
+if (_tickerWeekKey !== ws) {
+  _tickerWeekKey = ws;
+  addTicker(`Loaded week ${ws}`, { key: `loaded:${ws}` });
     M.planRows = planRows;
     M.receivingRows = Array.isArray(receiving) ? receiving : [];
     M.suppliers = buildSuppliers(planRows, M.receivingRows);
+
+
+}
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
     const sel = document.getElementById('recv-supplier');
     if (sel) {
       sel.onchange = () => {
         M.selectedSupplier = sel.value;
+        addTicker(`Viewing supplier ${sel.value}`);
+addTicker(`Viewing supplier ${sel.value}`, { key: `view:${ws}:${sel.value}` });
         renderCurrentSupplierView();
       };
     }
@@ -853,8 +838,9 @@ const btnNow = document.getElementById('recv-batch-now');
 const batchDt = document.getElementById('recv-batch-dt');
 const btnReceive = document.getElementById('recv-batch-receive');
 const checkAll = document.getElementById('recv-check-all');
-	const btnCsv = document.getElementById('recv-dl-week-csv');
-	const btnPdf = document.getElementById('recv-dl-supplier-pdf');
+const btnCsv = document.getElementById('recv-dl-week-csv');
+const btnUpload = document.getElementById('recv-ul-week-csv');
+const fileInput = document.getElementById('recv-ul-file');
 
 if (btnNow && batchDt) btnNow.onclick = () => { batchDt.value = dtLocalNow(); };
 
@@ -864,125 +850,154 @@ if (checkAll) {
   };
 }
 
-	// Downloads (week-level, all suppliers)
-	if (btnCsv) {
-	  btnCsv.onclick = () => {
-	    const ws = getWeekStart();
-	    if (!ws) return;
-	    const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
-	    const header = ['week_start','supplier_name','facility_name','po_number','cartons_in','damaged','non_compliant','replaced','last_received_local','received_at_utc','cutoff_utc','status'];
-	    const lines = [
-	      header.join(','),
-	      ...rows.map(r => header.map(h => csvEscape(r[h])).join(','))
-	    ];
-	    downloadTextFile(`receiving_week_${ws}.csv`, lines.join('\n'), 'text/csv');
-	  };
-	}
+// Download Week (CSV) - includes received_at_local as YYYY-MM-DD HH:MM (viewer local)
+if (btnCsv) {
+  btnCsv.onclick = () => {
+    const ws = getWeekStart();
+    if (!ws) return;
 
-	if (btnPdf) {
-	  btnPdf.onclick = () => {
-	    const ws = getWeekStart();
-	    if (!ws) return;
-	    const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
-	    const bySupplier = new Map();
-	    for (const r of rows) {
-	      const k = r.supplier_name || '—';
-	      if (!bySupplier.has(k)) bySupplier.set(k, []);
-	      bySupplier.get(k).push(r);
-	    }
-	    const suppliers = Array.from(bySupplier.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
-	    const cutoffLocal = fmtLocalFromUtc(businessCutoffUtcISO(ws));
+    const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
+    const header = [
+      'week_start','supplier_name','facility_name','po_number',
+      'cartons_in','damaged','non_compliant','replaced',
+      'received_at_local','status'
+    ];
+    const lines = [
+      header.join(','),
+      ...rows.map(r => header.map(h => csvEscape(r[h])).join(','))
+    ];
+    downloadTextFile(`receiving_week_${ws}.csv`, lines.join('\n'), 'text/csv');
+  };
+}
 
-	    const css = `
-	      <style>
-	        body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:24px;}
-	        h1{font-size:18px;margin:0 0 4px;}
-	        .meta{color:#666;font-size:12px;margin-bottom:14px;}
-	        .supplier{page-break-after:always; margin-bottom:18px;}
-	        .supplier:last-child{page-break-after:auto;}
-	        h2{font-size:14px;margin:12px 0 6px;}
-	        .kpis{display:flex;gap:16px;flex-wrap:wrap;color:#333;font-size:12px;margin:6px 0 10px;}
-	        .kpis b{font-variant-numeric:tabular-nums;}
-	        table{width:100%;border-collapse:collapse;font-size:12px;}
-	        th,td{border:1px solid #e5e7eb;padding:6px 8px;text-align:left;vertical-align:top;}
-	        th{background:#f9fafb;color:#374151;}
-	        .right{text-align:right;font-variant-numeric:tabular-nums;}
-	        .delayed{color:#b91c1c;font-weight:600;}
-	      </style>
-	    `;
+// Upload Week (CSV)
+if (btnUpload && fileInput) {
+  btnUpload.onclick = () => {
+    fileInput.value = '';
+    fileInput.click();
+  };
 
-	    const pages = suppliers.map(supplier => {
-	      const rs = bySupplier.get(supplier) || [];
-	      const expected = rs.length;
-	      const received = rs.filter(x => x.received_at_utc).length;
-	      const delayed = rs.filter(x => String(x.status||'').includes('Delayed')).length;
-	      const cartons = rs.reduce((a,x)=>a + (x.cartons_in||0),0);
-	      const damaged = rs.reduce((a,x)=>a + (x.damaged||0),0);
-	      const nonc = rs.reduce((a,x)=>a + (x.non_compliant||0),0);
-	      const repl = rs.reduce((a,x)=>a + (x.replaced||0),0);
-	      const rowsHtml = rs.map(x => `
-	        <tr>
-	          <td>${esc(x.po_number)}</td>
-	          <td>${esc(x.facility_name)}</td>
-	          <td class="right">${x.cartons_in}</td>
-	          <td class="right">${x.damaged}</td>
-	          <td class="right">${x.non_compliant}</td>
-	          <td class="right">${x.replaced}</td>
-	          <td>${esc(x.last_received_local || '')}</td>
-	          <td class="${String(x.status||'').includes('Delayed') ? 'delayed' : ''}">${esc(x.status||'')}</td>
-	        </tr>
-	      `).join('');
-	      return `
-	        <div class="supplier">
-	          <h2>${esc(supplier)}</h2>
-	          <div class="kpis">
-	            <div>Expected POs: <b>${expected}</b></div>
-	            <div>Received: <b>${received}</b></div>
-	            <div>Delayed: <b class="delayed">${delayed}</b></div>
-	            <div>Cartons In: <b>${cartons}</b></div>
-	            <div>Damaged: <b>${damaged}</b></div>
-	            <div>Non-compliant: <b>${nonc}</b></div>
-	            <div>Replaced: <b>${repl}</b></div>
-	          </div>
-	          <table>
-	            <thead>
-	              <tr>
-	                <th>PO</th>
-	                <th>Facility</th>
-	                <th class="right">Cartons</th>
-	                <th class="right">Damaged</th>
-	                <th class="right">Non-comp</th>
-	                <th class="right">Replaced</th>
-	                <th>Last Received</th>
-	                <th>Status</th>
-	              </tr>
-	            </thead>
-	            <tbody>${rowsHtml}</tbody>
-	          </table>
-	        </div>
-	      `;
-	    }).join('');
+  fileInput.onchange = async () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    const ws = getWeekStart();
+    if (!ws) return;
 
-	    const html = `
-	      <!doctype html>
-	      <html><head><meta charset="utf-8" />
-	        <title>Receiving Supplier Summary — ${esc(ws)}</title>
-	        ${css}
-	      </head>
-	      <body>
-	        <h1>Receiving — Supplier Summary</h1>
-	        <div class="meta">Week: ${esc(ws)} • Business cutoff (local): ${esc(cutoffLocal || '')}</div>
-	        ${pages}
-	        <script>window.print();</script>
-	      </body></html>
-	    `;
-	    const w = window.open('', '_blank');
-	    if (!w) return;
-	    w.document.open();
-	    w.document.write(html);
-	    w.document.close();
-	  };
-	}
+    try {
+      const text = await f.text();
+      const grid = parseCsv(text);
+      if (!grid.length) { alert('CSV appears empty.'); return; }
+
+      const headers = grid[0].map(h => String(h || '').trim().toLowerCase());
+      const idx = (name) => headers.indexOf(String(name).toLowerCase());
+
+      const iPO = idx('po_number');
+      if (iPO < 0) { alert('CSV missing required column: po_number'); return; }
+
+      const iWeek = idx('week_start');
+      const iSupplier = idx('supplier_name');
+      const iFacility = idx('facility_name');
+      const iCartons = idx('cartons_in');
+      const iDamaged = idx('damaged');
+      const iNonc = idx('non_compliant');
+      const iRepl = idx('replaced');
+      const iRecvLocal = idx('received_at_local');
+
+      // Build reference maps to preserve existing values if CSV leaves blanks
+      const planIndex = buildWeekPOIndex(M.planRows);
+      const recvByPO = getReceivingByPO(M.receivingRows);
+
+      const payload = [];
+      const bad = [];
+
+      for (let r = 1; r < grid.length; r++) {
+        const row = grid[r];
+        const po = String(row[iPO] || '').trim();
+        if (!po) continue;
+
+        if (iWeek >= 0) {
+          const w = String(row[iWeek] || '').trim();
+          if (w && w !== ws) {
+            bad.push(`Row ${r+1}: week_start ${w} != selected ${ws}`);
+            continue;
+          }
+        }
+
+        const plan = planIndex.get(po) || { supplier: '', planFacility: '' };
+        const existing = recvByPO.get(po) || {};
+
+        const supplier = (iSupplier >= 0 ? String(row[iSupplier] || '').trim() : '')
+          || String(existing.supplier_name || '').trim()
+          || String(plan.supplier || '').trim();
+
+        const facility = (iFacility >= 0 ? String(row[iFacility] || '').trim() : '')
+          || String(existing.facility_name || '').trim()
+          || String(plan.planFacility || '').trim();
+
+        const numOrExisting = (cellIdx, existingKey) => {
+          if (cellIdx < 0) return Number(existing[existingKey] || 0) || 0;
+          const raw = String(row[cellIdx] ?? '').trim();
+          if (raw === '') return Number(existing[existingKey] || 0) || 0;
+          const n = Number(raw);
+          return Number.isFinite(n) ? n : (Number(existing[existingKey] || 0) || 0);
+        };
+
+        const cartons_received = numOrExisting(iCartons, 'cartons_received');
+        const cartons_damaged = numOrExisting(iDamaged, 'cartons_damaged');
+        const cartons_noncompliant = numOrExisting(iNonc, 'cartons_noncompliant');
+        const cartons_replaced = numOrExisting(iRepl, 'cartons_replaced');
+
+        const recvLocalRaw = (iRecvLocal >= 0) ? String(row[iRecvLocal] || '').trim() : '';
+        const received_at_utc = recvLocalRaw
+          ? parseLocalDateTimeToISO(recvLocalRaw)
+          : String(existing.received_at_utc || '').trim();
+
+        const received_at_local = recvLocalRaw
+          ? recvLocalRaw
+          : String(existing.received_at_local || '').trim();
+
+        if (recvLocalRaw && !received_at_utc) {
+          bad.push(`Row ${r+1} PO ${po}: invalid received_at_local '${recvLocalRaw}'`);
+          continue;
+        }
+
+        payload.push({
+          po_number: po,
+          supplier_name: supplier,
+          facility_name: facility,
+          received_at_utc,
+          received_at_local,
+          received_tz: 'viewer-local',
+          cartons_received,
+          cartons_damaged,
+          cartons_noncompliant,
+          cartons_replaced
+        });
+      }
+
+      if (bad.length) {
+        alert(`Upload blocked (fix CSV):\n\n${bad.slice(0, 8).join('\n')}${bad.length > 8 ? `\n… +${bad.length - 8} more` : ''}`);
+        return;
+      }
+
+      if (!payload.length) { alert('No valid rows found to upload.'); return; }
+
+      // One batch PUT
+      await api(`/receiving/weeks/${encodeURIComponent(ws)}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+
+      addTicker(`Uploaded ${payload.length} row(s) from CSV for week ${ws}`);
+      lastWS = '';
+      await tick();
+    } catch (e) {
+      console.warn('[receiving] CSV upload error', e);
+      addTicker(`⚠️ CSV upload failed: ${e.message || e}`);
+      alert('CSV upload failed. Check console/server logs.');
+    }
+  };
+}
 
 if (btnReceive) {
   btnReceive.onclick = async () => {
@@ -1032,16 +1047,24 @@ if (btnReceive) {
         body: JSON.stringify(payload)
       });
 
+      addTicker(`Received ${payload.length} PO(s) for ${supplier} @ ${payload[0].facility_name || '—'} at ${fmtLocalFromUtc(payload[0].received_at_utc)}`);
+
       // force reload of receiving rows to reflect last-received column + footer
       lastWS = '';
       await tick();
     } catch (e) {
       console.warn(e);
+      addTicker(`⚠️ Failed to save batch receive: ${e.message || e}`);
       alert('Save failed. Check connection / server logs.');
     }
   };
 }
 
+
+    // reset ticker when switching weeks
+    M.ticker = [];
+    renderTicker();
+    addTicker(`Loaded week ${ws}`);
   }
 
   // Watch: week changes & hash changes
