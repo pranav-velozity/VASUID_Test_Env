@@ -396,7 +396,7 @@ function addTicker() {}
               <select id="recv-supplier" class="border rounded-md px-2 py-1 text-sm min-w-[280px]">
                 <option value="">Loading…</option>
               </select>
-<div class="flex items-center gap-2 flex-wrap">
+<div class="flex items-center gap-2 flex-wrap flex-1 min-w-0">
   <label class="text-sm text-gray-600">Received At</label>
   <input id="recv-batch-dt" type="datetime-local"
          class="border rounded-md px-2 py-1 text-sm"
@@ -409,7 +409,7 @@ function addTicker() {}
   </button>
 
 <!-- Right-aligned action strip (Ops-style) -->
-<div class="ml-auto">
+<div class="ml-auto pl-2 border-l border-gray-200">
   <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
     <button id="recv-dl-week-csv"
             class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
