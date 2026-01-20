@@ -407,18 +407,33 @@ function addTicker() {}
           title="Apply received time to selected POs">
     Receive Selected
   </button>
-  <button id="recv-dl-week-csv" class="cmd cmd--ghost"
-          title="Download week receiving as CSV (Excel)">
-    Download Week (CSV)
-  </button>
-  <button id="recv-ul-week-csv" class="cmd cmd--ghost"
-          title="Upload week receiving from CSV (Excel)">
-    Upload Week (CSV)
-  </button>
-  <button id="recv-dl-supplier-pdf" class="cmd cmd--ghost"
-          title="Open supplier summary for printing to PDF">
-    Supplier Summary (PDF)
-  </button>
+
+<!-- Right-aligned action strip (Ops-style) -->
+<div class="ml-auto">
+  <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
+    <button id="recv-dl-week-csv"
+            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+            style="color:#990033"
+            title="Download week receiving as CSV (Excel)">
+      ⬇︎ Download Week
+    </button>
+
+    <button id="recv-ul-week-csv"
+            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+            style="color:#990033"
+            title="Upload week receiving from CSV">
+      ⬆︎ Upload Week
+    </button>
+
+    <button id="recv-dl-supplier-pdf"
+            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+            style="color:#990033"
+            title="Open supplier summary for printing to PDF">
+      📄 Supplier PDF
+    </button>
+  </div>
+</div>
+
   <input id="recv-ul-week-csv-input" type="file" accept=".csv,text/csv" style="display:none" />
 </div>
               <div class="text-sm text-gray-500">
