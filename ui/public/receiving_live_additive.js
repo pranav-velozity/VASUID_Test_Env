@@ -408,32 +408,6 @@ function addTicker() {}
     Receive Selected
   </button>
 
-<!-- Right-aligned action strip (Ops-style) -->
-<div class="ml-auto pl-2 border-l border-gray-200">
-  <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
-    <button id="recv-dl-week-csv"
-            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
-            style="color:#990033"
-            title="Download week receiving as CSV (Excel)">
-      ⬇︎ Download Week
-    </button>
-
-    <button id="recv-ul-week-csv"
-            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
-            style="color:#990033"
-            title="Upload week receiving from CSV">
-      ⬆︎ Upload Week
-    </button>
-
-    <button id="recv-dl-supplier-pdf"
-            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
-            style="color:#990033"
-            title="Open supplier summary for printing to PDF">
-      📄 Supplier PDF
-    </button>
-  </div>
-</div>
-
   <input id="recv-ul-week-csv-input" type="file" accept=".csv,text/csv" style="display:none" />
 </div>
               <div class="text-sm text-gray-500">
@@ -472,7 +446,33 @@ function addTicker() {}
 
           <!-- Exceptions (view-only) -->
           <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
-            <div class="text-base font-semibold mb-1">Exceptions</div>
+            <div class="flex items-center justify-between mb-1">
+  <div class="text-lg font-semibold">Exceptions</div>
+
+  <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
+    <button id="recv-dl-week-csv"
+            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+            style="color:#990033"
+            title="Download week receiving as CSV (Excel)">
+      ⬇︎ Download Week
+    </button>
+
+    <button id="recv-ul-week-csv"
+            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+            style="color:#990033"
+            title="Upload week receiving from CSV">
+      ⬆︎ Upload Week
+    </button>
+
+    <button id="recv-dl-supplier-pdf"
+            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+            style="color:#990033"
+            title="Open supplier summary for printing to PDF">
+      📄 Supplier PDF
+    </button>
+  </div>
+</div>
+
             <div class="text-xs text-gray-500 mb-2">Supplier-level outliers for this week (view-only).</div>
             <div class="text-xs text-gray-500 mb-3">Week cutoff (business): <span class="font-semibold" id="recv-cutoff-local">—</span></div>
             <div id="recv-exceptions" class="space-y-3 text-sm overflow-auto flex-1 pr-1">
