@@ -59,6 +59,30 @@
 
 // Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
 function addTicker() {}
+  // Build a per-PO "Carton Out" map from Ops records (mobile bins used in the week).
+  // Definition: number of UNIQUE mobile bins (cartons) for each PO in the selected week.
+  function computeCartonsOutByPOFromState(ws) {
+    const byPO = new Map();
+    try {
+      const s = window.state || {};
+      const recs = (s.weekStart === ws && Array.isArray(s.records)) ? s.records : [];
+      const sets = new Map(); // po -> Set(mobile_bin)
+      for (const r of recs) {
+        if (!r || r.status !== 'complete') continue;
+        const po = String(r.po_number || '').trim();
+        if (!po) continue;
+        const mb = String(r.mobile_bin || r.bin || '').trim();
+        if (!mb) continue;
+        if (!sets.has(po)) sets.set(po, new Set());
+        sets.get(po).add(mb);
+      }
+      for (const [po, set] of sets.entries()) byPO.set(po, set.size);
+    } catch (e) {
+      console.warn('[receiving] computeCartonsOutByPOFromState failed', e);
+    }
+    return byPO;
+  }
+
 
 
   function toDateTimeLocalValue(isoUtc) {
@@ -357,6 +381,7 @@ function addTicker() {}
     ws: '',
     planRows: [],
     receivingRows: [],
+    cartonsOutByPO: new Map(),
     suppliers: [],
     selectedSupplier: '',
     // per-PO save debounce timers
@@ -865,7 +890,8 @@ function computeSummaryAll(planRows, receivingRows) {
       const r = receivingByPO.get(x.po) || {};
       const facility = String(r.facility_name || x.planFacility || '').trim();
       const receivedAtLocalInput = toDateTimeLocalValue(r.received_at_utc);
-      const cartonsOut = Number(r.cartons_out || r.mobile_bin_count || r.mobile_bin_counts || r.mobile_bins || r.mobile_bins_count || r.mobile_bin_total || r.mobile_bin_total_count || 0) || 0;
+      const cartonsOut = (M.cartonsOutByPO && M.cartonsOutByPO.has(x.po)) ? (Number(M.cartonsOutByPO.get(x.po)) || 0)
+        : (Number(r.cartons_out || r.mobile_bin_count || r.mobile_bin_counts || r.mobile_bins || r.mobile_bins_count || r.mobile_bin_total || r.mobile_bin_total_count || 0) || 0);
 
       return `
 <tr class="border-t">
@@ -1049,6 +1075,7 @@ function computeSummaryAll(planRows, receivingRows) {
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
     M.planRows = planRows;
     M.receivingRows = Array.isArray(receiving) ? receiving : [];
+    M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
     M.suppliers = buildSuppliers(planRows, M.receivingRows);
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
@@ -1428,6 +1455,16 @@ function dtLocalNow() {
   const mi = String(d.getMinutes()).padStart(2,'0');
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
+
+  // When Ops refreshes window.state (week switch), recompute Carton Out and re-render if needed.
+  window.addEventListener('state:ready', () => {
+    const ws = getWeekStart();
+    if (!ws) return;
+    if (ws !== M.ws) return;
+    M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
+    // lightweight refresh (no API calls)
+    try { renderCurrentSupplierView(); } catch {}
+  });
 
   window.addEventListener('hashchange', () => {
     showReceivingIfHash();
