@@ -57,49 +57,65 @@
     }).format(d);
   }
 
-async function fetchCompletedRecordsForWeek(ws) {
-  try {
-    const d0 = new Date(ws);
-    const d1 = new Date(ws);
-    d1.setDate(d1.getDate() + 6);
+  // Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
+  function addTicker() {}
 
-    const start = d0.toISOString().slice(0, 10);
-    const end   = d1.toISOString().slice(0, 10);
+  // -------------------- Carton Out (Mobile Bin count) --------------------
+  // Goal: Carton Out must work on cold load AND not depend on visiting Ops first.
+  // Source of truth: completed records for the selected week.
 
-    const rows = await api(`/records?status=complete&start=${start}&end=${end}`);
-    return Array.isArray(rows) ? rows : [];
-  } catch (e) {
-    console.warn('[receiving] failed to load records for carton out', e);
-    return [];
-  }
-}
-
-
-// Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
-function addTicker() {}
-  // Build a per-PO "Carton Out" map from Ops records (mobile bins used in the week).
-  // Definition: number of UNIQUE mobile bins (cartons) for each PO in the selected week.
-function computeCartonsOutByPOFromRecords(records) {
-  const map = new Map();
-
-  for (const r of records || []) {
-    const po = r.po_number || r.po || r.PO;
-    if (!po) continue;
-
-    const bin = r.mobile_bin || r.bin || r.mobileBin;
-    if (!bin) continue;
-
-    if (!map.has(po)) map.set(po, new Set());
-    map.get(po).add(bin);
+  function weekEndISO(ws) {
+    const d = new Date(ws);
+    if (Number.isNaN(d.getTime())) return ws;
+    d.setDate(d.getDate() + 6);
+    return d.toISOString().slice(0, 10);
   }
 
-  // convert Set sizes to numbers
-  const out = new Map();
-  for (const [po, set] of map.entries()) {
-    out.set(po, set.size);
+  async function fetchCompletedRecordsForWeek(ws) {
+    // Match index.html contract: /records?from=<ws>&to=<we>&status=complete&limit=50000
+    // Response can be an array OR { records: [...] } depending on backend version.
+    try {
+      const we = weekEndISO(ws);
+      const d = await api(`/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete&limit=50000`);
+      return Array.isArray(d) ? d : (d?.records || []);
+    } catch (e) {
+      console.warn('[receiving] failed to load records for carton out', e);
+      return [];
+    }
   }
-  return out;
-}
+
+  function computeCartonsOutByPOFromRecords(records) {
+    // Definition: number of UNIQUE mobile bins for each PO in the selected week.
+    const sets = new Map(); // po -> Set(mobile_bin)
+    for (const r of records || []) {
+      if (!r) continue;
+      // Records are usually already status=complete, but be safe.
+      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
+      const po = String(r.po_number || r.po || r.PO || '').trim();
+      if (!po) continue;
+      const mb = String(r.mobile_bin || r.bin || r.mobileBin || '').trim();
+      if (!mb) continue;
+      if (!sets.has(po)) sets.set(po, new Set());
+      sets.get(po).add(mb);
+    }
+    const byPO = new Map();
+    for (const [po, set] of sets.entries()) byPO.set(po, set.size);
+    return byPO;
+  }
+
+  function computeCartonsOutByPOFromState(ws) {
+    // Fast-path if Ops already populated window.state.records.
+    try {
+      const s = window.state || {};
+      const recs = (s.weekStart === ws && Array.isArray(s.records)) ? s.records : [];
+      if (!recs.length) return new Map();
+      return computeCartonsOutByPOFromRecords(recs);
+    } catch (e) {
+      console.warn('[receiving] computeCartonsOutByPOFromState failed', e);
+      return new Map();
+    }
+  }
+
 
 
   function toDateTimeLocalValue(isoUtc) {
@@ -1092,11 +1108,12 @@ function computeSummaryAll(planRows, receivingRows) {
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
     M.planRows = planRows;
     M.receivingRows = Array.isArray(receiving) ? receiving : [];
-    M.suppliers = buildSuppliers(planRows, M.receivingRows);
-
-    // Load completed records for Carton Out (self-contained)
+    // Carton Out: self-contained (works on cold load). Prefer API fetch; fall back to state if needed.
+    const stateMap = computeCartonsOutByPOFromState(ws);
     M.completedRecords = await fetchCompletedRecordsForWeek(ws);
-    M.cartonsOutByPO = computeCartonsOutByPOFromRecords(M.completedRecords);
+    const fetchedMap = computeCartonsOutByPOFromRecords(M.completedRecords);
+    M.cartonsOutByPO = (fetchedMap && fetchedMap.size) ? fetchedMap : stateMap;
+    M.suppliers = buildSuppliers(planRows, M.receivingRows);
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
     const sel = document.getElementById('recv-supplier');
@@ -1476,14 +1493,22 @@ function dtLocalNow() {
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-  // When Ops refreshes window.state (week switch), recompute Carton Out and re-render if needed.
+  // When Ops refreshes window.state (week switch), keep Carton Out in sync.
+  // Prefer API fetch (authoritative), fall back to state if fetch returns nothing.
   window.addEventListener('state:ready', () => {
     const ws = getWeekStart();
     if (!ws) return;
     if (ws !== M.ws) return;
-    M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
-    // lightweight refresh (no API calls)
-    try { renderCurrentSupplierView(); } catch {}
+    (async () => {
+      const stateMap = computeCartonsOutByPOFromState(ws);
+      const recs = await fetchCompletedRecordsForWeek(ws);
+      const fetchedMap = computeCartonsOutByPOFromRecords(recs);
+      M.completedRecords = recs;
+      M.cartonsOutByPO = (fetchedMap && fetchedMap.size) ? fetchedMap : stateMap;
+      try { renderCurrentSupplierView(); } catch {}
+    })().catch(() => {
+      // ignore
+    });
   });
 
   window.addEventListener('hashchange', () => {
