@@ -426,6 +426,7 @@ function addTicker() {}
   <th class="text-left py-2 px-2">PO</th>
   <th class="text-left py-2 px-2">Facility</th>
   <th class="text-right py-2 px-2">Cartons In</th>
+  <th class="text-right py-2 px-2" style="color:#990033">Carton Out</th>
   <th class="text-right py-2 px-2">Damaged</th>
   <th class="text-right py-2 px-2">Non-compliant</th>
   <th class="text-right py-2 px-2">Replaced</th>
@@ -434,7 +435,7 @@ function addTicker() {}
 
                 </thead>
                 <tbody id="recv-body">
-                  <tr><td colspan="8" class="text-center text-xs text-gray-400 py-6">Loading…</td></tr>
+                  <tr><td colspan="9" class="text-center text-xs text-gray-400 py-6">Loading…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -444,35 +445,36 @@ function addTicker() {}
             </div>
           </div>
 
-<div class="flex justify-end mb-3">
-  <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
-    <button id="recv-dl-week-csv"
-            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
-            style="color:#990033"
-            title="Download week receiving as CSV (Excel)">
-      ⬇︎ Download Week
-    </button>
 
-    <button id="recv-ul-week-csv"
-            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
-            style="color:#990033"
-            title="Upload week receiving from CSV">
-      ⬆︎ Upload Week
-    </button>
+<!-- Right column: actions ABOVE Exceptions (outside the tile) -->
+<div class="lg:col-span-4 min-w-0 flex flex-col">
+  <div class="flex justify-end mb-3">
+    <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
+      <button id="recv-dl-week-csv"
+              class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+              style="color:#990033"
+              title="Download week receiving as CSV (Excel)">
+        ⤓ Download Week
+      </button>
 
-    <button id="recv-dl-supplier-pdf"
-            class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
-            style="color:#990033"
-            title="Open supplier summary for printing to PDF">
-      📄 Supplier PDF
-    </button>
+      <button id="recv-ul-week-csv"
+              class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+              style="color:#990033"
+              title="Upload week receiving from CSV">
+        ⤒ Upload Week
+      </button>
+
+      <button id="recv-dl-supplier-pdf"
+              class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
+              style="color:#990033"
+              title="Open supplier summary for printing to PDF">
+        📄 Supplier PDF
+      </button>
+    </div>
   </div>
-</div>
 
-
-
-          <!-- Exceptions (view-only) -->
-          <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
+  <!-- Exceptions (view-only) -->
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
             <div class="text-lg font-semibold mb-1">Exceptions</div>
 
 
@@ -482,6 +484,7 @@ function addTicker() {}
               <div class="text-xs text-gray-400">Loading…</div>
             </div>
           </div>
+        </div>
         </div>
 
         <!-- Bottom summary bar -->
@@ -854,7 +857,7 @@ function computeSummaryAll(planRows, receivingRows) {
     if (poRecvEl) poRecvEl.textContent = String(receivedCount);
 
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-xs text-gray-400 py-6">No POs for this supplier in this week’s plan.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center text-xs text-gray-400 py-6">No POs for this supplier in this week’s plan.</td></tr>`;
       return;
     }
 
@@ -862,6 +865,7 @@ function computeSummaryAll(planRows, receivingRows) {
       const r = receivingByPO.get(x.po) || {};
       const facility = String(r.facility_name || x.planFacility || '').trim();
       const receivedAtLocalInput = toDateTimeLocalValue(r.received_at_utc);
+      const cartonsOut = Number(r.cartons_out || r.mobile_bin_count || r.mobile_bin_counts || r.mobile_bins || r.mobile_bins_count || r.mobile_bin_total || r.mobile_bin_total_count || 0) || 0;
 
       return `
 <tr class="border-t">
@@ -879,6 +883,13 @@ function computeSummaryAll(planRows, receivingRows) {
     <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
            data-field="cartons_received" data-po="${esc(x.po)}"
            value="${Number(r.cartons_received || 0)}" />
+  </td>
+  <td class="py-2 px-2 text-right">
+    <div class="px-2 py-1 text-sm w-[90px] text-right rounded border tabular-nums"
+         style="background:#fff5f7;border-color:#e8b3c6;color:#990033"
+         title="Carton Out (Mobile Bin count, read-only)">
+      ${cartonsOut}
+    </div>
   </td>
   <td class="py-2 px-2 text-right">
     <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
