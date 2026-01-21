@@ -1,4 +1,4 @@
-/* receiving_live_additive.js (v20) - Receiving page (editable, week nav, summary, ticker scaffold)
+/* receiving_live_additive.js (v21) - Receiving page (editable, week nav, summary, ticker scaffold)
    - Loaded via <script src="/receiving_live_additive.js" defer></script> from index.html
    - Binds to global week selector (#week-start / window.state.weekStart)
    - Loads plan + receiving rows for selected week
