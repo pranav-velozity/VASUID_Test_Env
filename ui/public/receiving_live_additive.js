@@ -57,32 +57,49 @@
     }).format(d);
   }
 
+async function fetchCompletedRecordsForWeek(ws) {
+  try {
+    const d0 = new Date(ws);
+    const d1 = new Date(ws);
+    d1.setDate(d1.getDate() + 6);
+
+    const start = d0.toISOString().slice(0, 10);
+    const end   = d1.toISOString().slice(0, 10);
+
+    const rows = await api(`/records?status=complete&start=${start}&end=${end}`);
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    console.warn('[receiving] failed to load records for carton out', e);
+    return [];
+  }
+}
+
+
 // Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
 function addTicker() {}
   // Build a per-PO "Carton Out" map from Ops records (mobile bins used in the week).
   // Definition: number of UNIQUE mobile bins (cartons) for each PO in the selected week.
-  function computeCartonsOutByPOFromState(ws) {
-    const byPO = new Map();
-    try {
-      const s = window.state || {};
-      const recs = (s.weekStart === ws && Array.isArray(s.records)) ? s.records : [];
-      const sets = new Map(); // po -> Set(mobile_bin)
-      for (const r of recs) {
-        if (!r || r.status !== 'complete') continue;
-        const po = String(r.po_number || '').trim();
-        if (!po) continue;
-        const mb = String(r.mobile_bin || r.bin || '').trim();
-        if (!mb) continue;
-        if (!sets.has(po)) sets.set(po, new Set());
-        sets.get(po).add(mb);
-      }
-      for (const [po, set] of sets.entries()) byPO.set(po, set.size);
-    } catch (e) {
-      console.warn('[receiving] computeCartonsOutByPOFromState failed', e);
-    }
-    return byPO;
+function computeCartonsOutByPOFromRecords(records) {
+  const map = new Map();
+
+  for (const r of records || []) {
+    const po = r.po_number || r.po || r.PO;
+    if (!po) continue;
+
+    const bin = r.mobile_bin || r.bin || r.mobileBin;
+    if (!bin) continue;
+
+    if (!map.has(po)) map.set(po, new Set());
+    map.get(po).add(bin);
   }
 
+  // convert Set sizes to numbers
+  const out = new Map();
+  for (const [po, set] of map.entries()) {
+    out.set(po, set.size);
+  }
+  return out;
+}
 
 
   function toDateTimeLocalValue(isoUtc) {
@@ -1075,8 +1092,11 @@ function computeSummaryAll(planRows, receivingRows) {
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
     M.planRows = planRows;
     M.receivingRows = Array.isArray(receiving) ? receiving : [];
-    M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
     M.suppliers = buildSuppliers(planRows, M.receivingRows);
+
+    // Load completed records for Carton Out (self-contained)
+    M.completedRecords = await fetchCompletedRecordsForWeek(ws);
+    M.cartonsOutByPO = computeCartonsOutByPOFromRecords(M.completedRecords);
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
     const sel = document.getElementById('recv-supplier');
