@@ -444,11 +444,7 @@ function addTicker() {}
             </div>
           </div>
 
-          <!-- Exceptions (view-only) -->
-          <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
-            <div class="flex items-center justify-between mb-1">
-  <div class="text-lg font-semibold">Exceptions</div>
-
+<div class="flex justify-end mb-3">
   <div class="inline-flex items-center gap-1 bg-white border rounded-xl shadow-sm px-1 py-1">
     <button id="recv-dl-week-csv"
             class="px-3 py-2 rounded-lg text-sm font-medium hover:bg-[#990033]/5"
@@ -472,6 +468,13 @@ function addTicker() {}
     </button>
   </div>
 </div>
+
+
+
+          <!-- Exceptions (view-only) -->
+          <div class="lg:col-span-4 bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
+            <div class="text-lg font-semibold mb-1">Exceptions</div>
+
 
             <div class="text-xs text-gray-500 mb-2">Supplier-level outliers for this week (view-only).</div>
             <div class="text-xs text-gray-500 mb-3">Week cutoff (business): <span class="font-semibold" id="recv-cutoff-local">—</span></div>
