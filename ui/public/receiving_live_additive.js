@@ -474,7 +474,7 @@ function addTicker() {}
   </div>
 
   <!-- Exceptions (view-only) -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 360px); border-color:#990033;">
+  <div class="bg-white rounded-2xl border shadow p-4 min-w-0 flex flex-col" style="height: calc(100vh - 420px); border-color:#990033;">
             <div class="text-lg font-semibold mb-1">Exceptions</div>
 
 
@@ -874,35 +874,35 @@ function computeSummaryAll(planRows, receivingRows) {
   </td>
   <td class="py-2 px-2 font-semibold">${esc(x.po)}</td>
   <td class="py-2 px-2">
-    <input class="recv-facility border rounded px-2 py-1 text-sm w-[160px]"
+    <input class="recv-facility border rounded px-2 py-1 text-sm w-[120px]"
            data-po="${esc(x.po)}"
            value="${esc(r.facility_name || x.planFacility || '')}" />
   </td>
 
   <td class="py-2 px-2 text-right">
-    <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[70px] text-right"
            data-field="cartons_received" data-po="${esc(x.po)}"
            value="${Number(r.cartons_received || 0)}" />
   </td>
   <td class="py-2 px-2 text-right">
-    <div class="px-2 py-1 text-sm w-[90px] text-right rounded border tabular-nums"
+    <div class="px-2 py-1 text-sm w-[70px] text-right rounded border tabular-nums"
          style="background:#fff5f7;border-color:#e8b3c6;color:#990033"
          title="Carton Out (Mobile Bin count, read-only)">
       ${cartonsOut}
     </div>
   </td>
   <td class="py-2 px-2 text-right">
-    <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[70px] text-right"
            data-field="cartons_damaged" data-po="${esc(x.po)}"
            value="${Number(r.cartons_damaged || 0)}" />
   </td>
   <td class="py-2 px-2 text-right">
-    <input class="recv-num border rounded px-2 py-1 text-sm w-[110px] text-right"
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[85px] text-right"
            data-field="cartons_noncompliant" data-po="${esc(x.po)}"
            value="${Number(r.cartons_noncompliant || 0)}" />
   </td>
   <td class="py-2 px-2 text-right">
-    <input class="recv-num border rounded px-2 py-1 text-sm w-[90px] text-right"
+    <input class="recv-num border rounded px-2 py-1 text-sm w-[70px] text-right"
            data-field="cartons_replaced" data-po="${esc(x.po)}"
            value="${Number(r.cartons_replaced || 0)}" />
   </td>
