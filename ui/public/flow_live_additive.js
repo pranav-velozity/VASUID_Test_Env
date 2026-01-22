@@ -137,6 +137,13 @@
     return { level: 'red', lateDays };
   }
 
+  function statusLabel(level) {
+    if (level === 'green') return 'On Track';
+    if (level === 'yellow') return 'At Risk';
+    if (level === 'red') return 'Delayed';
+    return 'Future';
+  }
+
   function pill(level) {
     if (level === 'green') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     if (level === 'yellow') return 'bg-amber-100 text-amber-800 border-amber-200';
@@ -227,17 +234,9 @@
   }
 
   function getPlanUnits(planRows) {
-    // Canonical in your codebase (see exec_live_additive.js): target_qty
-    // Keep fallbacks for older shapes.
+    // common fields seen in codebase: planned_qty, qty, units
     return (planRows || []).reduce((acc, r) => {
-      const n = Number(
-        r.target_qty ??
-        r.planned_qty ??
-        r.qty ??
-        r.units ??
-        r.quantity ??
-        0
-      );
+      const n = Number(r.target_qty ?? r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0);
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
   }
@@ -247,14 +246,7 @@
     for (const r of planRows || []) {
       const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       const po = String(r.po_number || r.po || '').trim();
-      const units = Number(
-        r.target_qty ??
-        r.planned_qty ??
-        r.qty ??
-        r.units ??
-        r.quantity ??
-        0
-      ) || 0;
+      const units = Number(r.target_qty ?? r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
       if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
       const o = m.get(sup);
       if (po) o.pos.add(po);
@@ -345,7 +337,16 @@
     const plannedUnits = getPlanUnits(planRows);
     const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim())).length;
 
-    // Records: treat each record as one applied unit if it has a UID; otherwise count qty if present.
+    // Build a PO -> supplier index from plan to attribute records correctly (records often don't carry supplier).
+    const poToSupplier = new Map();
+    for (const r of planRows || []) {
+      const po = String(r.po_number || r.po || '').trim();
+      if (!po) continue;
+      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
+      if (!poToSupplier.has(po)) poToSupplier.set(po, sup);
+    }
+
+    // Records: treat each record as one applied unit if qty isn't present.
     let appliedUnits = 0;
     const appliedBySup = new Map();
     const appliedByPO = new Map();
@@ -355,8 +356,8 @@
       const n = Number.isFinite(qty) && qty > 0 ? qty : 1;
       appliedUnits += n;
 
-      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       const po = String(r.po_number || r.po || '').trim() || 'Unknown';
+      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor || (po !== 'Unknown' ? poToSupplier.get(po) : ''));
       appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + n);
       appliedByPO.set(po, (appliedByPO.get(po) || 0) + n);
     }
@@ -500,15 +501,15 @@
         </div>
       </div>
 
-      <!-- Layout is intentionally stacked (top tile + bottom tile). -->
-      <div class="flex flex-col gap-3">
+      <!-- Always stacked: top tile then bottom tile (no side-by-side layout) -->
+      <div class="grid grid-cols-1 gap-3">
         <!-- Top tile -->
         <div class="rounded-2xl border bg-white shadow-sm p-3">
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
             <div id="flow-day" class="text-xs text-gray-500"></div>
           </div>
-          <div id="flow-nodes" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2"></div>
+          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-2"></div>
         </div>
 
         <!-- Bottom tile -->
@@ -551,7 +552,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${level.toUpperCase()}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${statusLabel(level)}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -676,7 +677,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${level.toUpperCase()}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${statusLabel(level)}</span>
           </div>
         </div>
       `;
@@ -708,13 +709,6 @@
         receiving.latePOs ? `${receiving.latePOs} POs received after baseline` : null,
         receiving.missingPOs ? `${receiving.missingPOs} POs not yet received` : null,
       ];
-
-      const rows = (sel.sub === 'late' ? receiving.latePOList : sel.sub === 'missing' ? receiving.missingPOList : [])
-        .slice(0, 50)
-        .map(po => {
-          const rec = receivingByPO(awaitingReceivingRowsCache)?.get(po); // placeholder
-          return [po];
-        });
 
       // Build supplier summary table
       const supRows = receiving.suppliers
@@ -934,12 +928,43 @@
   }
 
   // ------------------------- Mount / Refresh -------------------------
+  function deriveDefaultWeekStartISO() {
+    // Prefer app helpers if present
+    try {
+      if (typeof window.iso === 'function' && typeof window.mondayOf === 'function') {
+        return window.iso(window.mondayOf(new Date()));
+      }
+    } catch {}
+
+    // Fallback: compute Monday (UTC) of current week
+    const d = new Date();
+    const day = d.getUTCDay(); // 0=Sun..6=Sat
+    const diff = (day === 0 ? -6 : 1) - day; // move to Monday
+    const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0));
+    m.setUTCDate(m.getUTCDate() + diff);
+    return isoDate(m);
+  }
+
   async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
 
-    const ws = window.state?.weekStart || $('#week-start')?.value;
-    if (!ws) return;
+    // WeekStart source of truth: window.state.weekStart (set by index setWeek)
+    let ws = (window.state?.weekStart || '').trim() || ($('#week-start')?.value || '').trim();
+    if (!ws) {
+      ws = deriveDefaultWeekStartISO();
+      // If host app exposes setWeek, use it to hydrate window.state.{weekStart,plan,records,...}
+      try {
+        if (window.state) window.state.weekStart = ws;
+        const picker = $('#week-start');
+        if (picker) picker.value = ws;
+        if (typeof window.setWeek === 'function') {
+          await window.setWeek(ws);
+        }
+      } catch (e) {
+        console.warn('[flow] setWeek fallback failed', e);
+      }
+    }
     UI.currentWs = ws;
     const tz = getBizTZ();
 
@@ -1020,4 +1045,20 @@
   // Make sure the section/nav exist even before first state:ready.
   ensureFlowPageExists();
   showHideByHash();
+
+  // If the app loads directly into #flow, state:ready may have already fired (or weekStart may not
+  // be set until another page mounts). Attempt an initial render once the DOM is ready.
+  const initialTry = () => {
+    ensureFlowPageExists();
+    showHideByHash();
+    const hash = (location.hash || '').toLowerCase();
+    const show = hash === '#flow' || hash.startsWith('#flow');
+    if (show) refresh();
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialTry, { once: true });
+  } else {
+    // already ready
+    setTimeout(initialTry, 0);
+  }
 })();
