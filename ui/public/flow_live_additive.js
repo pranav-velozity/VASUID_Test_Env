@@ -227,9 +227,17 @@
   }
 
   function getPlanUnits(planRows) {
-    // common fields seen in codebase: planned_qty, qty, units
+    // Canonical in your codebase (see exec_live_additive.js): target_qty
+    // Keep fallbacks for older shapes.
     return (planRows || []).reduce((acc, r) => {
-      const n = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0);
+      const n = Number(
+        r.target_qty ??
+        r.planned_qty ??
+        r.qty ??
+        r.units ??
+        r.quantity ??
+        0
+      );
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
   }
@@ -239,7 +247,14 @@
     for (const r of planRows || []) {
       const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       const po = String(r.po_number || r.po || '').trim();
-      const units = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
+      const units = Number(
+        r.target_qty ??
+        r.planned_qty ??
+        r.qty ??
+        r.units ??
+        r.quantity ??
+        0
+      ) || 0;
       if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
       const o = m.get(sup);
       if (po) o.pos.add(po);
