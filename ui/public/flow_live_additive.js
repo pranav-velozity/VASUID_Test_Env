@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v8)
+/* flow_live_additive.js (v24)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -361,98 +361,91 @@
   }
 
   function computeVASStatus(ws, tz, planRows, records) {
-    const now = new Date();
-    const due = makeBizLocalDate(isoDate(addDays(new Date(`${ws}T00:00:00Z`), BASELINE.vas_complete_due.dayOffset)), BASELINE.vas_complete_due.time, tz);
+  const now = new Date();
+  const due = makeBizLocalDate(
+    isoDate(addDays(new Date(`${ws}T00:00:00Z`), BASELINE.vas_complete_due.dayOffset)),
+    BASELINE.vas_complete_due.time,
+    tz
+  );
 
-    const plannedUnits = getPlanUnits(planRows);
-    const plannedPOs = uniq((planRows || []).map(r => getPO(r)).filter(Boolean)).length;
+  const plannedUnits = getPlanUnits(planRows);
+  const plannedPOs = uniq((planRows || []).map(r => getPO(r)).filter(Boolean)).length;
 
-    // Records: treat each record as one applied unit if it has a UID; otherwise count qty if present.
-    let appliedUnits = 0;
-    const appliedBySup = new Map();
-    const appliedByPO = new Map();
-
-    for (const r of records || []) {
-      const qty = Number(r.qty ?? r.quantity ?? r.units ?? 1);
-      const n = Number.isFinite(qty) && qty > 0 ? qty : 1;
-      appliedUnits += n;
-
-      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
-      const po = String(r.po_number || r.po || '').trim() || 'Unknown';
-      appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + n);
-      appliedByPO.set(po, (appliedByPO.get(po) || 0) + n);
-    }
-
-    const completion = plannedUnits > 0 ? appliedUnits / plannedUnits : 0;
-    // Soft status: compare "completion" vs time elapsed; if past due, red; if close, yellow.
-    const st = statusFromDue(due, completion >= 0.98 ? due : null, now); // if near complete, treat as on-time
-    // If we're before due but completion is very low, show yellow.
-    let level = st.level;
-    const untilDueDays = daysBetween(now, due);
-    if (untilDueDays > 0 && completion < 0.5 && untilDueDays < 2) level = 'yellow';
-    if (untilDueDays <= 0 && completion < 0.9) level = 'red';
-
-    const topSup = Array.from(appliedBySup.entries())
-      .map(([supplier, units]) => ({ supplier, units }))
-      .sort((a, b) => b.units - a.units)
-      .slice(0, 10);
-
-    const topPO = Array.from(appliedByPO.entries())
-      .map(([po, units]) => ({ po, units }))
-      .filter(x => x.po && x.po !== 'Unknown')
-      .sort((a, b) => b.units - a.units)
-      .slice(0, 10);
-
-    
-    // Records: count applied units and attribute to supplier via plan join (fallback to record fields).
-    let appliedUnits = 0;
-    const appliedBySup = new Map();
-    const appliedByPO = new Map();
-
-    for (const r of (Array.isArray(records) ? records : [])) {
-      const qty = num(r.qty ?? r.quantity ?? r.units ?? r.target_qty ?? r.applied_qty ?? 1);
-      const q = qty > 0 ? qty : 1;
-      appliedUnits += q;
-
-      const po = getPO(r);
-      if (po) appliedByPO.set(po, (appliedByPO.get(po) || 0) + q);
-
-      const sup = po ? (poToSup.get(po) || getSupplier(r) || 'Unknown') : (getSupplier(r) || 'Unknown');
-      appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + q);
-    }
-
-    // Build supplier rows including planned-only suppliers.
-    const supplierRows = [];
-    for (const [sup, planned] of plannedBySup.entries()) {
-      const applied = appliedBySup.get(sup) || 0;
-      const pct = planned > 0 ? Math.round((applied / planned) * 100) : 0;
-      supplierRows.push({ supplier: sup, planned, applied, pct, remaining: Math.max(0, planned - applied) });
-    }
-    // Include suppliers that appear only in records (rare) so we don't lose them.
-    for (const [sup, applied] of appliedBySup.entries()) {
-      if (plannedBySup.has(sup)) continue;
-      supplierRows.push({ supplier: sup, planned: 0, applied, pct: 0, remaining: 0 });
-    }
-    supplierRows.sort((a, b) => (b.remaining - a.remaining) || (b.applied - a.applied));
-
-    // Top POs by applied units.
-    const poRows = Array.from(appliedByPO.entries())
-      .map(([po, applied]) => ({ po, applied }))
-      .sort((a, b) => b.applied - a.applied);
-return {
-      due,
-      level,
-      plannedUnits,
-      appliedUnits,
-      plannedPOs,
-      completion,
-      topSup,
-      topPO,
-    ,
-      supplierRows,
-      poRows
-    };
+  // Build PO -> Supplier and planned units by Supplier from plan (records often do not carry supplier).
+  const poToSup = new Map();
+  const plannedBySup = new Map();
+  for (const r of (planRows || [])) {
+    const po = getPO(r);
+    if (!po) continue;
+    const sup = getSupplier(r) || 'Unknown';
+    poToSup.set(po, sup);
+    const u = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
+    plannedBySup.set(sup, (plannedBySup.get(sup) || 0) + u);
   }
+
+  // Normalize records payload to an array.
+  const recs = Array.isArray(records)
+    ? records
+    : (records && Array.isArray(records.records) ? records.records
+      : (records && Array.isArray(records.rows) ? records.rows
+        : (records && Array.isArray(records.data) ? records.data : [])));
+
+  // Records: count applied units and attribute to supplier via plan join (fallback to record fields).
+  let appliedUnits = 0;
+  const appliedBySup = new Map();
+  const appliedByPO = new Map();
+
+  for (const r of recs) {
+    const qty = num(r.qty ?? r.quantity ?? r.units ?? r.target_qty ?? r.applied_qty ?? 1);
+    const q = qty > 0 ? qty : 1;
+    appliedUnits += q;
+
+    const po = getPO(r);
+    if (po) appliedByPO.set(po, (appliedByPO.get(po) || 0) + q);
+
+    const sup = po ? (poToSup.get(po) || getSupplier(r) || 'Unknown') : (getSupplier(r) || 'Unknown');
+    appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + q);
+  }
+
+  const completion = plannedUnits > 0 ? appliedUnits / plannedUnits : 0;
+
+  // Soft status logic: if past due and not mostly complete => red; otherwise compare to due.
+  let level = statusFromDue(due, completion >= 0.98 ? due : null, now).level;
+  const untilDueDays = daysBetween(now, due);
+  if (untilDueDays > 0 && completion < 0.5 && untilDueDays < 2) level = 'yellow';
+  if (untilDueDays <= 0 && completion < 0.9) level = 'red';
+
+  // Supplier rows include planned-only suppliers.
+  const supplierRows = [];
+  for (const [sup, planned] of plannedBySup.entries()) {
+    const applied = appliedBySup.get(sup) || 0;
+    const pct = planned > 0 ? Math.round((applied / planned) * 100) : 0;
+    supplierRows.push({ supplier: sup, planned, applied, pct, remaining: Math.max(0, planned - applied) });
+  }
+  // Include suppliers that appear only in records (rare) so we don't lose them.
+  for (const [sup, applied] of appliedBySup.entries()) {
+    if (plannedBySup.has(sup)) continue;
+    supplierRows.push({ supplier: sup, planned: 0, applied, pct: 0, remaining: 0 });
+  }
+  supplierRows.sort((a, b) => (b.remaining - a.remaining) || (b.applied - a.applied));
+
+  // Top POs by applied units.
+  const poRows = Array.from(appliedByPO.entries())
+    .map(([po, applied]) => ({ po, applied }))
+    .filter(x => x.po && x.po !== 'Unknown')
+    .sort((a, b) => b.applied - a.applied);
+
+  return {
+    due,
+    level,
+    plannedUnits,
+    appliedUnits,
+    plannedPOs,
+    completion,
+    supplierRows,
+    poRows,
+  };
+}
 
   function computeManualNodeStatuses(ws, tz) {
     const now = new Date();
@@ -802,8 +795,9 @@ return {
         vas.level === 'red' ? 'Behind baseline — prioritize top suppliers/POs below.' : null,
       ];
 
-      const supRows = (vas.topSup || []).map(x => [x.supplier, `${Math.round(x.units)}`]);
-      const poRows = (vas.topPO || []).map(x => [x.po, `${Math.round(x.units)}`]);
+      const fmtN = (v) => (Math.round(num(v) || 0)).toLocaleString();
+const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN(x.planned), fmtN(x.applied), `${x.pct}%`]);
+const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)]);
 
       detail.innerHTML = [
         header('VAS Processing', vas.level, subtitle),
@@ -811,11 +805,11 @@ return {
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
-            ${table(['Supplier', 'Applied units'], supRows)}
+            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
           </div>
           <div class="rounded-xl border p-3">
             <div class="text-sm font-semibold text-gray-700">Top POs by applied units</div>
-            ${table(['PO', 'Applied units'], poRows)}
+            ${table(['PO', 'Applied'], poRows)}
           </div>
         </div>`,
       ].join('');
