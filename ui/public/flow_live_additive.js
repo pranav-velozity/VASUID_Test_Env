@@ -485,14 +485,15 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      <!-- Layout is intentionally stacked (top tile + bottom tile). -->
+      <div class="flex flex-col gap-3">
         <!-- Top tile -->
         <div class="rounded-2xl border bg-white shadow-sm p-3">
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
             <div id="flow-day" class="text-xs text-gray-500"></div>
           </div>
-          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2"></div>
+          <div id="flow-nodes" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2"></div>
         </div>
 
         <!-- Bottom tile -->
