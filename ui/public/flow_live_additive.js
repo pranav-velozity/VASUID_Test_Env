@@ -137,13 +137,6 @@
     return { level: 'red', lateDays };
   }
 
-  function statusLabel(level) {
-    if (level === 'green') return 'On Track';
-    if (level === 'yellow') return 'At Risk';
-    if (level === 'red') return 'Delayed';
-    return 'Future';
-  }
-
   function pill(level) {
     if (level === 'green') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     if (level === 'yellow') return 'bg-amber-100 text-amber-800 border-amber-200';
@@ -236,7 +229,7 @@
   function getPlanUnits(planRows) {
     // common fields seen in codebase: planned_qty, qty, units
     return (planRows || []).reduce((acc, r) => {
-      const n = Number(r.target_qty ?? r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0);
+      const n = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0);
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
   }
@@ -246,7 +239,7 @@
     for (const r of planRows || []) {
       const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       const po = String(r.po_number || r.po || '').trim();
-      const units = Number(r.target_qty ?? r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
+      const units = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
       if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
       const o = m.get(sup);
       if (po) o.pos.add(po);
@@ -337,16 +330,21 @@
     const plannedUnits = getPlanUnits(planRows);
     const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim())).length;
 
-    // Build a PO -> supplier index from plan to attribute records correctly (records often don't carry supplier).
-    const poToSupplier = new Map();
+    // Build PO -> supplier + planned units index from plan.
+    const poToSup = new Map();
+    const plannedBySup = new Map();
+    const plannedByPO = new Map();
     for (const r of planRows || []) {
       const po = String(r.po_number || r.po || '').trim();
       if (!po) continue;
       const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
-      if (!poToSupplier.has(po)) poToSupplier.set(po, sup);
+      poToSup.set(po, sup);
+      const u = Number(r.target_qty ?? r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
+      plannedBySup.set(sup, (plannedBySup.get(sup) || 0) + u);
+      plannedByPO.set(po, (plannedByPO.get(po) || 0) + u);
     }
 
-    // Records: treat each record as one applied unit if qty isn't present.
+    // Records: count applied units and attribute to supplier via plan (fallback to record fields).
     let appliedUnits = 0;
     const appliedBySup = new Map();
     const appliedByPO = new Map();
@@ -357,9 +355,9 @@
       appliedUnits += n;
 
       const po = String(r.po_number || r.po || '').trim() || 'Unknown';
-      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor || (po !== 'Unknown' ? poToSupplier.get(po) : ''));
+      const sup = poToSup.get(po) || normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + n);
-      appliedByPO.set(po, (appliedByPO.get(po) || 0) + n);
+      if (po && po !== 'Unknown') appliedByPO.set(po, (appliedByPO.get(po) || 0) + n);
     }
 
     const completion = plannedUnits > 0 ? appliedUnits / plannedUnits : 0;
@@ -371,16 +369,41 @@
     if (untilDueDays > 0 && completion < 0.5 && untilDueDays < 2) level = 'yellow';
     if (untilDueDays <= 0 && completion < 0.9) level = 'red';
 
-    const topSup = Array.from(appliedBySup.entries())
-      .map(([supplier, units]) => ({ supplier, units }))
-      .sort((a, b) => b.units - a.units)
-      .slice(0, 10);
+    // Supplier rollup should include suppliers with planned units even if applied is 0.
+    const suppliers = Array.from(new Set([
+      ...plannedBySup.keys(),
+      ...appliedBySup.keys(),
+    ])).map((supplier) => {
+      const planned = plannedBySup.get(supplier) || 0;
+      const applied = appliedBySup.get(supplier) || 0;
+      const pct = planned > 0 ? applied / planned : 0;
+      return {
+        supplier,
+        planned,
+        applied,
+        pct,
+        remaining: Math.max(0, planned - applied),
+      };
+    });
 
-    const topPO = Array.from(appliedByPO.entries())
-      .map(([po, units]) => ({ po, units }))
-      .filter(x => x.po && x.po !== 'Unknown')
-      .sort((a, b) => b.units - a.units)
-      .slice(0, 10);
+    // Top suppliers (for quick view): sort by remaining work, then planned.
+    const topSup = suppliers
+      .slice()
+      .sort((a, b) => (b.remaining - a.remaining) || (b.planned - a.planned))
+      .slice(0, 12);
+
+    const topPO = Array.from(new Set([
+      ...plannedByPO.keys(),
+      ...appliedByPO.keys(),
+    ])).map((po) => {
+      const planned = plannedByPO.get(po) || 0;
+      const applied = appliedByPO.get(po) || 0;
+      const pct = planned > 0 ? applied / planned : 0;
+      return { po, planned, applied, pct, remaining: Math.max(0, planned - applied) };
+    })
+      .filter(x => x.po)
+      .sort((a, b) => (b.remaining - a.remaining) || (b.planned - a.planned))
+      .slice(0, 12);
 
     return {
       due,
@@ -389,6 +412,7 @@
       appliedUnits,
       plannedPOs,
       completion,
+      suppliers,
       topSup,
       topPO,
     };
@@ -501,15 +525,14 @@
         </div>
       </div>
 
-      <!-- Always stacked: top tile then bottom tile (no side-by-side layout) -->
-      <div class="grid grid-cols-1 gap-3">
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <!-- Top tile -->
         <div class="rounded-2xl border bg-white shadow-sm p-3">
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
             <div id="flow-day" class="text-xs text-gray-500"></div>
           </div>
-          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-2"></div>
+          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2"></div>
         </div>
 
         <!-- Bottom tile -->
@@ -552,7 +575,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${statusLabel(level)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -677,7 +700,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${statusLabel(level)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
           </div>
         </div>
       `;
@@ -710,6 +733,13 @@
         receiving.missingPOs ? `${receiving.missingPOs} POs not yet received` : null,
       ];
 
+      const rows = (sel.sub === 'late' ? receiving.latePOList : sel.sub === 'missing' ? receiving.missingPOList : [])
+        .slice(0, 50)
+        .map(po => {
+          const rec = receivingByPO(awaitingReceivingRowsCache)?.get(po); // placeholder
+          return [po];
+        });
+
       // Build supplier summary table
       const supRows = receiving.suppliers
         .sort((a, b) => (b.receivedPOs / (b.poCount || 1)) - (a.receivedPOs / (a.poCount || 1)))
@@ -736,20 +766,34 @@
         vas.level === 'red' ? 'Behind baseline — prioritize top suppliers/POs below.' : null,
       ];
 
-      const supRows = (vas.topSup || []).map(x => [x.supplier, `${Math.round(x.units)}`]);
-      const poRows = (vas.topPO || []).map(x => [x.po, `${Math.round(x.units)}`]);
+      // Suppliers: show planned + applied so you can see who is still outstanding (even with 0 applied)
+      const supRows = (vas.topSup || []).map(x => {
+        const pct = x.planned > 0 ? Math.round((x.applied / x.planned) * 100) : 0;
+        return [
+          x.supplier,
+          `${Math.round(x.planned)}`,
+          `${Math.round(x.applied)}`,
+          `${pct}%`,
+        ];
+      });
+
+      // POs: show planned + applied (top remaining)
+      const poRows = (vas.topPO || []).map(x => {
+        const pct = x.planned > 0 ? Math.round((x.applied / x.planned) * 100) : 0;
+        return [x.po, `${Math.round(x.planned)}`, `${Math.round(x.applied)}`, `${pct}%`];
+      });
 
       detail.innerHTML = [
         header('VAS Processing', vas.level, subtitle),
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700">Top suppliers by applied units</div>
-            ${table(['Supplier', 'Applied units'], supRows)}
+            <div class="text-sm font-semibold text-gray-700">Top suppliers by remaining work</div>
+            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
           </div>
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700">Top POs by applied units</div>
-            ${table(['PO', 'Applied units'], poRows)}
+            <div class="text-sm font-semibold text-gray-700">Top POs by remaining work</div>
+            ${table(['PO', 'Planned', 'Applied', '%'], poRows)}
           </div>
         </div>`,
       ].join('');
@@ -928,45 +972,36 @@
   }
 
   // ------------------------- Mount / Refresh -------------------------
-  function deriveDefaultWeekStartISO() {
-    // Prefer app helpers if present
-    try {
-      if (typeof window.iso === 'function' && typeof window.mondayOf === 'function') {
-        return window.iso(window.mondayOf(new Date()));
-      }
-    } catch {}
-
-    // Fallback: compute Monday (UTC) of current week
-    const d = new Date();
-    const day = d.getUTCDay(); // 0=Sun..6=Sat
-    const diff = (day === 0 ? -6 : 1) - day; // move to Monday
-    const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0));
-    m.setUTCDate(m.getUTCDate() + diff);
-    return isoDate(m);
-  }
-
   async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
 
-    // WeekStart source of truth: window.state.weekStart (set by index setWeek)
-    let ws = (window.state?.weekStart || '').trim() || ($('#week-start')?.value || '').trim();
-    if (!ws) {
-      ws = deriveDefaultWeekStartISO();
-      // If host app exposes setWeek, use it to hydrate window.state.{weekStart,plan,records,...}
-      try {
-        if (window.state) window.state.weekStart = ws;
-        const picker = $('#week-start');
-        if (picker) picker.value = ws;
-        if (typeof window.setWeek === 'function') {
-          await window.setWeek(ws);
-        }
-      } catch (e) {
-        console.warn('[flow] setWeek fallback failed', e);
-      }
-    }
-    UI.currentWs = ws;
+    // Cold-load safety: weekStart may not be initialized until other pages run.
+    // Derive a sensible default (Monday) and, if possible, hydrate global state via setWeek().
     const tz = getBizTZ();
+    const ws = (function getOrInitWeekStart() {
+      const fromState = window.state?.weekStart;
+      const fromInput = $('#week-start')?.value;
+      if (fromState) return fromState;
+      if (fromInput) return fromInput;
+      // Default to the most recent Monday (UTC-based) in ISO.
+      const now = new Date();
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      const day = d.getUTCDay(); // 0=Sun .. 1=Mon
+      const offset = (day === 0) ? 6 : (day - 1);
+      d.setUTCDate(d.getUTCDate() - offset);
+      const iso = isoDate(d);
+      // Try to set the global week selector/state if available.
+      try {
+        const inp = $('#week-start');
+        if (inp) inp.value = iso;
+        if (typeof window.setWeek === 'function') window.setWeek(iso);
+        if (window.state) window.state.weekStart = iso;
+      } catch {}
+      return iso;
+    })();
+    if (!ws) return;
+    UI.currentWs = ws;
 
     setSubheader(ws);
     setDayProgress(ws, tz);
@@ -1046,19 +1081,10 @@
   ensureFlowPageExists();
   showHideByHash();
 
-  // If the app loads directly into #flow, state:ready may have already fired (or weekStart may not
-  // be set until another page mounts). Attempt an initial render once the DOM is ready.
-  const initialTry = () => {
-    ensureFlowPageExists();
-    showHideByHash();
-    const hash = (location.hash || '').toLowerCase();
-    const show = hash === '#flow' || hash.startsWith('#flow');
-    if (show) refresh();
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialTry, { once: true });
-  } else {
-    // already ready
-    setTimeout(initialTry, 0);
+  // Cold-load: if user lands directly on #flow, render immediately.
+  const initialHash = (location.hash || '').toLowerCase();
+  if (initialHash === '#flow' || initialHash.startsWith('#flow')) {
+    // Defer one tick so other scripts can attach week selector/state.
+    setTimeout(() => refresh(), 0);
   }
 })();
