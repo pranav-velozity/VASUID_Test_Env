@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v1)
+/* flow_live_additive.js (v7)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -39,14 +39,34 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  function trimBase(base) { return String(base || '').replace(/\/+$/,''); }
-
   function getApiBase() {
-    // Match Exec/Receiving conventions. Some deployments set API_BASE and/or include a trailing /api.
-    const fromWin = trimBase(window.API_BASE || window.apiBase || '');
-    if (fromWin) return fromWin;
     const m = document.querySelector('meta[name="api-base"]');
-    return trimBase(m?.content || '');
+    return (m?.content || '').replace(/\/$/, '');
+  }
+
+  // Render/Receiving/Exec modules sometimes run with API base including or excluding /api.
+  // Try a small set of candidates so Flow works on cold-load across environments.
+  function apiBaseCandidates() {
+    const raw = (getApiBase() || '').replace(/\/$/, '');
+    const cands = [];
+
+    // If meta is missing, try same-origin (no base) and /api.
+    if (!raw) {
+      cands.push('');
+      cands.push('/api');
+      return cands;
+    }
+
+    cands.push(raw);
+    // If base ends with /api, try without; otherwise try with.
+    if (/\/api$/i.test(raw)) {
+      cands.push(raw.replace(/\/api$/i, ''));
+    } else {
+      cands.push(`${raw}/api`);
+    }
+    // Also try same-origin /api in case meta points to the frontend origin.
+    cands.push('/api');
+    return Array.from(new Set(cands.map(s => s.replace(/\/$/, ''))));
   }
   function getBizTZ() {
     const m = document.querySelector('meta[name="business-tz"]');
@@ -156,49 +176,40 @@
     return 'bg-gray-400';
   }
 
-  async function tryFetchJson(urls, opts) {
-    const list = Array.isArray(urls) ? urls : [urls];
+  function statusLabel(level) {
+    if (level === 'green') return 'On Track';
+    if (level === 'yellow') return 'At Risk';
+    if (level === 'red') return 'Delayed';
+    return 'Future';
+  }
+
+  function normalizeJsonPayload(payload) {
+    // Many endpoints return arrays directly; some wrap as {rows}/{records}/{data}.
+    if (Array.isArray(payload)) return payload;
+    if (payload && typeof payload === 'object') {
+      if (Array.isArray(payload.rows)) return payload.rows;
+      if (Array.isArray(payload.records)) return payload.records;
+      if (Array.isArray(payload.data)) return payload.data;
+    }
+    return payload;
+  }
+
+  async function api(path, opts) {
+    const bases = apiBaseCandidates();
     let lastErr = null;
-    for (const url of list) {
+    for (const base of bases) {
+      const url = `${base}${path}`;
       try {
         const res = await fetch(url, opts);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const ct = res.headers.get('content-type') || '';
-        if (!ct.includes('application/json')) {
-          // Some failures return HTML with 200; treat as error.
-          const txt = await res.text();
-          try { return JSON.parse(txt); } catch { throw new Error('Non-JSON response'); }
-        }
-        return await res.json();
+        if (ct.includes('application/json')) return normalizeJsonPayload(await res.json());
+        return await res.text();
       } catch (e) {
         lastErr = e;
       }
     }
-    if (lastErr) throw lastErr;
-    throw new Error('Fetch failed');
-  }
-
-  function toArrayPayload(payload) {
-    // Some endpoints may return {rows:[...]} or {data:[...]} etc.
-    if (Array.isArray(payload)) return payload;
-    if (payload && Array.isArray(payload.rows)) return payload.rows;
-    if (payload && Array.isArray(payload.data)) return payload.data;
-    if (payload && Array.isArray(payload.records)) return payload.records;
-    if (payload && Array.isArray(payload.items)) return payload.items;
-    return [];
-  }
-
-  async function apiCandidates(path) {
-    const base = getApiBase();
-    const b = trimBase(base);
-    const noApi = b.replace(/\/api$/,'');
-    const withApi = b.endsWith('/api') ? b : `${b}/api`;
-    // Try: base as-is, base without /api, base with /api
-    return [
-      `${b}${path}`,
-      `${noApi}${path}`,
-      `${withApi}${path}`,
-    ];
+    throw lastErr || new Error('API request failed');
   }
 
   function uniq(arr) {
@@ -230,28 +241,16 @@
     // Prefer window.state.plan if it matches current ws
     const s = window.state || {};
     if (s.weekStart === ws && Array.isArray(s.plan) && s.plan.length) return s.plan;
-    // Fallback to backend endpoints used elsewhere (match Exec fallbacks)
-    try {
-      const p1 = await tryFetchJson(await apiCandidates(`/plan?weekStart=${encodeURIComponent(ws)}`));
-      return toArrayPayload(p1);
-    } catch {}
-    try {
-      const p2 = await tryFetchJson(await apiCandidates(`/plan/weeks/${encodeURIComponent(ws)}`));
-      return toArrayPayload(p2);
-    } catch {}
+    // Fallback to backend endpoints used elsewhere
+    try { return await api(`/plan?weekStart=${encodeURIComponent(ws)}`); } catch {}
+    try { return await api(`/plan/weeks/${encodeURIComponent(ws)}`); } catch {}
     return [];
   }
 
   async function loadReceiving(ws) {
     // Receiving module uses /receiving?weekStart=... and /receiving/weeks/:ws for saves.
-    try {
-      const r1 = await tryFetchJson(await apiCandidates(`/receiving?weekStart=${encodeURIComponent(ws)}`));
-      return toArrayPayload(r1);
-    } catch {}
-    try {
-      const r2 = await tryFetchJson(await apiCandidates(`/receiving/weeks/${encodeURIComponent(ws)}`));
-      return toArrayPayload(r2);
-    } catch {}
+    try { return await api(`/receiving?weekStart=${encodeURIComponent(ws)}`); } catch {}
+    try { return await api(`/receiving/weeks/${encodeURIComponent(ws)}`); } catch {}
     return [];
   }
 
@@ -266,20 +265,10 @@
     const from = `${ws}T00:00:00.000Z`;
     const to = `${isoDate(weD)}T23:59:59.999Z`;
 
-    // Use the endpoint that Exec uses (from=YYYY-MM-DD&to=YYYY-MM-DD). Some stacks accept ISO strings too.
-    const wsISO = ws;
-    const weISO = isoDate(weD);
-
-    // Prefer complete for performance, but fall back.
-    const urls1 = await apiCandidates(`/records?from=${encodeURIComponent(wsISO)}&to=${encodeURIComponent(weISO)}&status=complete`);
-    const urls2 = await apiCandidates(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete`);
-    const urls3 = await apiCandidates(`/records?from=${encodeURIComponent(wsISO)}&to=${encodeURIComponent(weISO)}`);
-    const urls4 = await apiCandidates(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-
-    try { return toArrayPayload(await tryFetchJson(urls1)); } catch {}
-    try { return toArrayPayload(await tryFetchJson(urls2)); } catch {}
-    try { return toArrayPayload(await tryFetchJson(urls3)); } catch {}
-    try { return toArrayPayload(await tryFetchJson(urls4)); } catch {}
+    // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
+    // Prefer complete for performance, but fall back to all if API supports.
+    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete`); } catch {}
+    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); } catch {}
     return [];
   }
 
@@ -392,21 +381,7 @@
     const plannedUnits = getPlanUnits(planRows);
     const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim())).length;
 
-    // Build PO -> supplier + planned units index from plan.
-    const poToSup = new Map();
-    const plannedBySup = new Map();
-    const plannedByPO = new Map();
-    for (const r of planRows || []) {
-      const po = String(r.po_number || r.po || '').trim();
-      if (!po) continue;
-      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
-      poToSup.set(po, sup);
-      const u = Number(r.target_qty ?? r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
-      plannedBySup.set(sup, (plannedBySup.get(sup) || 0) + u);
-      plannedByPO.set(po, (plannedByPO.get(po) || 0) + u);
-    }
-
-    // Records: count applied units and attribute to supplier via plan (fallback to record fields).
+    // Records: treat each record as one applied unit if it has a UID; otherwise count qty if present.
     let appliedUnits = 0;
     const appliedBySup = new Map();
     const appliedByPO = new Map();
@@ -416,10 +391,10 @@
       const n = Number.isFinite(qty) && qty > 0 ? qty : 1;
       appliedUnits += n;
 
+      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       const po = String(r.po_number || r.po || '').trim() || 'Unknown';
-      const sup = poToSup.get(po) || normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + n);
-      if (po && po !== 'Unknown') appliedByPO.set(po, (appliedByPO.get(po) || 0) + n);
+      appliedByPO.set(po, (appliedByPO.get(po) || 0) + n);
     }
 
     const completion = plannedUnits > 0 ? appliedUnits / plannedUnits : 0;
@@ -431,41 +406,16 @@
     if (untilDueDays > 0 && completion < 0.5 && untilDueDays < 2) level = 'yellow';
     if (untilDueDays <= 0 && completion < 0.9) level = 'red';
 
-    // Supplier rollup should include suppliers with planned units even if applied is 0.
-    const suppliers = Array.from(new Set([
-      ...plannedBySup.keys(),
-      ...appliedBySup.keys(),
-    ])).map((supplier) => {
-      const planned = plannedBySup.get(supplier) || 0;
-      const applied = appliedBySup.get(supplier) || 0;
-      const pct = planned > 0 ? applied / planned : 0;
-      return {
-        supplier,
-        planned,
-        applied,
-        pct,
-        remaining: Math.max(0, planned - applied),
-      };
-    });
+    const topSup = Array.from(appliedBySup.entries())
+      .map(([supplier, units]) => ({ supplier, units }))
+      .sort((a, b) => b.units - a.units)
+      .slice(0, 10);
 
-    // Top suppliers (for quick view): sort by remaining work, then planned.
-    const topSup = suppliers
-      .slice()
-      .sort((a, b) => (b.remaining - a.remaining) || (b.planned - a.planned))
-      .slice(0, 12);
-
-    const topPO = Array.from(new Set([
-      ...plannedByPO.keys(),
-      ...appliedByPO.keys(),
-    ])).map((po) => {
-      const planned = plannedByPO.get(po) || 0;
-      const applied = appliedByPO.get(po) || 0;
-      const pct = planned > 0 ? applied / planned : 0;
-      return { po, planned, applied, pct, remaining: Math.max(0, planned - applied) };
-    })
-      .filter(x => x.po)
-      .sort((a, b) => (b.remaining - a.remaining) || (b.planned - a.planned))
-      .slice(0, 12);
+    const topPO = Array.from(appliedByPO.entries())
+      .map(([po, units]) => ({ po, units }))
+      .filter(x => x.po && x.po !== 'Unknown')
+      .sort((a, b) => b.units - a.units)
+      .slice(0, 10);
 
     return {
       due,
@@ -474,7 +424,6 @@
       appliedUnits,
       plannedPOs,
       completion,
-      suppliers,
       topSup,
       topPO,
     };
@@ -637,7 +586,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${level.toUpperCase()}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -762,7 +711,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${level.toUpperCase()}</span>
           </div>
         </div>
       `;
@@ -828,34 +777,20 @@
         vas.level === 'red' ? 'Behind baseline — prioritize top suppliers/POs below.' : null,
       ];
 
-      // Suppliers: show planned + applied so you can see who is still outstanding (even with 0 applied)
-      const supRows = (vas.topSup || []).map(x => {
-        const pct = x.planned > 0 ? Math.round((x.applied / x.planned) * 100) : 0;
-        return [
-          x.supplier,
-          `${Math.round(x.planned)}`,
-          `${Math.round(x.applied)}`,
-          `${pct}%`,
-        ];
-      });
-
-      // POs: show planned + applied (top remaining)
-      const poRows = (vas.topPO || []).map(x => {
-        const pct = x.planned > 0 ? Math.round((x.applied / x.planned) * 100) : 0;
-        return [x.po, `${Math.round(x.planned)}`, `${Math.round(x.applied)}`, `${pct}%`];
-      });
+      const supRows = (vas.topSup || []).map(x => [x.supplier, `${Math.round(x.units)}`]);
+      const poRows = (vas.topPO || []).map(x => [x.po, `${Math.round(x.units)}`]);
 
       detail.innerHTML = [
         header('VAS Processing', vas.level, subtitle),
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700">Top suppliers by remaining work</div>
-            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
+            <div class="text-sm font-semibold text-gray-700">Top suppliers by applied units</div>
+            ${table(['Supplier', 'Applied units'], supRows)}
           </div>
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700">Top POs by remaining work</div>
-            ${table(['PO', 'Planned', 'Applied', '%'], poRows)}
+            <div class="text-sm font-semibold text-gray-700">Top POs by applied units</div>
+            ${table(['PO', 'Applied units'], poRows)}
           </div>
         </div>`,
       ].join('');
@@ -1038,32 +973,10 @@
     const page = ensureFlowPageExists();
     injectSkeleton(page);
 
-    // Cold-load safety: weekStart may not be initialized until other pages run.
-    // Derive a sensible default (Monday) and, if possible, hydrate global state via setWeek().
-    const tz = getBizTZ();
-    const ws = (function getOrInitWeekStart() {
-      const fromState = window.state?.weekStart;
-      const fromInput = $('#week-start')?.value;
-      if (fromState) return fromState;
-      if (fromInput) return fromInput;
-      // Default to the most recent Monday (UTC-based) in ISO.
-      const now = new Date();
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      const day = d.getUTCDay(); // 0=Sun .. 1=Mon
-      const offset = (day === 0) ? 6 : (day - 1);
-      d.setUTCDate(d.getUTCDate() - offset);
-      const iso = isoDate(d);
-      // Try to set the global week selector/state if available.
-      try {
-        const inp = $('#week-start');
-        if (inp) inp.value = iso;
-        if (typeof window.setWeek === 'function') window.setWeek(iso);
-        if (window.state) window.state.weekStart = iso;
-      } catch {}
-      return iso;
-    })();
+    const ws = window.state?.weekStart || $('#week-start')?.value;
     if (!ws) return;
     UI.currentWs = ws;
+    const tz = getBizTZ();
 
     setSubheader(ws);
     setDayProgress(ws, tz);
@@ -1142,11 +1055,4 @@
   // Make sure the section/nav exist even before first state:ready.
   ensureFlowPageExists();
   showHideByHash();
-
-  // Cold-load: if user lands directly on #flow, render immediately.
-  const initialHash = (location.hash || '').toLowerCase();
-  if (initialHash === '#flow' || initialHash.startsWith('#flow')) {
-    // Defer one tick so other scripts can attach week selector/state.
-    setTimeout(() => refresh(), 0);
-  }
 })();
