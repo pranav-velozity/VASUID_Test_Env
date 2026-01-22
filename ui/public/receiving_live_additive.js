@@ -1,4 +1,4 @@
-/* receiving_live_additive.js (v21) - Receiving page (editable, week nav, summary, ticker scaffold)
+/* receiving_live_additive.js (v22) - Receiving page (editable, week nav, summary, ticker scaffold)
    - Loaded via <script src="/receiving_live_additive.js" defer></script> from index.html
    - Binds to global week selector (#week-start / window.state.weekStart)
    - Loads plan + receiving rows for selected week
@@ -57,65 +57,49 @@
     }).format(d);
   }
 
-  // Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
-  function addTicker() {}
+async function fetchCompletedRecordsForWeek(ws) {
+  try {
+    const d0 = new Date(ws);
+    const d1 = new Date(ws);
+    d1.setDate(d1.getDate() + 6);
 
-  // -------------------- Carton Out (Mobile Bin count) --------------------
-  // Goal: Carton Out must work on cold load AND not depend on visiting Ops first.
-  // Source of truth: completed records for the selected week.
+    const start = d0.toISOString().slice(0, 10);
+    const end   = d1.toISOString().slice(0, 10);
 
-  function weekEndISO(ws) {
-    const d = new Date(ws);
-    if (Number.isNaN(d.getTime())) return ws;
-    d.setDate(d.getDate() + 6);
-    return d.toISOString().slice(0, 10);
+    const rows = await api(`/records?status=complete&start=${start}&end=${end}`);
+    return Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    console.warn('[receiving] failed to load records for carton out', e);
+    return [];
+  }
+}
+
+
+// Ticker removed (replaced by Exceptions panel). Keep no-op for legacy calls.
+function addTicker() {}
+  // Build a per-PO "Carton Out" map from Ops records (mobile bins used in the week).
+  // Definition: number of UNIQUE mobile bins (cartons) for each PO in the selected week.
+function computeCartonsOutByPOFromRecords(records) {
+  const map = new Map();
+
+  for (const r of records || []) {
+    const po = r.po_number || r.po || r.PO;
+    if (!po) continue;
+
+    const bin = r.mobile_bin || r.bin || r.mobileBin;
+    if (!bin) continue;
+
+    if (!map.has(po)) map.set(po, new Set());
+    map.get(po).add(bin);
   }
 
-  async function fetchCompletedRecordsForWeek(ws) {
-    // Match index.html contract: /records?from=<ws>&to=<we>&status=complete&limit=50000
-    // Response can be an array OR { records: [...] } depending on backend version.
-    try {
-      const we = weekEndISO(ws);
-      const d = await api(`/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete&limit=50000`);
-      return Array.isArray(d) ? d : (d?.records || []);
-    } catch (e) {
-      console.warn('[receiving] failed to load records for carton out', e);
-      return [];
-    }
+  // convert Set sizes to numbers
+  const out = new Map();
+  for (const [po, set] of map.entries()) {
+    out.set(po, set.size);
   }
-
-  function computeCartonsOutByPOFromRecords(records) {
-    // Definition: number of UNIQUE mobile bins for each PO in the selected week.
-    const sets = new Map(); // po -> Set(mobile_bin)
-    for (const r of records || []) {
-      if (!r) continue;
-      // Records are usually already status=complete, but be safe.
-      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
-      const po = String(r.po_number || r.po || r.PO || '').trim();
-      if (!po) continue;
-      const mb = String(r.mobile_bin || r.bin || r.mobileBin || '').trim();
-      if (!mb) continue;
-      if (!sets.has(po)) sets.set(po, new Set());
-      sets.get(po).add(mb);
-    }
-    const byPO = new Map();
-    for (const [po, set] of sets.entries()) byPO.set(po, set.size);
-    return byPO;
-  }
-
-  function computeCartonsOutByPOFromState(ws) {
-    // Fast-path if Ops already populated window.state.records.
-    try {
-      const s = window.state || {};
-      const recs = (s.weekStart === ws && Array.isArray(s.records)) ? s.records : [];
-      if (!recs.length) return new Map();
-      return computeCartonsOutByPOFromRecords(recs);
-    } catch (e) {
-      console.warn('[receiving] computeCartonsOutByPOFromState failed', e);
-      return new Map();
-    }
-  }
-
+  return out;
+}
 
 
   function toDateTimeLocalValue(isoUtc) {
@@ -566,6 +550,9 @@
               <span class="text-gray-500">Cartons In:</span>
               <span class="font-semibold tabular-nums" id="recv-sum-cartons">0</span>
               <span class="text-gray-300 px-2">|</span>
+              <span class="text-gray-500">Cartons Out:</span>
+              <span class="font-semibold tabular-nums" id="recv-sum-cartonsout" style="color:#990033">0</span>
+              <span class="text-gray-300 px-2">|</span>
               <span class="text-gray-500">Damaged:</span>
               <span class="font-semibold tabular-nums" id="recv-sum-damaged">0</span>
               <span class="text-gray-300 px-2">|</span>
@@ -718,6 +705,7 @@ function computeSummaryAll(planRows, receivingRows) {
 
   let received = 0;
   let cartons = 0;
+  let cartonsOut = 0;
   let damaged = 0;
   let noncompliant = 0;
   let replaced = 0;
@@ -725,6 +713,7 @@ function computeSummaryAll(planRows, receivingRows) {
 
   for (const po of plannedMap.keys()) {
     const r = receivingByPO.get(po);
+    cartonsOut += Number(M.cartonsOutByPO?.get(po) ?? 0) || 0;
     if (r && r.received_at_utc) {
       received += 1;
       cartons += Number(r.cartons_received || 0) || 0;
@@ -743,7 +732,7 @@ function computeSummaryAll(planRows, receivingRows) {
     ? Math.max(0, expected - ontime)
     : Math.max(0, received - ontime);
 
-  return { expected, received, cartons, damaged, noncompliant, replaced, ontime, delayed, cutoffUtc };
+  return { expected, received, cartons, cartonsOut, damaged, noncompliant, replaced, ontime, delayed, cutoffUtc };
 }
 
 
@@ -755,6 +744,7 @@ function computeSummaryAll(planRows, receivingRows) {
     set('recv-sum-expected', sum.expected);
     set('recv-sum-received', sum.received);
     set('recv-sum-cartons', sum.cartons);
+    set('recv-sum-cartonsout', sum.cartonsOut ?? 0);
     set('recv-sum-damaged', sum.damaged ?? 0);
     set('recv-sum-nonc', sum.noncompliant ?? 0);
     set('recv-sum-replaced', sum.replaced ?? 0);
@@ -1108,12 +1098,11 @@ function computeSummaryAll(planRows, receivingRows) {
     const planRows = Array.isArray(plan) ? plan : (plan?.data || []);
     M.planRows = planRows;
     M.receivingRows = Array.isArray(receiving) ? receiving : [];
-    // Carton Out: self-contained (works on cold load). Prefer API fetch; fall back to state if needed.
-    const stateMap = computeCartonsOutByPOFromState(ws);
-    M.completedRecords = await fetchCompletedRecordsForWeek(ws);
-    const fetchedMap = computeCartonsOutByPOFromRecords(M.completedRecords);
-    M.cartonsOutByPO = (fetchedMap && fetchedMap.size) ? fetchedMap : stateMap;
     M.suppliers = buildSuppliers(planRows, M.receivingRows);
+
+    // Load completed records for Carton Out (self-contained)
+    M.completedRecords = await fetchCompletedRecordsForWeek(ws);
+    M.cartonsOutByPO = computeCartonsOutByPOFromRecords(M.completedRecords);
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
     const sel = document.getElementById('recv-supplier');
@@ -1314,6 +1303,75 @@ if (checkAll) {
 	    }
 	    const suppliers = Array.from(bySupplier.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
 	    const cutoffLocal = fmtLocalFromUtc(businessCutoffUtcISO(ws));
+	    const generatedAtLocal = new Date().toLocaleString();
+
+	    // Exception summary (first page)
+	    const { items } = computeSupplierStats(M.planRows, M.receivingRows, ws);
+
+	    const top = (arr, keyFn, n = 8) => arr
+	      .slice()
+	      .sort((a, b) => (keyFn(b) - keyFn(a)) || String(a.supplier).localeCompare(String(b.supplier)))
+	      .filter(x => keyFn(x) > 0)
+	      .slice(0, n);
+
+	    const mostDelayed = top(items, x => Number(x.delayed) || 0);
+	    const mostNonc = top(items, x => Number(x.noncompliant) || 0);
+	    const mostDamaged = top(items, x => Number(x.damaged) || 0);
+	    const mostReplaced = top(items, x => Number(x.replaced) || 0);
+
+	    const excList = (rows, fmtRight) => rows.length
+	      ? rows.map(r => `
+	          <tr>
+	            <td>${esc(r.supplier)}</td>
+	            <td class="right">${fmtRight(r)}</td>
+	          </tr>
+	        `).join('')
+	      : `<tr><td colspan="2" class="muted">None</td></tr>`;
+
+	    const exceptionPage = `
+	      <div class="page">
+	        <h2>Exceptions Snapshot</h2>
+	        <div class="meta">
+	          Generated: ${esc(generatedAtLocal)}<br/>
+	          Week: ${esc(ws)} • Business cutoff (local): ${esc(cutoffLocal || '')}
+	        </div>
+
+	        <div class="grid">
+	          <div class="card">
+	            <div class="cardTitle">Most delayed POs</div>
+	            <table class="mini">
+	              <thead><tr><th>Supplier</th><th class="right">Delayed / Expected</th></tr></thead>
+	              <tbody>${excList(mostDelayed, r => `${r.delayed} / ${r.expected}`)}</tbody>
+	            </table>
+	          </div>
+
+	          <div class="card">
+	            <div class="cardTitle">Most non-compliant cartons</div>
+	            <table class="mini">
+	              <thead><tr><th>Supplier</th><th class="right">Non-comp</th></tr></thead>
+	              <tbody>${excList(mostNonc, r => String(r.noncompliant))}</tbody>
+	            </table>
+	          </div>
+
+	          <div class="card">
+	            <div class="cardTitle">Most damaged cartons</div>
+	            <table class="mini">
+	              <thead><tr><th>Supplier</th><th class="right">Damaged</th></tr></thead>
+	              <tbody>${excList(mostDamaged, r => String(r.damaged))}</tbody>
+	            </table>
+	          </div>
+
+	          <div class="card">
+	            <div class="cardTitle">Most replaced cartons</div>
+	            <table class="mini">
+	              <thead><tr><th>Supplier</th><th class="right">Replaced</th></tr></thead>
+	              <tbody>${excList(mostReplaced, r => String(r.replaced))}</tbody>
+	            </table>
+	          </div>
+	        </div>
+	      </div>
+	    `;
+
 
 	    const css = `
 	      <style>
@@ -1330,7 +1388,17 @@ if (checkAll) {
 	        th{background:#f9fafb;color:#374151;}
 	        .right{text-align:right;font-variant-numeric:tabular-nums;}
 	        .delayed{color:#b91c1c;font-weight:600;}
-	      </style>
+	      
+        h2{font-size:16px;margin:0 0 8px;}
+        .page{page-break-after:always;}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+        .card{border:1px solid #e5e7eb;border-radius:16px;padding:10px;background:#fff;}
+        .cardTitle{font-size:12px;font-weight:700;margin-bottom:6px;color:#111827;}
+        table.mini{width:100%;border-collapse:collapse;font-size:12px;}
+        table.mini th, table.mini td{border:1px solid #e5e7eb;padding:6px 8px;}
+        table.mini th{background:#f9fafb;color:#374151;}
+        .muted{color:#9ca3af;font-size:12px;}
+</style>
 	    `;
 
 	    const pages = suppliers.map(supplier => {
@@ -1394,7 +1462,7 @@ if (checkAll) {
 	      <body>
 	        <h1>Receiving — Supplier Summary</h1>
 	        <div class="meta">Week: ${esc(ws)} • Business cutoff (local): ${esc(cutoffLocal || '')}</div>
-	        ${pages}
+	        ${exceptionPage}${pages}
 	        <script>window.print();</script>
 	      </body></html>
 	    `;
@@ -1493,22 +1561,14 @@ function dtLocalNow() {
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-  // When Ops refreshes window.state (week switch), keep Carton Out in sync.
-  // Prefer API fetch (authoritative), fall back to state if fetch returns nothing.
+  // When Ops refreshes window.state (week switch), recompute Carton Out and re-render if needed.
   window.addEventListener('state:ready', () => {
     const ws = getWeekStart();
     if (!ws) return;
     if (ws !== M.ws) return;
-    (async () => {
-      const stateMap = computeCartonsOutByPOFromState(ws);
-      const recs = await fetchCompletedRecordsForWeek(ws);
-      const fetchedMap = computeCartonsOutByPOFromRecords(recs);
-      M.completedRecords = recs;
-      M.cartonsOutByPO = (fetchedMap && fetchedMap.size) ? fetchedMap : stateMap;
-      try { renderCurrentSupplierView(); } catch {}
-    })().catch(() => {
-      // ignore
-    });
+    M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
+    // lightweight refresh (no API calls)
+    try { renderCurrentSupplierView(); } catch {}
   });
 
   window.addEventListener('hashchange', () => {
