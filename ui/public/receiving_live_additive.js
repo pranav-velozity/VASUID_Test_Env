@@ -1,4 +1,4 @@
-/* receiving_live_additive.js (v22) - Receiving page (editable, week nav, summary, ticker scaffold)
+/* receiving_live_additive.js (v23) - Receiving page (editable, week nav, summary, ticker scaffold)
    - Loaded via <script src="/receiving_live_additive.js" defer></script> from index.html
    - Binds to global week selector (#week-start / window.state.weekStart)
    - Loads plan + receiving rows for selected week
@@ -57,17 +57,21 @@
     }).format(d);
   }
 
+
+  function weekEndISO(ws) {
+    const d = new Date(ws);
+    if (Number.isNaN(d.getTime())) return ws;
+    d.setDate(d.getDate() + 6);
+    return d.toISOString().slice(0, 10);
+  }
+
 async function fetchCompletedRecordsForWeek(ws) {
+  // Match index.html contract: /records?from=<ws>&to=<we>&status=complete&limit=50000
+  // Response can be an array OR { records: [...] } depending on backend version.
   try {
-    const d0 = new Date(ws);
-    const d1 = new Date(ws);
-    d1.setDate(d1.getDate() + 6);
-
-    const start = d0.toISOString().slice(0, 10);
-    const end   = d1.toISOString().slice(0, 10);
-
-    const rows = await api(`/records?status=complete&start=${start}&end=${end}`);
-    return Array.isArray(rows) ? rows : [];
+    const we = weekEndISO(ws);
+    const d = await api(`/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete&limit=50000`);
+    return Array.isArray(d) ? d : (d?.records || []);
   } catch (e) {
     console.warn('[receiving] failed to load records for carton out', e);
     return [];
@@ -80,26 +84,24 @@ function addTicker() {}
   // Build a per-PO "Carton Out" map from Ops records (mobile bins used in the week).
   // Definition: number of UNIQUE mobile bins (cartons) for each PO in the selected week.
 function computeCartonsOutByPOFromRecords(records) {
-  const map = new Map();
-
+  // Definition: number of UNIQUE mobile bins for each PO in the selected week.
+  const sets = new Map(); // po -> Set(mobile_bin)
   for (const r of records || []) {
-    const po = r.po_number || r.po || r.PO;
+    if (!r) continue;
+    // Records are usually already status=complete, but be safe.
+    if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
+    const po = String(r.po_number || r.po || r.PO || '').trim();
     if (!po) continue;
-
-    const bin = r.mobile_bin || r.bin || r.mobileBin;
-    if (!bin) continue;
-
-    if (!map.has(po)) map.set(po, new Set());
-    map.get(po).add(bin);
+    const mb = String(r.mobile_bin || r.bin || r.mobileBin || '').trim();
+    if (!mb) continue;
+    if (!sets.has(po)) sets.set(po, new Set());
+    sets.get(po).add(mb);
   }
-
-  // convert Set sizes to numbers
-  const out = new Map();
-  for (const [po, set] of map.entries()) {
-    out.set(po, set.size);
-  }
-  return out;
+  const byPO = new Map();
+  for (const [po, set] of sets.entries()) byPO.set(po, set.size);
+  return byPO;
 }
+
 
 
   function toDateTimeLocalValue(isoUtc) {
