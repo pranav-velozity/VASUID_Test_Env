@@ -123,6 +123,12 @@
      class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
     Operations
   </a>
+
+<a href="#receiving" id="nav-receiving"
+   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+  Receiving
+</a>
+        
   <a href="#intake" id="nav-intake"
      class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
     Intake
@@ -491,10 +497,8 @@ style="border-color:#990033;">
   </div>
 </section>
 
-    <!-- ================= Flow ================= -->
-    <section id="page-flow" class="hidden">
-      <!-- populated by flow_live_additive.js -->
-    </section>
+<!-- ================= Flow ================= -->
+<section id="page-flow" class="hidden"></section>
   </main>
 
   <!-- Footer health pill (shows Applied this week) -->
@@ -2750,52 +2754,60 @@ function syncNav() {
   const dash   = document.getElementById('nav-dash');
   const intake = document.getElementById('nav-intake');
   const exec   = document.getElementById('nav-exec');
+  const recv   = document.getElementById('nav-receiving');
   const flow   = document.getElementById('nav-flow');
-  if (!dash || !intake || !exec || !flow) return;
+  if (!dash || !intake || !exec || !recv || !flow) return;
 
-  [dash, intake, exec, flow].forEach(el => {
+  [dash, intake, exec, recv, flow].forEach(el => {
     el.classList.remove('active');
     el.removeAttribute('aria-current');
   });
 
-  if (hash === '#intake') {
-    intake.classList.add('active');
-    intake.setAttribute('aria-current', 'page');
-  } else if (hash === '#exec') {
-    exec.classList.add('active');
-    exec.setAttribute('aria-current', 'page');
-  } else if (hash === '#flow') {
-    flow.classList.add('active');
-    flow.setAttribute('aria-current', 'page');
-  } else {
-    dash.classList.add('active');
-    dash.setAttribute('aria-current', 'page');
-  }
+if (hash === '#receiving') {
+  recv.classList.add('active');
+  recv.setAttribute('aria-current', 'page');
+} else if (hash === '#intake') {
+  intake.classList.add('active');
+  intake.setAttribute('aria-current', 'page');
+} else if (hash === '#exec') {
+  exec.classList.add('active');
+  exec.setAttribute('aria-current', 'page');
+} else if (hash === '#flow') {
+  flow.classList.add('active');
+  flow.setAttribute('aria-current', 'page');
+} else {
+  dash.classList.add('active');
+  dash.setAttribute('aria-current', 'page');
+}
 }
 
   function show(hash){
   document.getElementById('page-dashboard')?.classList.add('hidden');
   document.getElementById('page-intake')?.classList.add('hidden');
   document.getElementById('page-exec')?.classList.add('hidden');
+  document.getElementById('page-receiving')?.classList.add('hidden');
   document.getElementById('page-flow')?.classList.add('hidden');
 
-  if (hash === '#intake') {
-    document.getElementById('page-intake')?.classList.remove('hidden');
-  } else if (hash === '#exec') {
-    document.getElementById('page-exec')?.classList.remove('hidden');
-    try {
-      const ws = state.weekStart;
-      const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-      const we = iso(weD);
-      const sub = document.getElementById('exec-sub');
-      if (sub) sub.textContent = `${ws} – ${we}`;
-    } catch {}
-  } else if (hash === '#flow') {
-    document.getElementById('page-flow')?.classList.remove('hidden');
-  } else {
-    document.getElementById('page-dashboard')?.classList.remove('hidden');
-  }
-  syncNav();
+
+if (hash === '#receiving') {
+  document.getElementById('page-receiving')?.classList.remove('hidden');
+} else if (hash === '#intake') {
+  document.getElementById('page-intake')?.classList.remove('hidden');
+} else if (hash === '#exec') {
+  document.getElementById('page-exec')?.classList.remove('hidden');
+  try {
+    const ws = state.weekStart;
+    const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+    const we = iso(weD);
+    const sub = document.getElementById('exec-sub');
+    if (sub) sub.textContent = `${ws} – ${we}`;
+  } catch {}
+} else if (hash === '#flow') {
+  document.getElementById('page-flow')?.classList.remove('hidden');
+} else {
+  document.getElementById('page-dashboard')?.classList.remove('hidden');
+}
+syncNav();
 }
 
   window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
@@ -2862,10 +2874,12 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=7" defer></script>
-<script src="/flow_live_additive.js?v=1" defer></script>
+  <script src="/flow_live_additive.js?v=1" defer></script>
 
 </body>
 </html>
+
+
 
 
 
