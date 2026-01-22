@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v7)
+/* flow_live_additive.js (v8)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -42,31 +42,6 @@
   function getApiBase() {
     const m = document.querySelector('meta[name="api-base"]');
     return (m?.content || '').replace(/\/$/, '');
-  }
-
-  // Render/Receiving/Exec modules sometimes run with API base including or excluding /api.
-  // Try a small set of candidates so Flow works on cold-load across environments.
-  function apiBaseCandidates() {
-    const raw = (getApiBase() || '').replace(/\/$/, '');
-    const cands = [];
-
-    // If meta is missing, try same-origin (no base) and /api.
-    if (!raw) {
-      cands.push('');
-      cands.push('/api');
-      return cands;
-    }
-
-    cands.push(raw);
-    // If base ends with /api, try without; otherwise try with.
-    if (/\/api$/i.test(raw)) {
-      cands.push(raw.replace(/\/api$/i, ''));
-    } else {
-      cands.push(`${raw}/api`);
-    }
-    // Also try same-origin /api in case meta points to the frontend origin.
-    cands.push('/api');
-    return Array.from(new Set(cands.map(s => s.replace(/\/$/, ''))));
   }
   function getBizTZ() {
     const m = document.querySelector('meta[name="business-tz"]');
@@ -176,40 +151,14 @@
     return 'bg-gray-400';
   }
 
-  function statusLabel(level) {
-    if (level === 'green') return 'On Track';
-    if (level === 'yellow') return 'At Risk';
-    if (level === 'red') return 'Delayed';
-    return 'Future';
-  }
-
-  function normalizeJsonPayload(payload) {
-    // Many endpoints return arrays directly; some wrap as {rows}/{records}/{data}.
-    if (Array.isArray(payload)) return payload;
-    if (payload && typeof payload === 'object') {
-      if (Array.isArray(payload.rows)) return payload.rows;
-      if (Array.isArray(payload.records)) return payload.records;
-      if (Array.isArray(payload.data)) return payload.data;
-    }
-    return payload;
-  }
-
   async function api(path, opts) {
-    const bases = apiBaseCandidates();
-    let lastErr = null;
-    for (const base of bases) {
-      const url = `${base}${path}`;
-      try {
-        const res = await fetch(url, opts);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) return normalizeJsonPayload(await res.json());
-        return await res.text();
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    throw lastErr || new Error('API request failed');
+    const base = getApiBase();
+    const url = `${base}${path}`;
+    const res = await fetch(url, opts);
+    if (!res.ok) throw new Error(await res.text());
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return res.json();
+    return res.text();
   }
 
   function uniq(arr) {
@@ -277,11 +226,36 @@
     return String(x || '').trim() || 'Unknown';
   }
 
+  function normalizePO(x) {
+    return String(x || '').trim().toUpperCase();
+  }
+
+  function getPO(row) {
+    return normalizePO(
+      row.po_number ?? row.poNumber ?? row.po_num ?? row.poNum ?? row.PO_Number ?? row.PO ?? row.po ?? row.PO_NO ?? row.po_no ?? ''
+    );
+  }
+
+  function getSupplier(row) {
+    return normalizeSupplier(
+      row.supplier_name ?? row.supplierName ?? row.supplier ?? row.vendor ?? row.vendor_name ?? row.factory ?? row.Supplier ?? row.Vendor ?? ''
+    );
+  }
+
+  function num(val) {
+    if (val == null) return 0;
+    if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+    const s = String(val).replace(/,/g, '').trim();
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+
   function getPlanUnits(planRows) {
-    // common fields seen in codebase: planned_qty, qty, units
+    // canonical field in this codebase is target_qty (Exec/Plan); keep fallbacks.
     return (planRows || []).reduce((acc, r) => {
-      const n = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0);
-      return acc + (Number.isFinite(n) ? n : 0);
+      const n = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
+      return acc + n;
     }, 0);
   }
 
@@ -315,6 +289,18 @@
     const byPO = receivingByPO(receivingRows);
 
     const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim()));
+
+    // Build PO -> Supplier and planned units by Supplier from plan (supplier often not present on records).
+    const poToSup = new Map();
+    const plannedBySup = new Map();
+    for (const r of (planRows || [])) {
+      const po = getPO(r);
+      if (!po) continue;
+      const sup = getSupplier(r);
+      poToSup.set(po, sup);
+      const u = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
+      plannedBySup.set(sup, (plannedBySup.get(sup) || 0) + u);
+    }
     const receivedPOs = plannedPOs.filter(po => {
       const rec = byPO.get(po);
       return !!(rec && (rec.received_at_utc || rec.received_at || rec.received_at_local));
@@ -379,7 +365,7 @@
     const due = makeBizLocalDate(isoDate(addDays(new Date(`${ws}T00:00:00Z`), BASELINE.vas_complete_due.dayOffset)), BASELINE.vas_complete_due.time, tz);
 
     const plannedUnits = getPlanUnits(planRows);
-    const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim())).length;
+    const plannedPOs = uniq((planRows || []).map(r => getPO(r)).filter(Boolean)).length;
 
     // Records: treat each record as one applied unit if it has a UID; otherwise count qty if present.
     let appliedUnits = 0;
@@ -417,7 +403,43 @@
       .sort((a, b) => b.units - a.units)
       .slice(0, 10);
 
-    return {
+    
+    // Records: count applied units and attribute to supplier via plan join (fallback to record fields).
+    let appliedUnits = 0;
+    const appliedBySup = new Map();
+    const appliedByPO = new Map();
+
+    for (const r of (Array.isArray(records) ? records : [])) {
+      const qty = num(r.qty ?? r.quantity ?? r.units ?? r.target_qty ?? r.applied_qty ?? 1);
+      const q = qty > 0 ? qty : 1;
+      appliedUnits += q;
+
+      const po = getPO(r);
+      if (po) appliedByPO.set(po, (appliedByPO.get(po) || 0) + q);
+
+      const sup = po ? (poToSup.get(po) || getSupplier(r) || 'Unknown') : (getSupplier(r) || 'Unknown');
+      appliedBySup.set(sup, (appliedBySup.get(sup) || 0) + q);
+    }
+
+    // Build supplier rows including planned-only suppliers.
+    const supplierRows = [];
+    for (const [sup, planned] of plannedBySup.entries()) {
+      const applied = appliedBySup.get(sup) || 0;
+      const pct = planned > 0 ? Math.round((applied / planned) * 100) : 0;
+      supplierRows.push({ supplier: sup, planned, applied, pct, remaining: Math.max(0, planned - applied) });
+    }
+    // Include suppliers that appear only in records (rare) so we don't lose them.
+    for (const [sup, applied] of appliedBySup.entries()) {
+      if (plannedBySup.has(sup)) continue;
+      supplierRows.push({ supplier: sup, planned: 0, applied, pct: 0, remaining: 0 });
+    }
+    supplierRows.sort((a, b) => (b.remaining - a.remaining) || (b.applied - a.applied));
+
+    // Top POs by applied units.
+    const poRows = Array.from(appliedByPO.entries())
+      .map(([po, applied]) => ({ po, applied }))
+      .sort((a, b) => b.applied - a.applied);
+return {
       due,
       level,
       plannedUnits,
@@ -426,6 +448,9 @@
       completion,
       topSup,
       topPO,
+    ,
+      supplierRows,
+      poRows
     };
   }
 
@@ -536,7 +561,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 gap-3">
         <!-- Top tile -->
         <div class="rounded-2xl border bg-white shadow-sm p-3">
           <div class="flex items-center justify-between mb-2">
@@ -586,7 +611,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${level.toUpperCase()}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${level.toUpperCase()}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -711,7 +736,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${level.toUpperCase()}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${level.toUpperCase()}</span>
           </div>
         </div>
       `;
@@ -785,7 +810,7 @@
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700">Top suppliers by applied units</div>
+            <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
             ${table(['Supplier', 'Applied units'], supRows)}
           </div>
           <div class="rounded-xl border p-3">
