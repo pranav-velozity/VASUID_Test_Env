@@ -39,9 +39,14 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  function trimBase(base) { return String(base || '').replace(/\/+$/,''); }
+
   function getApiBase() {
+    // Match Exec/Receiving conventions. Some deployments set API_BASE and/or include a trailing /api.
+    const fromWin = trimBase(window.API_BASE || window.apiBase || '');
+    if (fromWin) return fromWin;
     const m = document.querySelector('meta[name="api-base"]');
-    return (m?.content || '').replace(/\/$/, '');
+    return trimBase(m?.content || '');
   }
   function getBizTZ() {
     const m = document.querySelector('meta[name="business-tz"]');
@@ -151,14 +156,49 @@
     return 'bg-gray-400';
   }
 
-  async function api(path, opts) {
+  async function tryFetchJson(urls, opts) {
+    const list = Array.isArray(urls) ? urls : [urls];
+    let lastErr = null;
+    for (const url of list) {
+      try {
+        const res = await fetch(url, opts);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          // Some failures return HTML with 200; treat as error.
+          const txt = await res.text();
+          try { return JSON.parse(txt); } catch { throw new Error('Non-JSON response'); }
+        }
+        return await res.json();
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr) throw lastErr;
+    throw new Error('Fetch failed');
+  }
+
+  function toArrayPayload(payload) {
+    // Some endpoints may return {rows:[...]} or {data:[...]} etc.
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.rows)) return payload.rows;
+    if (payload && Array.isArray(payload.data)) return payload.data;
+    if (payload && Array.isArray(payload.records)) return payload.records;
+    if (payload && Array.isArray(payload.items)) return payload.items;
+    return [];
+  }
+
+  async function apiCandidates(path) {
     const base = getApiBase();
-    const url = `${base}${path}`;
-    const res = await fetch(url, opts);
-    if (!res.ok) throw new Error(await res.text());
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) return res.json();
-    return res.text();
+    const b = trimBase(base);
+    const noApi = b.replace(/\/api$/,'');
+    const withApi = b.endsWith('/api') ? b : `${b}/api`;
+    // Try: base as-is, base without /api, base with /api
+    return [
+      `${b}${path}`,
+      `${noApi}${path}`,
+      `${withApi}${path}`,
+    ];
   }
 
   function uniq(arr) {
@@ -190,16 +230,28 @@
     // Prefer window.state.plan if it matches current ws
     const s = window.state || {};
     if (s.weekStart === ws && Array.isArray(s.plan) && s.plan.length) return s.plan;
-    // Fallback to backend endpoints used elsewhere
-    try { return await api(`/plan?weekStart=${encodeURIComponent(ws)}`); } catch {}
-    try { return await api(`/plan/weeks/${encodeURIComponent(ws)}`); } catch {}
+    // Fallback to backend endpoints used elsewhere (match Exec fallbacks)
+    try {
+      const p1 = await tryFetchJson(await apiCandidates(`/plan?weekStart=${encodeURIComponent(ws)}`));
+      return toArrayPayload(p1);
+    } catch {}
+    try {
+      const p2 = await tryFetchJson(await apiCandidates(`/plan/weeks/${encodeURIComponent(ws)}`));
+      return toArrayPayload(p2);
+    } catch {}
     return [];
   }
 
   async function loadReceiving(ws) {
     // Receiving module uses /receiving?weekStart=... and /receiving/weeks/:ws for saves.
-    try { return await api(`/receiving?weekStart=${encodeURIComponent(ws)}`); } catch {}
-    try { return await api(`/receiving/weeks/${encodeURIComponent(ws)}`); } catch {}
+    try {
+      const r1 = await tryFetchJson(await apiCandidates(`/receiving?weekStart=${encodeURIComponent(ws)}`));
+      return toArrayPayload(r1);
+    } catch {}
+    try {
+      const r2 = await tryFetchJson(await apiCandidates(`/receiving/weeks/${encodeURIComponent(ws)}`));
+      return toArrayPayload(r2);
+    } catch {}
     return [];
   }
 
@@ -214,10 +266,20 @@
     const from = `${ws}T00:00:00.000Z`;
     const to = `${isoDate(weD)}T23:59:59.999Z`;
 
-    // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
-    // Prefer complete for performance, but fall back to all if API supports.
-    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete`); } catch {}
-    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); } catch {}
+    // Use the endpoint that Exec uses (from=YYYY-MM-DD&to=YYYY-MM-DD). Some stacks accept ISO strings too.
+    const wsISO = ws;
+    const weISO = isoDate(weD);
+
+    // Prefer complete for performance, but fall back.
+    const urls1 = await apiCandidates(`/records?from=${encodeURIComponent(wsISO)}&to=${encodeURIComponent(weISO)}&status=complete`);
+    const urls2 = await apiCandidates(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete`);
+    const urls3 = await apiCandidates(`/records?from=${encodeURIComponent(wsISO)}&to=${encodeURIComponent(weISO)}`);
+    const urls4 = await apiCandidates(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+
+    try { return toArrayPayload(await tryFetchJson(urls1)); } catch {}
+    try { return toArrayPayload(await tryFetchJson(urls2)); } catch {}
+    try { return toArrayPayload(await tryFetchJson(urls3)); } catch {}
+    try { return toArrayPayload(await tryFetchJson(urls4)); } catch {}
     return [];
   }
 
