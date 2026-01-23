@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v1)
+/* flow_live_additive.js (v33)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -1310,7 +1310,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const level = contRows.some(r => !r.delivery_at) ? 'yellow' : 'green';
 
       const insights = [
-        'Track delivery per container (derived from Intl lanes).',
+        'Track delivery per container / AWB (derived from Intl lanes).',
         contRows.length ? `${contRows.filter(r => r.delivery_at).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Intl. Transit & Clearing to start tracking Last Mile.',
       ];
 
@@ -1364,7 +1364,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
           <div class="text-sm font-semibold text-gray-700">Containers</div>
-          ${table(['Supplier', 'Zendesk', 'Freight', 'Container', 'Size', 'Vessel', 'Delivery date', 'POD', 'Status'], rows)}
+          ${table(['Supplier', 'Zendesk', 'Freight', 'Container / AWB', 'Size', 'Vessel', 'Delivery date', 'POD', 'Status'], rows)}
         </div>`,
         editor,
       ].join('');
@@ -1386,6 +1386,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
   function intlLaneEditor(ws, tz, intl, lane) {
     const manual = lane.manual || {};
     const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
+    const isAir = /air/i.test(String(lane.freight || ''));
 
     const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
 
@@ -1408,15 +1409,16 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         return `
           <div class="flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-idx="${idx}">
             <label class="col-span-12 sm:col-span-4 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">Container (free text)</div>
-              <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(id)}" placeholder="e.g. TGHU1234567"/>
+              <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
+              <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(id)}" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
             </label>
-            <label class="col-span-6 sm:col-span-2 text-xs">
+            <label class="col-span-6 sm:col-span-2 text-xs ${isAir ? 'hidden' : ''}">
               <div class="text-[11px] text-gray-500 mb-1">Size</div>
               <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
                 <option value="20" ${size === '20' ? 'selected' : ''}>20ft</option>
                 <option value="40" ${size === '40' ? 'selected' : ''}>40ft</option>
               </select>
+            </label>
             </label>
             <label class="col-span-6 sm:col-span-6 text-xs">
               <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
@@ -1497,7 +1499,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div id="flow-cont-list" class="mt-3 flex flex-col gap-2">
               ${rows}
             </div>
-            <div class="text-[11px] text-gray-500 mt-2">Tip: container + vessel are free text for now. Add POs if helpful.</div>
+            <div class="text-[11px] text-gray-500 mt-2">Tip: for Air, use AWB / Shipment Ref. Vessel is free text. Add POs if helpful.</div>
           </div>
         </div>
 
@@ -1536,8 +1538,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         wrap.className = 'flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
         wrap.innerHTML = `
           <label class="col-span-12 sm:col-span-4 text-xs">
-            <div class="text-[11px] text-gray-500 mb-1">Container (free text)</div>
-            <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. TGHU1234567"/>
+            <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
+            <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
           </label>
           <label class="col-span-6 sm:col-span-2 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Size</div>
@@ -1634,7 +1636,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       <div class="mt-3 rounded-xl border p-3">
         <div class="flex items-start justify-between gap-3">
           <div>
-            <div class="text-sm font-semibold text-gray-700">Container delivery</div>
+            <div class="text-sm font-semibold text-gray-700">Delivery</div>
             <div class="text-xs text-gray-500 mt-0.5">
               <b>${escapeHtml(r.supplier)}</b> • ${r.ticket ? `Zendesk <b>${escapeHtml(r.ticket)}</b> • ` : ''}${escapeHtml(r.freight)} •
               <b>${escapeHtml(r.container_id)}</b>${r.vessel ? ` • ${escapeHtml(r.vessel)}` : ''}
