@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v33)
+/* flow_live_additive.js (v34)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -158,12 +158,29 @@ function statusLabel(level) {
   return 'Future';
 }
 
+function strokeForLevel(level) {
+  if (level === 'green') return '#10b981';
+  if (level === 'yellow') return '#f59e0b';
+  if (level === 'red') return '#f43f5e';
+  return '#cbd5e1';
+}
+
 const NODE_ICONS = {
-  milk: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M6 6l1 14h10l1-14"/><path d="M9 10h6"/></svg>`,
-  receiving: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16v13H4z"/><path d="M4 7l8 6 8-6"/></svg>`,
-  vas: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7l-5 5 5 5"/><path d="M10 7l5 5-5 5"/></svg>`,
-  intl: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17h18"/><path d="M5 17l2-6h10l2 6"/><path d="M9 11V7h6v4"/></svg>`,
-  lastmile: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>`,
+  milk: `<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 17h13l3 3h2v-6l-3-3H6z"/><path d="M6 17V7h10v7"/><path d="M6 11h10"/><circle cx="7.5" cy="20" r="1.5"/><circle cx="18.5" cy="20" r="1.5"/>
+  </svg>`,
+  receiving: `<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h16v13H4z"/><path d="M4 7l8 6 8-6"/><path d="M8 20v-6"/><path d="M16 20v-6"/>
+  </svg>`,
+  vas: `<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 8a4 4 0 1 0 4 4"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M4.9 4.9l2.1 2.1"/><path d="M17 17l2.1 2.1"/><path d="M2 12h3"/><path d="M19 12h3"/><path d="M4.9 19.1l2.1-2.1"/><path d="M17 7l2.1-2.1"/>
+  </svg>`,
+  intl: `<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 17h18"/><path d="M6 17l2-6h8l2 6"/><path d="M9 11V7h6v4"/><path d="M8 7h8"/>
+  </svg>`,
+  lastmile: `<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 10c0 6-9 12-9 12S3 16 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+  </svg>`,
 };
 
 function iconSvg(id) {
@@ -892,7 +909,10 @@ function computeManualNodeStatuses(ws, tz) {
             <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
             <div id="flow-day" class="text-xs text-gray-500"></div>
           </div>
-          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2"></div>
+          <div class="relative">
+            <div id="flow-rail" class="absolute left-2 right-2 top-[22px] hidden md:block pointer-events-none"></div>
+            <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2 relative"></div>
+          </div>
         </div>
 
         <!-- Bottom tile -->
@@ -935,7 +955,7 @@ function computeManualNodeStatuses(ws, tz) {
       <div data-node="${id}" class="rounded-xl border p-3 hover:bg-gray-50 cursor-pointer ${dis}">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <div class="text-sm font-semibold flex items-center gap-2"><span class="text-gray-500">${iconSvg(id)}</span><span>${title}</span></div>
+            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-8 h-8 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
             <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
           </div>
           <div class="flex items-center gap-2">
@@ -962,7 +982,42 @@ function computeManualNodeStatuses(ws, tz) {
     }
   }
 
-  function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
+  
+function renderProcessRail(levels) {
+  const rail = document.getElementById('flow-rail');
+  if (!rail) return;
+
+  // 5 nodes => 4 segments, draw in a fixed viewBox and let it stretch
+  const segs = [
+    { from: 0, to: 1, level: levels[0] },
+    { from: 1, to: 2, level: levels[1] },
+    { from: 2, to: 3, level: levels[2] },
+    { from: 3, to: 4, level: levels[3] },
+  ];
+
+  // Segment x positions at 10%, 30%, 50%, 70%, 90% (matches 5 columns visually)
+  const xs = [80, 260, 440, 620, 800];
+  const y = 20;
+
+  const paths = segs.map((seg, i) => {
+    const x1 = xs[seg.from];
+    const x2 = xs[seg.to];
+    // rounded “capsule” segment with a tiny notch (feels connected)
+    return `<path d="M ${x1} ${y} L ${x2} ${y}" stroke="${strokeForLevel(seg.level)}" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.85"/>`;
+  }).join('');
+
+  // small connector dots at node centers
+  const dots = xs.map((x, i) => `<circle cx="${x}" cy="${y}" r="5" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>`).join('');
+
+  rail.innerHTML = `
+    <svg viewBox="0 0 880 40" preserveAspectRatio="none" class="w-full h-10">
+      ${paths}
+      ${dots}
+    </svg>
+  `;
+}
+
+function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const nodes = document.getElementById('flow-nodes');
     if (!nodes) return;
 
@@ -1031,6 +1086,8 @@ function computeManualNodeStatuses(ws, tz) {
 
     nodes.innerHTML = [milk, rec, vasCard, intlCard, lmCard].join('');
 
+    renderProcessRail([receiving.level, vas.level, intl.level, manual.levels.lastMile]);
+
     // Click handlers
     $$('#flow-nodes [data-node]').forEach(card => {
       card.addEventListener('click', (e) => {
@@ -1039,7 +1096,6 @@ function computeManualNodeStatuses(ws, tz) {
         const sub = btn ? (btn.getAttribute('data-sub') || null) : null;
         UI.selection = { node, sub };
         renderDetail(ws, tz, receiving, vas, intl, manual);
-    renderFooterTrends(ws, tz, records);
         highlightSelection();
       });
     });
@@ -1921,12 +1977,21 @@ async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
 
-    const ws = window.state?.weekStart || $('#week-start')?.value;
-    if (!ws) return;
+    let ws = window.state?.weekStart || $('#week-start')?.value;
+    if (!ws) {
+      // Cold-load resilience: pick the current Monday as weekStart (YYYY-MM-DD)
+      const now = new Date();
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const dow = d.getDay(); // 0=Sun
+      const delta = (dow + 6) % 7; // days since Monday
+      d.setDate(d.getDate() - delta);
+      ws = isoDate(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())));
+    }
     UI.currentWs = ws;
     const tz = getBizTZ();
 
-    setSubheader(ws);
+    try {
+      setSubheader(ws);
     setDayProgress(ws, tz);
 
     const resetBtn = document.getElementById('flow-reset');
@@ -1961,7 +2026,14 @@ async function refresh() {
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
     renderDetail(ws, tz, receiving, vas, intl, manual);
+    // Footer trend uses the same completed records dataset.
+    renderFooterTrends(ws, tz, Array.isArray(records) ? records : (records?.records || records?.rows || records?.data || []));
     highlightSelection();
+    } catch (e) {
+      console.warn('[flow] refresh failed', e);
+      const detail = document.getElementById('flow-detail');
+      if (detail) detail.innerHTML = `<div class="p-6 text-sm text-red-700">Flow failed to render. Please reload. <span class="text-gray-500">(${String(e && e.message || e)})</span></div>`;
+    }
   }
 
   function showHideByHash() {
@@ -1984,6 +2056,23 @@ async function refresh() {
   }
 
   // ------------------------- Boot -------------------------
+  // Cold-load: if user lands directly on #flow, render once DOM is ready.
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureFlowPageExists();
+    showHideByHash();
+    const hash = (location.hash || '').toLowerCase();
+    const show = hash === '#flow' || hash.startsWith('#flow');
+    if (show) {
+      // Some pages set window.state asynchronously; run a quick retry.
+      refresh();
+      setTimeout(() => {
+        const stillFlow = ((location.hash || '').toLowerCase() || '').startsWith('#flow');
+        if (stillFlow) refresh();
+      }, 400);
+    }
+  });
+
+
   window.addEventListener('state:ready', () => {
     ensureFlowPageExists();
     showHideByHash();
