@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v24)
+/* flow_live_additive.js (v1)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -151,6 +151,13 @@
     return 'bg-gray-400';
   }
 
+  function statusLabel(level) {
+    if (level === 'green') return 'On Track';
+    if (level === 'yellow') return 'At Risk';
+    if (level === 'red') return 'Delayed';
+    return 'Future';
+  }
+
   async function api(path, opts) {
     const base = getApiBase();
     const url = `${base}${path}`;
@@ -259,12 +266,44 @@
     }, 0);
   }
 
+  // Cartons Out definition (matches receiving_live_additive.js):
+  // count DISTINCT mobile bins in completed records. We compute per-PO and totals.
+  function computeCartonStatsFromRecords(records) {
+    const byPO = new Map(); // po -> Set(bin)
+    const allBins = new Set();
+    const recs = Array.isArray(records)
+      ? records
+      : (records && Array.isArray(records.records) ? records.records
+        : (records && Array.isArray(records.rows) ? records.rows
+          : (records && Array.isArray(records.data) ? records.data : [])));
+
+    for (const r of (recs || [])) {
+      if (!r) continue;
+      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
+      const po = getPO(r);
+      if (!po) continue;
+      const mb = String(r.mobile_bin ?? r.bin ?? r.mobileBin ?? '').trim();
+      if (!mb) continue;
+      allBins.add(mb);
+      if (!byPO.has(po)) byPO.set(po, new Set());
+      byPO.get(po).add(mb);
+    }
+
+    const cartonsOutByPO = new Map();
+    let cartonsOutTotal = 0;
+    for (const [po, set] of byPO.entries()) {
+      cartonsOutByPO.set(po, set.size);
+      cartonsOutTotal += set.size;
+    }
+    return { cartonsOutByPO, cartonsOutTotal, mobileBinsDistinct: allBins.size };
+  }
+
   function groupPlanBySupplier(planRows) {
     const m = new Map();
     for (const r of planRows || []) {
-      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
-      const po = String(r.po_number || r.po || '').trim();
-      const units = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
+      const sup = getSupplier(r);
+      const po = getPO(r);
+      const units = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
       if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
       const o = m.get(sup);
       if (po) o.pos.add(po);
@@ -283,7 +322,7 @@
     return m;
   }
 
-  function computeReceivingStatus(ws, tz, planRows, receivingRows) {
+  function computeReceivingStatus(ws, tz, planRows, receivingRows, records) {
     const now = new Date();
     const due = makeBizLocalDate(ws, BASELINE.receiving_due.time, tz); // Monday noon
     const byPO = receivingByPO(receivingRows);
@@ -333,6 +372,8 @@
         poCount: x.poCount,
         receivedPOs: received,
         units: x.units,
+        cartonsIn: cartonsInBySup.get(x.supplier) || 0,
+        cartonsOut: cartonsOutBySup.get(x.supplier) || 0,
       };
     });
 
@@ -346,6 +387,28 @@
 
     const missingPOs = plannedPOs.filter(po => !receivedPOs.includes(po));
 
+    // Cartons In (from receiving rows) and Cartons Out (distinct mobile bins from completed records)
+    const cartonsInTotal = (receivingRows || []).reduce((acc, r) => acc + num(r.cartons_in ?? r.cartonsIn ?? r.cartons ?? r.cartons_received ?? 0), 0);
+
+    const cs = computeCartonStatsFromRecords(records);
+    const cartonsOutTotal = cs.cartonsOutTotal || 0;
+    const mobileBinsDistinct = cs.mobileBinsDistinct || 0;
+
+    // Cartons Out per supplier (sum of PO-level distinct bin counts)
+    const cartonsOutBySup = new Map();
+    for (const [po, cnt] of (cs.cartonsOutByPO || new Map()).entries()) {
+      const sup = poToSup.get(po) || 'Unknown';
+      cartonsOutBySup.set(sup, (cartonsOutBySup.get(sup) || 0) + (cnt || 0));
+    }
+
+    const cartonsInBySup = new Map();
+    for (const r of (receivingRows || [])) {
+      const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
+      const c = num(r.cartons_in ?? r.cartonsIn ?? r.cartons ?? r.cartons_received ?? 0);
+      cartonsInBySup.set(sup, (cartonsInBySup.get(sup) || 0) + c);
+    }
+
+
     return {
       due,
       lastReceived,
@@ -354,6 +417,9 @@
       receivedPOs: receivedPOs.length,
       latePOs: latePOs.length,
       missingPOs: missingPOs.length,
+      cartonsInTotal,
+      cartonsOutTotal,
+      mobileBinsDistinct,
       suppliers,
       latePOList: latePOs,
       missingPOList: missingPOs,
@@ -604,7 +670,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${level.toUpperCase()}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -729,7 +795,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${level.toUpperCase()}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
           </div>
         </div>
       `;
@@ -758,6 +824,7 @@
       const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
       const insights = [
         `${receiving.receivedPOs}/${receiving.plannedPOs} planned POs received`,
+        `Cartons In: <b>${Math.round(num(receiving.cartonsInTotal)).toLocaleString()}</b> • Cartons Out: <b>${Math.round(num(receiving.cartonsOutTotal)).toLocaleString()}</b> • Mobile bins: <b>${Math.round(num(receiving.mobileBinsDistinct)).toLocaleString()}</b>`,
         receiving.latePOs ? `${receiving.latePOs} POs received after baseline` : null,
         receiving.missingPOs ? `${receiving.missingPOs} POs not yet received` : null,
       ];
@@ -776,13 +843,15 @@
         .map(s => [
           s.supplier,
           `${s.receivedPOs}/${s.poCount}`,
-          `${Math.round(s.units)}`,
+          `${Math.round(s.units).toLocaleString()}`,
+          `${Math.round(num(s.cartonsIn)).toLocaleString()}`,
+          `${Math.round(num(s.cartonsOut)).toLocaleString()}`,
         ]);
 
       detail.innerHTML = [
         header(title, receiving.level, subtitle),
         bullets(insights),
-        table(['Supplier', 'POs received', 'Planned units'], supRows),
+        table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
       ].join('');
       return;
     }
@@ -1023,7 +1092,7 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
       console.warn('[flow] load error', e);
     }
 
-    const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows);
+    const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows, records);
     const vas = computeVASStatus(ws, tz, planRows, records);
     const manual = computeManualNodeStatuses(ws, tz);
 
