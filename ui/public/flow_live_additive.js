@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v32)
+/* flow_live_additive.js (v1)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -168,6 +168,18 @@ const NODE_ICONS = {
 
 function iconSvg(id) {
   return NODE_ICONS[id] || '';
+}
+
+function iconDoc() {
+  return `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path d="M7 3h7l3 3v15H7z"/><path d="M14 3v4h4"/><path d="M9 12h6"/><path d="M9 16h6"/>
+  </svg>`;
+}
+
+function iconContainer() {
+  return `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path d="M3 7h18v10H3z"/><path d="M7 7v10"/><path d="M12 7v10"/><path d="M17 7v10"/>
+  </svg>`;
 }
 
   async function api(path, opts) {
@@ -576,7 +588,28 @@ function computeCartonStatsFromRecords(records) {
   }
 
   function saveIntlLaneManual(ws, key, obj) {
-    try { localStorage.setItem(intlStorageKey(ws, key), JSON.stringify(obj || {})); } catch {}
+    try {
+      const k = intlStorageKey(ws, key);
+      let prev = {};
+      try { prev = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch { prev = {}; }
+
+      // Merge containers by container_id to preserve downstream fields (e.g., last-mile delivery tracking)
+      const next = { ...(prev || {}), ...(obj || {}) };
+      if (obj && Array.isArray(obj.containers)) {
+        const prevById = new Map();
+        (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
+          const id = String(c.container_id || c.container || '').trim();
+          if (id) prevById.set(id, c);
+        });
+        next.containers = obj.containers.map(c => {
+          const id = String(c.container_id || c.container || '').trim();
+          const prior = id ? (prevById.get(id) || {}) : {};
+          return { ...prior, ...c, container_id: id || (c.container_id || '') };
+        });
+      }
+
+      localStorage.setItem(k, JSON.stringify(next || {}));
+    } catch { /* ignore */ }
   }
 
   function computeInternationalTransit(ws, tz, planRows, records, vasDue) {
@@ -1206,17 +1239,16 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       lanes.sort((a, b) => (rank[b.level] - rank[a.level]) || ((b.plannedUnits - b.appliedUnits) - (a.plannedUnits - a.appliedUnits)));
 
       const rows = lanes.map(l => {
-        const remaining = Math.max(0, (l.plannedUnits || 0) - (l.appliedUnits || 0));
         const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
         const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '<span class="text-gray-400">—</span>';
+        const containers = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers.filter(c => (c && String(c.container_id||c.container||'').trim())).length : 0;
         return [
           `<button class="text-left hover:underline" data-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>`,
           ticket,
           escapeHtml(l.freight || ''),
-          `${(l.plannedUnits || 0).toLocaleString()}`,
           `${(l.appliedUnits || 0).toLocaleString()}`,
           `${(l.cartonsOut || 0).toLocaleString()}`,
-          `${remaining.toLocaleString()}`,
+          `${containers}`,
           st,
         ];
       });
@@ -1234,7 +1266,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
           <div class="text-sm font-semibold text-gray-700">Lanes</div>
-          ${table(['Supplier', 'Zendesk', 'Freight', 'Planned', 'Applied', 'Cartons Out', 'Remaining', 'Status'], rows)}
+          ${table(['Supplier', 'Zendesk', 'Freight', 'Applied', 'Cartons Out', 'Containers', 'Status'], rows)}
         </div>`,
         editor,
       ].join('');
@@ -1245,19 +1277,99 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
     if (sel.node === 'lastmile') {
       const { baselines } = manual;
-      const m = manual.manual || {};
       const subtitle = `Delivery window ${fmtInTZ(baselines.lastMileMin, tz)} – ${fmtInTZ(baselines.lastMileMax, tz)}`;
+
+      // Build container rows from Intl lanes (Supplier × Zendesk × Freight), using the same lane manual store.
+      const lanes = (intl && Array.isArray(intl.lanes)) ? intl.lanes : [];
+      const contRows = [];
+      for (const l of lanes) {
+        const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? l.ticket : '';
+        const list = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers : [];
+        for (let i = 0; i < list.length; i++) {
+          const c = list[i] || {};
+          const cid = String(c.container_id || c.container || '').trim();
+          const key = `${l.key}::${cid || i}`;
+          if (!cid && !c.vessel && !c.pos) continue;
+          contRows.push({
+            key,
+            laneKey: l.key,
+            supplier: l.supplier,
+            ticket,
+            freight: l.freight,
+            container_id: cid || '—',
+            size_ft: String(c.size_ft || '').trim(),
+            vessel: String(c.vessel || '').trim(),
+            delivery_at: c.delivery_at ? String(c.delivery_at).slice(0, 16) : '',
+            pod_received: !!c.pod_received,
+            note: String(c.last_mile_note || ''),
+          });
+        }
+      }
+
+      // Status
+      const level = contRows.some(r => !r.delivery_at) ? 'yellow' : 'green';
+
       const insights = [
-        m.last_mile_issue ? '<b>Issue</b> flagged (red).' : 'Soft cutoffs: use this as guidance, not enforcement.',
-        m.delivered_at ? `Delivered set: <b>${fmtInTZ(new Date(m.delivered_at), tz)}</b>` : 'Set Delivered date when WH confirms receipt.',
+        'Track delivery per container (derived from Intl lanes).',
+        contRows.length ? `${contRows.filter(r => r.delivery_at).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Intl. Transit & Clearing to start tracking Last Mile.',
       ];
 
+      const kpis = `
+        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Containers</div>
+            <div class="text-sm font-semibold">${contRows.length}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Delivered dates set</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_at).length}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">POD received</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => r.pod_received).length}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Open</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_at).length}</div>
+          </div>
+        </div>
+      `;
+
+      const rows = contRows.map(r => {
+        const st = r.delivery_at ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
+                                 : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
+        return [
+          `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
+          r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
+          escapeHtml(r.freight || ''),
+          escapeHtml(r.container_id || ''),
+          escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
+          escapeHtml(r.vessel || '—'),
+          r.delivery_at ? escapeHtml(r.delivery_at.replace('T',' ')) : '<span class="text-gray-400">—</span>',
+          r.pod_received ? 'Yes' : 'No',
+          st,
+        ];
+      });
+
+      const selectedKey = (sel.sub && String(sel.sub).includes('::')) ? sel.sub : (contRows[0]?.key || null);
+      const selected = selectedKey ? contRows.find(x => x.key === selectedKey) : null;
+
+      const editor = selected ? lastMileEditor(ws, tz, selected) : `
+        <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No containers found. Add containers under Intl. Transit & Clearing.</div>
+      `;
+
       detail.innerHTML = [
-        header('Last Mile', manual.levels.lastMile, subtitle),
+        header('Last Mile', level, subtitle),
         bullets(insights),
-        manualFormLastMile(ws, tz, manual),
+        kpis,
+        `<div class="mt-3 rounded-xl border p-3">
+          <div class="text-sm font-semibold text-gray-700">Containers</div>
+          ${table(['Supplier', 'Zendesk', 'Freight', 'Container', 'Size', 'Vessel', 'Delivery date', 'POD', 'Status'], rows)}
+        </div>`,
+        editor,
       ].join('');
-      wireManualLastMile(ws);
+
+      wireLastMileDetail(ws, selectedKey);
       return;
     }
 
@@ -1270,6 +1382,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     return escapeHtml(String(s || '')).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  
   function intlLaneEditor(ws, tz, intl, lane) {
     const manual = lane.manual || {};
     const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
@@ -1284,6 +1397,41 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
+
+    const containers = Array.isArray(manual.containers) ? manual.containers : [];
+    const rows = (containers.length ? containers : [{ container_id: '', size_ft: '40', vessel: '', pos: '' }])
+      .map((c, idx) => {
+        const id = String(c.container_id || c.container || '').trim();
+        const size = String(c.size_ft || '40').trim();
+        const vessel = String(c.vessel || '').trim();
+        const pos = String(c.pos || c.po_list || '').trim();
+        return `
+          <div class="flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-idx="${idx}">
+            <label class="col-span-12 sm:col-span-4 text-xs">
+              <div class="text-[11px] text-gray-500 mb-1">Container (free text)</div>
+              <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(id)}" placeholder="e.g. TGHU1234567"/>
+            </label>
+            <label class="col-span-6 sm:col-span-2 text-xs">
+              <div class="text-[11px] text-gray-500 mb-1">Size</div>
+              <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
+                <option value="20" ${size === '20' ? 'selected' : ''}>20ft</option>
+                <option value="40" ${size === '40' ? 'selected' : ''}>40ft</option>
+              </select>
+            </label>
+            <label class="col-span-6 sm:col-span-6 text-xs">
+              <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
+              <input class="flow-cont-vessel w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(vessel)}" placeholder="e.g. MAERSK XYZ"/>
+            </label>
+            <label class="col-span-12 text-xs">
+              <div class="text-[11px] text-gray-500 mb-1">POs in this container (comma-separated)</div>
+              <input class="flow-cont-pos w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(pos)}" placeholder="WADA002089, WAAE002227"/>
+            </label>
+            <div class="col-span-12 flex justify-end">
+              <button class="flow-cont-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
+            </div>
+          </div>
+        `;
+      }).join('');
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -1300,38 +1448,58 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-          <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
-            <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
-          </label>
-          <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
-            <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
-          </label>
-          <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Departed origin</div>
-            <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
-          </label>
-          <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
-            <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
-          </label>
-          <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
-            <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
-          </label>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+          <div class="rounded-xl border p-3">
+            <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              ${iconDoc()} <span>Milestones</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
+                <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
+              </label>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
+                <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
+              </label>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Departed origin</div>
+                <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
+              </label>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
+                <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
+              </label>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
+                <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
+              </label>
 
-          <label class="text-sm flex items-center gap-2 mt-6">
-            <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
-            <span>Customs hold</span>
-          </label>
+              <label class="text-sm flex items-center gap-2 mt-6">
+                <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
+                <span>Customs hold</span>
+              </label>
+            </div>
+
+            <label class="text-sm mt-3 block">
+              <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
+              <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
+            </label>
+          </div>
+
+          <div class="rounded-xl border p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                ${iconContainer()} <span>Containers & Vessel</span>
+              </div>
+              <button id="flow-cont-add" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Add container</button>
+            </div>
+            <div id="flow-cont-list" class="mt-3 flex flex-col gap-2">
+              ${rows}
+            </div>
+            <div class="text-[11px] text-gray-500 mt-2">Tip: container + vessel are free text for now. Add POs if helpful.</div>
+          </div>
         </div>
-
-        <label class="text-sm mt-3 block">
-          <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
-          <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
-        </label>
 
         <div class="flex items-center justify-between mt-3">
           <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
@@ -1356,6 +1524,55 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       });
     });
 
+
+    // Containers UI (add/remove)
+    const addBtn = detail.querySelector('#flow-cont-add');
+    if (addBtn && !addBtn.dataset.bound) {
+      addBtn.dataset.bound = '1';
+      addBtn.addEventListener('click', () => {
+        const list = detail.querySelector('#flow-cont-list');
+        if (!list) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
+        wrap.innerHTML = `
+          <label class="col-span-12 sm:col-span-4 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Container (free text)</div>
+            <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. TGHU1234567"/>
+          </label>
+          <label class="col-span-6 sm:col-span-2 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Size</div>
+            <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
+              <option value="20">20ft</option>
+              <option value="40" selected>40ft</option>
+            </select>
+          </label>
+          <label class="col-span-6 sm:col-span-6 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
+            <input class="flow-cont-vessel w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. MAERSK XYZ"/>
+          </label>
+          <label class="col-span-12 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">POs in this container (comma-separated)</div>
+            <input class="flow-cont-pos w-full px-2 py-1.5 border rounded-lg" value="" placeholder="WADA002089, WAAE002227"/>
+          </label>
+          <div class="col-span-12 flex justify-end">
+            <button class="flow-cont-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
+          </div>
+        `;
+        list.appendChild(wrap);
+      });
+    }
+
+    detail.querySelectorAll('.flow-cont-remove').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const row = btn.closest('.flow-cont-row');
+        if (row) row.remove();
+      });
+    });
+
+
     const saveBtn = detail.querySelector('#flow-intl-save');
     if (saveBtn && !saveBtn.dataset.bound) {
       saveBtn.dataset.bound = '1';
@@ -1371,6 +1588,21 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
         const note = detail.querySelector('#flow-intl-note')?.value || '';
 
+        // Containers & vessel (free text)
+        const containers = Array.from(detail.querySelectorAll('.flow-cont-row')).map(row => {
+          const container_id = row.querySelector('.flow-cont-id')?.value || '';
+          const size_ft = row.querySelector('.flow-cont-size')?.value || '';
+          const vessel = row.querySelector('.flow-cont-vessel')?.value || '';
+          const pos = row.querySelector('.flow-cont-pos')?.value || '';
+          // Preserve last mile fields if present on existing objects (merged in saveIntlLaneManual)
+          return {
+            container_id: String(container_id || '').trim(),
+            size_ft: String(size_ft || '').trim(),
+            vessel: String(vessel || '').trim(),
+            pos: String(pos || '').trim(),
+          };
+        }).filter(c => c.container_id || c.vessel || c.pos);
+
         const obj = {
           packing_list_ready_at: pack ? new Date(pack).toISOString() : '',
           origin_customs_cleared_at: originClr ? new Date(originClr).toISOString() : '',
@@ -1379,11 +1611,110 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           dest_customs_cleared_at: destClr ? new Date(destClr).toISOString() : '',
           customs_hold: hold,
           note: String(note || ''),
+          containers,
         };
         saveIntlLaneManual(ws, key, obj);
         const msg = detail.querySelector('#flow-intl-save-msg');
         if (msg) msg.textContent = 'Saved';
         // Refresh to recompute lane level + badges
+        setTimeout(() => refresh(), 10);
+      });
+    }
+  }
+
+
+
+  function lastMileEditor(ws, tz, r) {
+    const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
+    const delivery = v(r.delivery_at);
+    const pod = !!r.pod_received;
+    const note = String(r.note || '');
+
+    return `
+      <div class="mt-3 rounded-xl border p-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Container delivery</div>
+            <div class="text-xs text-gray-500 mt-0.5">
+              <b>${escapeHtml(r.supplier)}</b> • ${r.ticket ? `Zendesk <b>${escapeHtml(r.ticket)}</b> • ` : ''}${escapeHtml(r.freight)} •
+              <b>${escapeHtml(r.container_id)}</b>${r.vessel ? ` • ${escapeHtml(r.vessel)}` : ''}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="dot ${dot(delivery ? 'green' : 'yellow')}"></span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(delivery ? 'green' : 'yellow')} whitespace-nowrap">${delivery ? 'Scheduled' : 'Open'}</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <label class="text-sm">
+            <div class="text-xs text-gray-500 mb-1">Delivery date (Sydney WH)</div>
+            <input id="flow-lm-delivery" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${delivery}"/>
+          </label>
+          <label class="text-sm flex items-center gap-2 mt-6">
+            <input id="flow-lm-pod" type="checkbox" class="h-4 w-4" ${pod ? 'checked' : ''}/>
+            <span>POD received</span>
+          </label>
+        </div>
+
+        <label class="text-sm mt-3 block">
+          <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
+          <textarea id="flow-lm-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
+        </label>
+
+        <div class="flex items-center justify-between mt-3">
+          <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
+          <button id="flow-lm-save" data-cont="${escapeAttr(r.key)}" data-lane="${escapeAttr(r.laneKey)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireLastMileDetail(ws, selectedKey) {
+    const detail = document.getElementById('flow-detail');
+    if (!detail) return;
+
+    // container row clicks
+    detail.querySelectorAll('[data-cont]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const k = btn.getAttribute('data-cont');
+        UI.selection = { node: 'lastmile', sub: k };
+        refresh();
+      });
+    });
+
+    const saveBtn = detail.querySelector('#flow-lm-save');
+    if (saveBtn && !saveBtn.dataset.bound) {
+      saveBtn.dataset.bound = '1';
+      saveBtn.addEventListener('click', () => {
+        const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
+        const laneKey = saveBtn.getAttribute('data-lane') || '';
+        if (!contKey || !laneKey) return;
+
+        const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
+        const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
+        const note = detail.querySelector('#flow-lm-note')?.value || '';
+
+        // Load lane manual, patch container entry by id
+        const prev = loadIntlLaneManual(ws, laneKey) || {};
+        const containers = Array.isArray(prev.containers) ? prev.containers.slice() : [];
+        const idPart = String(contKey).split('::')[1] || '';
+        const idx = containers.findIndex(c => String(c.container_id || c.container || '').trim() === idPart);
+        if (idx >= 0) {
+          containers[idx] = {
+            ...(containers[idx] || {}),
+            delivery_at: delivery ? new Date(delivery).toISOString() : '',
+            pod_received: pod,
+            last_mile_note: String(note || ''),
+          };
+        }
+
+        saveIntlLaneManual(ws, laneKey, { ...prev, containers });
+
+        const msg = detail.querySelector('#flow-lm-save-msg');
+        if (msg) msg.textContent = 'Saved';
         setTimeout(() => refresh(), 10);
       });
     }
