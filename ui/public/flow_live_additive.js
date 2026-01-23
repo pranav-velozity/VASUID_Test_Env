@@ -1,4 +1,4 @@
-/* flow_live_additive.js (34)
+/* flow_live_additive.js (v1)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -159,10 +159,11 @@ function statusLabel(level) {
 }
 
 function strokeForLevel(level) {
-  if (level === 'green') return '#10b981';
-  if (level === 'yellow') return '#f59e0b';
-  if (level === 'red') return '#f43f5e';
-  return '#cbd5e1';
+  // Matte / less saturated strokes so the rail doesn't overpower the UI
+  if (level === 'green') return 'rgba(16,185,129,0.45)';
+  if (level === 'yellow') return 'rgba(245,158,11,0.45)';
+  if (level === 'red') return 'rgba(244,63,94,0.45)';
+  return 'rgba(148,163,184,0.55)';
 }
 
 const NODE_ICONS = {
@@ -921,10 +922,9 @@ function computeManualNodeStatuses(ws, tz) {
             <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
             <div id="flow-day" class="text-xs text-gray-500"></div>
           </div>
-          <div class="relative">
-            <div id="flow-rail" class="absolute left-2 right-2 top-[22px] hidden md:block pointer-events-none"></div>
-            <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2 relative"></div>
-          </div>
+          <!-- Process rail sits above the cards to avoid overlap -->
+          <div id="flow-rail" class="hidden md:block mt-0 mb-2 pointer-events-none"></div>
+          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2"></div>
         </div>
 
         <!-- Bottom tile -->
@@ -1009,20 +1009,21 @@ function renderProcessRail(levels) {
 
   // Segment x positions at 10%, 30%, 50%, 70%, 90% (matches 5 columns visually)
   const xs = [80, 260, 440, 620, 800];
-  const y = 20;
+  // Render near the top so it sits visually between the header and cards
+  const y = 12;
 
   const paths = segs.map((seg, i) => {
     const x1 = xs[seg.from];
     const x2 = xs[seg.to];
     // rounded “capsule” segment with a tiny notch (feels connected)
-    return `<path d="M ${x1} ${y} L ${x2} ${y}" stroke="${strokeForLevel(seg.level)}" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.85"/>`;
+    return `<path d="M ${x1} ${y} L ${x2} ${y}" stroke="${strokeForLevel(seg.level)}" stroke-width="6" stroke-linecap="round" fill="none"/>`;
   }).join('');
 
   // small connector dots at node centers
-  const dots = xs.map((x, i) => `<circle cx="${x}" cy="${y}" r="5" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>`).join('');
+  const dots = xs.map((x, i) => `<circle cx="${x}" cy="${y}" r="3.5" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>`).join('');
 
   rail.innerHTML = `
-    <svg viewBox="0 0 880 40" preserveAspectRatio="none" class="w-full h-10">
+    <svg viewBox="0 0 880 24" preserveAspectRatio="none" class="w-full h-6">
       ${paths}
       ${dots}
     </svg>
@@ -1937,7 +1938,20 @@ function manualFormIntl(ws, tz, manual) {
     const days = Array.from({ length: 7 }, (_, i) => isoDate(addDays(wsDate, i)));
     const byDay = new Map(days.map(d => [d, 0]));
 
-    const tsFields = ['applied_at', 'appliedAt', 'created_at', 'createdAt', 'timestamp', 'ts', 'scanned_at', 'scan_time'];
+    const tsFields = ['completed_at', 'completedAt', 'applied_at', 'appliedAt', 'updated_at', 'updatedAt', 'created_at', 'createdAt', 'timestamp', 'ts', 'scanned_at', 'scan_time'];
+
+    const bizISO = (dateObj) => {
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(dateObj);
+        const y = parts.find(p => p.type === 'year')?.value;
+        const m = parts.find(p => p.type === 'month')?.value;
+        const d = parts.find(p => p.type === 'day')?.value;
+        return (y && m && d) ? `${y}-${m}-${d}` : null;
+      } catch {
+        // fallback: UTC date
+        return isoDate(new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate())));
+      }
+    };
     for (const r of recs || []) {
       if (!r) continue;
       if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
@@ -1947,11 +1961,15 @@ function manualFormIntl(ws, tz, manual) {
       }
       const d = ts ? new Date(ts) : null;
       if (!d || isNaN(d)) continue;
-      // map to YYYY-MM-DD in UTC (good enough for week-level trend)
-      const dayIso = isoDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
+      // map to YYYY-MM-DD in business timezone so the bars feel intuitive
+      const dayIso = bizISO(d);
       if (!byDay.has(dayIso)) continue;
 
-      const qty = num(r.qty ?? r.quantity ?? r.units ?? 0);
+      const qty = num(
+        r.applied_qty ?? r.appliedQty ?? r.applied_units ?? r.appliedUnits ?? r.applied ??
+        r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ??
+        r.qty ?? r.quantity ?? r.units ?? 0
+      );
       byDay.set(dayIso, (byDay.get(dayIso) || 0) + qty);
     }
 
