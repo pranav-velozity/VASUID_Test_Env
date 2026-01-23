@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v27)
+/* flow_live_additive.js (v30)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -235,8 +235,8 @@ function iconSvg(id) {
 
     // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
     // Prefer complete for performance, but fall back to all if API supports.
-    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete`); } catch {}
-    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); } catch {}
+    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); } catch {}
+    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); } catch {}
     return [];
   }
 
@@ -304,28 +304,30 @@ function iconSvg(id) {
 
 
 function computeCartonStatsFromRecords(records) {
-  // Cartons Out definition (per Receiving module): distinct mobile_bin from completed records.
-  // Also compute per-PO distinct bin counts for supplier rollups.
-  const binsAll = new Set();
-  const binsByPO = new Map(); // PO -> Set(bins)
-  for (const r of (Array.isArray(records) ? records : [])) {
-    const bin = String(r.mobile_bin ?? r.mobileBin ?? r.bin_id ?? r.binId ?? '').trim();
-    if (!bin) continue;
-    binsAll.add(bin);
-    const po = normalizePO(r.po_number ?? r.poNumber ?? r.po ?? '');
+  // Match receiving_live_additive.js exactly:
+  // - Records are usually already status=complete from the query, but be safe if status exists.
+  // - PO: r.po_number || r.po || r.PO
+  // - Mobile bin: r.mobile_bin || r.bin || r.mobileBin
+  const sets = new Map(); // po -> Set(mobile_bin)
+  for (const r of (records || [])) {
+    if (!r) continue;
+    if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
+    const po = normalizePO(r.po_number || r.po || r.PO || '');
     if (!po) continue;
-    if (!binsByPO.has(po)) binsByPO.set(po, new Set());
-    binsByPO.get(po).add(bin);
+    const mb = String(r.mobile_bin || r.bin || r.mobileBin || '').trim();
+    if (!mb) continue;
+    if (!sets.has(po)) sets.set(po, new Set());
+    sets.get(po).add(mb);
   }
   const cartonsOutByPO = new Map();
-  for (const [po, set] of binsByPO.entries()) cartonsOutByPO.set(po, set.size);
-
-  return {
-    mobileBinsDistinct: binsAll.size,
-    cartonsOutTotal: binsAll.size,
-    cartonsOutByPO,
-  };
+  let cartonsOutTotal = 0;
+  for (const [po, set] of sets.entries()) {
+    cartonsOutByPO.set(po, set.size);
+    cartonsOutTotal += set.size;
+  }
+  return { cartonsOutByPO, cartonsOutTotal };
 }
+
 
     function computeReceivingStatus(ws, tz, planRows, receivingRows, records) {
     const now = new Date();
@@ -371,10 +373,11 @@ function computeCartonStatsFromRecords(records) {
     // Cartons In (from receiving rows)
     const cartonsInTotal = (receivingRows || []).reduce((acc, r) => acc + num(r.cartons_in ?? r.cartonsIn ?? r.cartons ?? r.cartons_received ?? 0), 0);
 
-    // Cartons Out (from completed records): distinct mobile bins (overall) and by PO.
+    // Cartons Out (from completed records): SAME as receiving_live_additive.js.
+// Build a per-PO map (unique mobile bins per PO) and sum across POs for total.
     const cs = computeCartonStatsFromRecords(records);
+    const cartonsOutByPO = cs.cartonsOutByPO || new Map();
     const cartonsOutTotal = cs.cartonsOutTotal || 0;
-    const mobileBinsDistinct = cs.mobileBinsDistinct || 0;
 
     // Cartons Out per supplier (sum of PO-level distinct bin counts)
     const cartonsOutBySup = new Map();
@@ -420,7 +423,6 @@ function computeCartonStatsFromRecords(records) {
       missingPOs: missingPOs.length,
       cartonsInTotal,
       cartonsOutTotal,
-      mobileBinsDistinct,
       suppliers,
       latePOList: latePOs,
       missingPOList: missingPOs,
@@ -839,12 +841,7 @@ function computeCartonStatsFromRecords(records) {
       <div class="rounded-lg border p-2">
         <div class="text-[11px] text-gray-500">Cartons Out</div>
         <div class="text-sm font-semibold">${receiving.cartonsOutTotal || 0}</div>
-      </div>
-      <div class="rounded-lg border p-2">
-        <div class="text-[11px] text-gray-500">Mobile bins</div>
-        <div class="text-sm font-semibold">${receiving.mobileBinsDistinct || 0}</div>
-      </div>
-      <div class="rounded-lg border p-2">
+      </div><div class="rounded-lg border p-2">
         <div class="text-[11px] text-gray-500">Late POs</div>
         <div class="text-sm font-semibold">${receiving.latePOs || 0}</div>
       </div>
