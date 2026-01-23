@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v30)
+/* flow_live_additive.js (v31)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -516,7 +516,168 @@ function computeCartonStatsFromRecords(records) {
   };
 }
 
-  function computeManualNodeStatuses(ws, tz) {
+  
+  // ------------------------- International Transit (Supplier + Ticket + Freight lanes) -------------------------
+  function getFreightType(r) {
+    const v = r?.freight_type ?? r?.freightType ?? r?.freight ?? r?.mode ?? r?.transport_mode ?? '';
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const low = s.toLowerCase();
+    if (low.includes('sea') || low.includes('ocean')) return 'Sea';
+    if (low.includes('air')) return 'Air';
+    // preserve original but title-case first letter
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function getZendeskTicket(r) {
+    const v = r?.zendesk_ticket ?? r?.zendeskTicket ?? r?.zendesk ?? r?.ticket ?? r?.ticket_id ?? r?.ticketId ?? '';
+    const s = String(v || '').trim();
+    return s || '';
+  }
+
+  function laneKey(supplier, ticket, freight) {
+    return `${normalizeSupplier(supplier || 'Unknown')}||${String(ticket || 'NO_TICKET').trim() || 'NO_TICKET'}||${String(freight || 'Sea').trim() || 'Sea'}`;
+  }
+
+  function parseLaneKey(k) {
+    const [supplier, ticket, freight] = String(k || '').split('||');
+    return { supplier: supplier || 'Unknown', ticket: ticket || 'NO_TICKET', freight: freight || 'Sea' };
+  }
+
+  function intlStorageKey(ws, key) {
+    return `flow:intl:${ws}:${key}`;
+  }
+
+  function loadIntlLaneManual(ws, key) {
+    try {
+      const raw = localStorage.getItem(intlStorageKey(ws, key));
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveIntlLaneManual(ws, key, obj) {
+    try { localStorage.setItem(intlStorageKey(ws, key), JSON.stringify(obj || {})); } catch {}
+  }
+
+  function computeInternationalTransit(ws, tz, planRows, records, vasDue) {
+    // Build PO -> lane mapping from plan
+    const poToLane = new Map();
+    const lanes = new Map(); // laneKey -> {supplier,ticket,freight, plannedUnits, plannedPOs:Set}
+    for (const r of (planRows || [])) {
+      const po = getPO(r);
+      if (!po) continue;
+      const supplier = getSupplier(r) || 'Unknown';
+      const freight = getFreightType(r) || 'Sea';
+      const ticket = getZendeskTicket(r) || 'NO_TICKET';
+      const key = laneKey(supplier, ticket, freight);
+      poToLane.set(po, key);
+      if (!lanes.has(key)) lanes.set(key, { key, supplier: normalizeSupplier(supplier), ticket, freight, plannedUnits: 0, plannedPOs: new Set() });
+      const lane = lanes.get(key);
+      lane.plannedPOs.add(po);
+      lane.plannedUnits += num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? 0);
+    }
+
+    // Applied units by lane from records (join by PO)
+    const appliedByLane = new Map();
+    const recs = Array.isArray(records)
+      ? records
+      : (records && Array.isArray(records.records) ? records.records
+        : (records && Array.isArray(records.rows) ? records.rows
+          : (records && Array.isArray(records.data) ? records.data : [])));
+
+    for (const r of recs || []) {
+      if (!r) continue;
+      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
+      const po = normalizePO(r.po_number || r.po || r.PO || '');
+      if (!po) continue;
+      const key = poToLane.get(po);
+      if (!key) continue;
+      const qty = num(r.qty ?? r.quantity ?? r.units ?? 0);
+      appliedByLane.set(key, (appliedByLane.get(key) || 0) + qty);
+    }
+
+    // Cartons out by PO -> lane
+    const cs = computeCartonStatsFromRecords(recs || []);
+    const cartonsOutByLane = new Map();
+    for (const [po, cnt] of (cs.cartonsOutByPO || new Map()).entries()) {
+      const key = poToLane.get(po);
+      if (!key) continue;
+      cartonsOutByLane.set(key, (cartonsOutByLane.get(key) || 0) + (cnt || 0));
+    }
+
+    // Baseline windows
+    const originMin = addDays(vasDue, BASELINE.origin_ready_days_min);
+    const originMax = addDays(vasDue, BASELINE.origin_ready_days_max);
+
+    // Lane status determination
+    const now = new Date();
+    const laneRows = [];
+    let holds = 0;
+    let seaCount = 0, airCount = 0;
+    for (const lane of lanes.values()) {
+      const manual = loadIntlLaneManual(ws, lane.key);
+      const originReadyAt = manual.origin_ready_at ? new Date(manual.origin_ready_at) : null;
+      const departedAt = manual.departed_at ? new Date(manual.departed_at) : null;
+      const customsHold = !!manual.customs_hold;
+
+      let level = 'green';
+      if (customsHold) level = 'red';
+      else {
+        // If no origin-ready set and we're past originMax + soft_yellow => at risk
+        if (!originReadyAt) {
+          if (daysBetween(originMax, now) > BASELINE.soft_yellow_days) level = 'yellow';
+          if (daysBetween(originMax, now) > BASELINE.soft_red_days) level = 'red';
+        } else if (!departedAt) {
+          // Depart target is originReady + 1 day (soft)
+          const departDue = addDays(originReadyAt, 1);
+          level = statusFromDue(departDue, null, now).level;
+        }
+      }
+
+      if (customsHold) holds++;
+      if (lane.freight === 'Sea') seaCount++;
+      else if (lane.freight === 'Air') airCount++;
+
+      const plannedUnits = Math.round(lane.plannedUnits || 0);
+      const appliedUnits = Math.round(appliedByLane.get(lane.key) || 0);
+      const cartonsOut = Math.round(cartonsOutByLane.get(lane.key) || 0);
+
+      laneRows.push({
+        ...lane,
+        plannedPOs: lane.plannedPOs.size,
+        plannedUnits,
+        appliedUnits,
+        cartonsOut,
+        manual,
+        level,
+        originReadyAt,
+        departedAt,
+        customsHold,
+      });
+    }
+
+    // Aggregate node level: worst lane wins
+    const agg = laneRows.reduce((acc, r) => worstLevel(acc, r.level), 'green');
+
+    return {
+      level: agg,
+      originMin,
+      originMax,
+      seaCount,
+      airCount,
+      holds,
+      lanes: laneRows,
+    };
+  }
+
+  function worstLevel(a, b) {
+    const rank = { gray: 0, green: 1, yellow: 2, red: 3 };
+    return (rank[b] > rank[a]) ? b : a;
+  }
+
+function computeManualNodeStatuses(ws, tz) {
     const now = new Date();
     const manual = loadFlowManual(ws) || {};
 
@@ -637,6 +798,11 @@ function computeCartonStatsFromRecords(records) {
         <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px]">
           <div id="flow-detail" class="h-full"></div>
         </div>
+
+        <!-- Footer tile (light trends) -->
+        <div class="rounded-2xl border bg-white shadow-sm p-3">
+          <div id="flow-footer"></div>
+        </div>
       </div>
 
       <div class="mt-3 text-xs text-gray-500">
@@ -695,7 +861,7 @@ function computeCartonStatsFromRecords(records) {
     }
   }
 
-  function renderTopNodes(ws, tz, receiving, vas, manual) {
+  function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const nodes = document.getElementById('flow-nodes');
     if (!nodes) return;
 
@@ -710,6 +876,7 @@ function computeCartonStatsFromRecords(records) {
 
     const recBadges = [
       { label: `${receiving.receivedPOs}/${receiving.plannedPOs} received`, sub: 'summary' },
+      { label: `${receiving.cartonsOutTotal || 0} out`, sub: 'cartonsOut' },
       receiving.latePOs ? { label: `${receiving.latePOs} late`, level: 'yellow', sub: 'late' } : null,
       receiving.missingPOs ? { label: `${receiving.missingPOs} missing`, level: 'red', sub: 'missing' } : null,
     ].filter(Boolean);
@@ -735,15 +902,15 @@ function computeCartonStatsFromRecords(records) {
     });
 
     const intlBadges = [
-      { label: `${manual.intlMode}`, sub: 'mode' },
-      manual.manual?.customs_hold ? { label: 'Customs hold', level: 'red', sub: 'hold' } : null,
-      manual.manual?.origin_ready_at ? { label: 'Origin ready set', sub: 'origin' } : { label: 'Origin ready (set)', sub: 'origin' },
+      { label: `${intl.seaCount || 0} sea`, sub: 'sea' },
+      { label: `${intl.airCount || 0} air`, sub: 'air' },
+      intl.holds ? { label: `${intl.holds} hold`, level: 'red', sub: 'hold' } : null,
     ].filter(Boolean);
     const intlCard = nodeCard({
       id: 'intl',
       title: 'International Transit',
-      subtitle: `Origin window ${fmtInTZ(manual.baselines.originMin, tz)} – ${fmtInTZ(manual.baselines.originMax, tz)}`,
-      level: manual.levels.intl,
+      subtitle: `Origin window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`,
+      level: intl.level,
       badges: intlBadges,
     });
 
@@ -768,7 +935,8 @@ function computeCartonStatsFromRecords(records) {
         const btn = e.target.closest('button[data-sub]');
         const sub = btn ? (btn.getAttribute('data-sub') || null) : null;
         UI.selection = { node, sub };
-        renderDetail(ws, tz, receiving, vas, manual);
+        renderDetail(ws, tz, receiving, vas, intl, manual);
+    renderFooterTrends(ws, tz, records);
         highlightSelection();
       });
     });
@@ -782,7 +950,7 @@ function computeCartonStatsFromRecords(records) {
     });
   }
 
-  function renderDetail(ws, tz, receiving, vas, manual) {
+  function renderDetail(ws, tz, receiving, vas, intl, manual) {
     const detail = document.getElementById('flow-detail');
     if (!detail) return;
 
@@ -897,22 +1065,81 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
       return;
     }
 
+    
     if (sel.node === 'intl') {
-      const { baselines } = manual;
-      const m = manual.manual || {};
-      const subtitle = `Mode ${manual.intlMode} • Origin ready window ${fmtInTZ(baselines.originMin, tz)} – ${fmtInTZ(baselines.originMax, tz)}`;
+      const lanes = (intl.lanes || []).slice();
+      const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
+
+      const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
+      const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
+      const totalOut = lanes.reduce((a, r) => a + (r.cartonsOut || 0), 0);
+
       const insights = [
-        m.customs_hold ? '<b>Customs hold</b> flagged (red).' : 'Soft cutoffs: use this as guidance, not enforcement.',
-        m.origin_ready_at ? `Origin ready set: <b>${fmtInTZ(new Date(m.origin_ready_at), tz)}</b>` : 'Set an Origin Ready date to start the transit clock.',
-        m.departed_at ? `Departed origin: <b>${fmtInTZ(new Date(m.departed_at), tz)}</b>` : `Baseline depart target: <b>${fmtInTZ(addDays(baselines.originMax, 1), tz)}</b>`,
+        `${lanes.length} active lanes (Supplier × Zendesk × Freight)`,
+        intl.holds ? `<b>${intl.holds}</b> lane(s) flagged for customs hold` : 'No customs holds flagged',
+        `Planned <b>${Math.round(totalPlanned).toLocaleString()}</b> units • Applied <b>${Math.round(totalApplied).toLocaleString()}</b> units`,
       ];
 
+      const kpis = `
+        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Lanes</div>
+            <div class="text-sm font-semibold">${lanes.length}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Sea / Air</div>
+            <div class="text-sm font-semibold">${intl.seaCount || 0} / ${intl.airCount || 0}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Cartons Out</div>
+            <div class="text-sm font-semibold">${Math.round(totalOut).toLocaleString()}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Customs holds</div>
+            <div class="text-sm font-semibold">${intl.holds || 0}</div>
+          </div>
+        </div>
+      `;
+
+      // Sort lanes: holds/red first, then highest remaining units
+      const rank = { red: 3, yellow: 2, green: 1, gray: 0 };
+      lanes.sort((a, b) => (rank[b.level] - rank[a.level]) || ((b.plannedUnits - b.appliedUnits) - (a.plannedUnits - a.appliedUnits)));
+
+      const rows = lanes.map(l => {
+        const remaining = Math.max(0, (l.plannedUnits || 0) - (l.appliedUnits || 0));
+        const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
+        const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '<span class="text-gray-400">—</span>';
+        return [
+          `<button class="text-left hover:underline" data-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>`,
+          ticket,
+          escapeHtml(l.freight || ''),
+          `${(l.plannedUnits || 0).toLocaleString()}`,
+          `${(l.appliedUnits || 0).toLocaleString()}`,
+          `${(l.cartonsOut || 0).toLocaleString()}`,
+          `${remaining.toLocaleString()}`,
+          st,
+        ];
+      });
+
+      const selectedKey = sel.sub && String(sel.sub).includes('||') ? sel.sub : (lanes[0]?.key || null);
+      const selected = selectedKey ? lanes.find(x => x.key === selectedKey) : null;
+
+      const editor = selected ? intlLaneEditor(ws, tz, intl, selected) : `
+        <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No lanes found in the uploaded Plan for this week.</div>
+      `;
+
       detail.innerHTML = [
-        header('International Transit', manual.levels.intl, subtitle),
+        header('International Transit', intl.level, subtitle),
         bullets(insights),
-        manualFormIntl(ws, tz, manual),
+        kpis,
+        `<div class="mt-3 rounded-xl border p-3">
+          <div class="text-sm font-semibold text-gray-700">Lanes</div>
+          ${table(['Supplier', 'Zendesk', 'Freight', 'Planned', 'Applied', 'Cartons Out', 'Remaining', 'Status'], rows)}
+        </div>`,
+        editor,
       ].join('');
-      wireManualIntl(ws);
+
+      wireIntlDetail(ws, selectedKey);
       return;
     }
 
@@ -938,7 +1165,103 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
     detail.innerHTML = header('Flow', 'gray', 'Click a node above to see details.');
   }
 
-  function manualFormIntl(ws, tz, manual) {
+  
+  function escapeAttr(s) {
+    return escapeHtml(String(s || '')).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function intlLaneEditor(ws, tz, intl, lane) {
+    const m = lane.manual || {};
+    const origin = m.origin_ready_at ? String(m.origin_ready_at).slice(0, 16) : '';
+    const departed = m.departed_at ? String(m.departed_at).slice(0, 16) : '';
+    const note = String(m.note || m.intl_note || '');
+    const hold = !!m.customs_hold;
+    const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
+    return `
+      <div class="mt-3 rounded-xl border p-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Lane details</div>
+            <div class="text-xs text-gray-500 mt-0.5">
+              <b>${escapeHtml(lane.supplier)}</b> • ${ticket ? `Zendesk <b>${escapeHtml(ticket)}</b> • ` : ''}${escapeHtml(lane.freight)}
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="dot ${dot(lane.level)}"></span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap">${statusLabel(lane.level)}</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <label class="text-sm">
+            <div class="text-xs text-gray-500 mb-1">Origin ready (packing list + export cleared)</div>
+            <input id="flow-intl-origin" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${origin}"/>
+          </label>
+          <label class="text-sm">
+            <div class="text-xs text-gray-500 mb-1">Departed origin (optional)</div>
+            <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
+          </label>
+          <label class="text-sm flex items-center gap-2 mt-6">
+            <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
+            <span>Customs hold</span>
+          </label>
+        </div>
+
+        <label class="text-sm mt-3 block">
+          <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
+          <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
+        </label>
+
+        <div class="flex items-center justify-between mt-3">
+          <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
+          <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireIntlDetail(ws, selectedKey) {
+    // lane row clicks
+    const detail = document.getElementById('flow-detail');
+    if (!detail) return;
+
+    detail.querySelectorAll('[data-lane]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        const k = btn.getAttribute('data-lane');
+        UI.selection = { node: 'intl', sub: k };
+        refresh();
+      });
+    });
+
+    const saveBtn = detail.querySelector('#flow-intl-save');
+    if (saveBtn && !saveBtn.dataset.bound) {
+      saveBtn.dataset.bound = '1';
+      saveBtn.addEventListener('click', () => {
+        const key = saveBtn.getAttribute('data-lane') || selectedKey;
+        if (!key) return;
+        const origin = detail.querySelector('#flow-intl-origin')?.value || '';
+        const departed = detail.querySelector('#flow-intl-departed')?.value || '';
+        const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
+        const note = detail.querySelector('#flow-intl-note')?.value || '';
+
+        const obj = {
+          origin_ready_at: origin ? new Date(origin).toISOString() : '',
+          departed_at: departed ? new Date(departed).toISOString() : '',
+          customs_hold: hold,
+          note: String(note || ''),
+        };
+        saveIntlLaneManual(ws, key, obj);
+        const msg = detail.querySelector('#flow-intl-save-msg');
+        if (msg) msg.textContent = 'Saved';
+        // Refresh to recompute lane level + badges
+        setTimeout(() => refresh(), 10);
+      });
+    }
+  }
+
+function manualFormIntl(ws, tz, manual) {
     const m = manual.manual || {};
     const mode = manual.intlMode;
     const origin = m.origin_ready_at ? m.origin_ready_at.slice(0, 16) : '';
@@ -1069,7 +1392,71 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
   }
 
   // ------------------------- Mount / Refresh -------------------------
-  async function refresh() {
+  
+  function renderFooterTrends(ws, tz, records) {
+    const el = document.getElementById('flow-footer');
+    if (!el) return;
+
+    const recs = Array.isArray(records)
+      ? records
+      : (records && Array.isArray(records.records) ? records.records
+        : (records && Array.isArray(records.rows) ? records.rows
+          : (records && Array.isArray(records.data) ? records.data : [])));
+
+    // Build day buckets for business week (Mon..Sun) in business TZ
+    const wsDate = new Date(`${ws}T00:00:00Z`);
+    const days = Array.from({ length: 7 }, (_, i) => isoDate(addDays(wsDate, i)));
+    const byDay = new Map(days.map(d => [d, 0]));
+
+    const tsFields = ['applied_at', 'appliedAt', 'created_at', 'createdAt', 'timestamp', 'ts', 'scanned_at', 'scan_time'];
+    for (const r of recs || []) {
+      if (!r) continue;
+      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
+      let ts = null;
+      for (const f of tsFields) {
+        if (r[f]) { ts = r[f]; break; }
+      }
+      const d = ts ? new Date(ts) : null;
+      if (!d || isNaN(d)) continue;
+      // map to YYYY-MM-DD in UTC (good enough for week-level trend)
+      const dayIso = isoDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())));
+      if (!byDay.has(dayIso)) continue;
+
+      const qty = num(r.qty ?? r.quantity ?? r.units ?? 0);
+      byDay.set(dayIso, (byDay.get(dayIso) || 0) + qty);
+    }
+
+    const vals = days.map(d => byDay.get(d) || 0);
+    const maxV = Math.max(1, ...vals);
+    const total = vals.reduce((a, b) => a + b, 0);
+
+    const bars = days.map((d, i) => {
+      const v = vals[i];
+      const h = Math.round((v / maxV) * 42); // px
+      const label = new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short' });
+      return `
+        <div class="flex flex-col items-center justify-end gap-1">
+          <div class="w-6 rounded-md bg-gray-200 border" style="height:46px; display:flex; align-items:flex-end; justify-content:center;">
+            <div class="w-full rounded-md bg-gray-800/20" style="height:${h}px;"></div>
+          </div>
+          <div class="text-[10px] text-gray-500">${label}</div>
+        </div>
+      `;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-sm font-semibold text-gray-700">This week trend (light)</div>
+          <div class="text-xs text-gray-500 mt-0.5">Applied units per day (from completed records)</div>
+        </div>
+        <div class="text-sm font-semibold">${Math.round(total).toLocaleString()}</div>
+      </div>
+      <div class="mt-3 flex gap-2 items-end">${bars}</div>
+    `;
+  }
+
+async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
 
@@ -1106,9 +1493,10 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
 
     const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows, records);
     const vas = computeVASStatus(ws, tz, planRows, records);
+    const intl = computeInternationalTransit(ws, tz, planRows, records, vas.due);
     const manual = computeManualNodeStatuses(ws, tz);
 
-    renderTopNodes(ws, tz, receiving, vas, manual);
+    renderTopNodes(ws, tz, receiving, vas, intl, manual);
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
     renderDetail(ws, tz, receiving, vas, manual);
