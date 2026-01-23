@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v1)
+/* flow_live_additive.js (v27)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -151,12 +151,24 @@
     return 'bg-gray-400';
   }
 
-  function statusLabel(level) {
-    if (level === 'green') return 'On Track';
-    if (level === 'yellow') return 'At Risk';
-    if (level === 'red') return 'Delayed';
-    return 'Future';
-  }
+function statusLabel(level) {
+  if (level === 'green') return 'On Track';
+  if (level === 'yellow') return 'At Risk';
+  if (level === 'red') return 'Delayed';
+  return 'Future';
+}
+
+const NODE_ICONS = {
+  milk: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M6 6l1 14h10l1-14"/><path d="M9 10h6"/></svg>`,
+  receiving: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16v13H4z"/><path d="M4 7l8 6 8-6"/></svg>`,
+  vas: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 7l-5 5 5 5"/><path d="M10 7l5 5-5 5"/></svg>`,
+  intl: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17h18"/><path d="M5 17l2-6h10l2 6"/><path d="M9 11V7h6v4"/></svg>`,
+  lastmile: `<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>`,
+};
+
+function iconSvg(id) {
+  return NODE_ICONS[id] || '';
+}
 
   async function api(path, opts) {
     const base = getApiBase();
@@ -266,51 +278,19 @@
     }, 0);
   }
 
-  // Cartons Out definition (matches receiving_live_additive.js):
-  // count DISTINCT mobile bins in completed records. We compute per-PO and totals.
-  function computeCartonStatsFromRecords(records) {
-    const byPO = new Map(); // po -> Set(bin)
-    const allBins = new Set();
-    const recs = Array.isArray(records)
-      ? records
-      : (records && Array.isArray(records.records) ? records.records
-        : (records && Array.isArray(records.rows) ? records.rows
-          : (records && Array.isArray(records.data) ? records.data : [])));
-
-    for (const r of (recs || [])) {
-      if (!r) continue;
-      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
-      const po = getPO(r);
-      if (!po) continue;
-      const mb = String(r.mobile_bin ?? r.bin ?? r.mobileBin ?? '').trim();
-      if (!mb) continue;
-      allBins.add(mb);
-      if (!byPO.has(po)) byPO.set(po, new Set());
-      byPO.get(po).add(mb);
-    }
-
-    const cartonsOutByPO = new Map();
-    let cartonsOutTotal = 0;
-    for (const [po, set] of byPO.entries()) {
-      cartonsOutByPO.set(po, set.size);
-      cartonsOutTotal += set.size;
-    }
-    return { cartonsOutByPO, cartonsOutTotal, mobileBinsDistinct: allBins.size };
-  }
-
   function groupPlanBySupplier(planRows) {
-    const m = new Map();
-    for (const r of planRows || []) {
-      const sup = getSupplier(r);
-      const po = getPO(r);
-      const units = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
-      if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
-      const o = m.get(sup);
-      if (po) o.pos.add(po);
-      o.units += units;
-    }
-    return Array.from(m.values()).map(x => ({ supplier: x.supplier, poCount: x.pos.size, units: x.units }));
+  const m = new Map();
+  for (const r of planRows || []) {
+    const sup = getSupplier(r);
+    const po = getPO(r);
+    const units = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
+    if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
+    const o = m.get(sup);
+    if (po) o.pos.add(po);
+    o.units += units;
   }
+  return Array.from(m.values()).map(x => ({ supplier: x.supplier, poCount: x.pos.size, units: x.units }));
+}
 
   function receivingByPO(receivingRows) {
     const m = new Map();
@@ -322,24 +302,37 @@
     return m;
   }
 
-  function computeReceivingStatus(ws, tz, planRows, receivingRows, records) {
+
+function computeCartonStatsFromRecords(records) {
+  // Cartons Out definition (per Receiving module): distinct mobile_bin from completed records.
+  // Also compute per-PO distinct bin counts for supplier rollups.
+  const binsAll = new Set();
+  const binsByPO = new Map(); // PO -> Set(bins)
+  for (const r of (Array.isArray(records) ? records : [])) {
+    const bin = String(r.mobile_bin ?? r.mobileBin ?? r.bin_id ?? r.binId ?? '').trim();
+    if (!bin) continue;
+    binsAll.add(bin);
+    const po = normalizePO(r.po_number ?? r.poNumber ?? r.po ?? '');
+    if (!po) continue;
+    if (!binsByPO.has(po)) binsByPO.set(po, new Set());
+    binsByPO.get(po).add(bin);
+  }
+  const cartonsOutByPO = new Map();
+  for (const [po, set] of binsByPO.entries()) cartonsOutByPO.set(po, set.size);
+
+  return {
+    mobileBinsDistinct: binsAll.size,
+    cartonsOutTotal: binsAll.size,
+    cartonsOutByPO,
+  };
+}
+
+    function computeReceivingStatus(ws, tz, planRows, receivingRows, records) {
     const now = new Date();
     const due = makeBizLocalDate(ws, BASELINE.receiving_due.time, tz); // Monday noon
     const byPO = receivingByPO(receivingRows);
 
-    const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim()));
-
-    // Build PO -> Supplier and planned units by Supplier from plan (supplier often not present on records).
-    const poToSup = new Map();
-    const plannedBySup = new Map();
-    for (const r of (planRows || [])) {
-      const po = getPO(r);
-      if (!po) continue;
-      const sup = getSupplier(r);
-      poToSup.set(po, sup);
-      const u = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
-      plannedBySup.set(sup, (plannedBySup.get(sup) || 0) + u);
-    }
+    const plannedPOs = uniq((planRows || []).map(r => getPO(r)).filter(Boolean));
     const receivedPOs = plannedPOs.filter(po => {
       const rec = byPO.get(po);
       return !!(rec && (rec.received_at_utc || rec.received_at || rec.received_at_local));
@@ -349,47 +342,36 @@
     let lastReceived = null;
     for (const po of receivedPOs) {
       const rec = byPO.get(po);
-      const ts = rec?.received_at_utc || rec?.received_at;
+      const ts = rec?.received_at_utc || rec?.received_at || rec?.received_at_local;
       const d = ts ? new Date(ts) : null;
       if (d && !isNaN(d) && (!lastReceived || d > lastReceived)) lastReceived = d;
     }
 
     const st = statusFromDue(due, lastReceived, now);
 
-    // Supplier breakdown (planned vs received)
-    const planBySup = groupPlanBySupplier(planRows);
-    const recSupSet = new Set((receivingRows || []).map(r => normalizeSupplier(r.supplier_name || r.supplier || r.vendor)));
-    const suppliers = planBySup.map(x => {
-      // count received POs per supplier
-      const pos = uniq((planRows || []).filter(r => normalizeSupplier(r.supplier_name || r.supplier || r.vendor) === x.supplier)
-        .map(r => String(r.po_number || r.po || '').trim()));
-      const received = pos.filter(po => {
-        const rec = byPO.get(po);
-        return !!(rec && (rec.received_at_utc || rec.received_at));
-      }).length;
-      return {
-        supplier: x.supplier,
-        poCount: x.poCount,
-        receivedPOs: received,
-        units: x.units,
-        cartonsIn: cartonsInBySup.get(x.supplier) || 0,
-        cartonsOut: cartonsOutBySup.get(x.supplier) || 0,
-      };
-    });
+    // Build PO -> Supplier and planned units by Supplier from plan (supplier often not present on records).
+    const poToSup = new Map();
+    for (const r of (planRows || [])) {
+      const po = getPO(r);
+      if (!po) continue;
+      const sup = getSupplier(r);
+      poToSup.set(po, sup);
+    }
 
+    // Late + missing POs
     const latePOs = plannedPOs.filter(po => {
       const rec = byPO.get(po);
-      const ts = rec?.received_at_utc || rec?.received_at;
+      const ts = rec?.received_at_utc || rec?.received_at || rec?.received_at_local;
       if (!ts) return false;
       const d = new Date(ts);
       return !isNaN(d) && d.getTime() > due.getTime();
     });
-
     const missingPOs = plannedPOs.filter(po => !receivedPOs.includes(po));
 
-    // Cartons In (from receiving rows) and Cartons Out (distinct mobile bins from completed records)
+    // Cartons In (from receiving rows)
     const cartonsInTotal = (receivingRows || []).reduce((acc, r) => acc + num(r.cartons_in ?? r.cartonsIn ?? r.cartons ?? r.cartons_received ?? 0), 0);
 
+    // Cartons Out (from completed records): distinct mobile bins (overall) and by PO.
     const cs = computeCartonStatsFromRecords(records);
     const cartonsOutTotal = cs.cartonsOutTotal || 0;
     const mobileBinsDistinct = cs.mobileBinsDistinct || 0;
@@ -401,6 +383,7 @@
       cartonsOutBySup.set(sup, (cartonsOutBySup.get(sup) || 0) + (cnt || 0));
     }
 
+    // Cartons In per supplier (from receiving rows)
     const cartonsInBySup = new Map();
     for (const r of (receivingRows || [])) {
       const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
@@ -408,6 +391,24 @@
       cartonsInBySup.set(sup, (cartonsInBySup.get(sup) || 0) + c);
     }
 
+    // Supplier breakdown (planned vs received) + cartons
+    const planBySup = groupPlanBySupplier(planRows);
+    const suppliers = planBySup.map(x => {
+      const sup = x.supplier;
+      const pos = uniq((planRows || []).filter(r => getSupplier(r) === sup).map(r => getPO(r)).filter(Boolean));
+      const received = pos.filter(po => {
+        const rec = byPO.get(po);
+        return !!(rec && (rec.received_at_utc || rec.received_at || rec.received_at_local));
+      }).length;
+      return {
+        supplier: sup,
+        poCount: x.poCount,
+        receivedPOs: received,
+        units: x.units,
+        cartonsIn: cartonsInBySup.get(sup) || 0,
+        cartonsOut: cartonsOutBySup.get(sup) || 0,
+      };
+    });
 
     return {
       due,
@@ -665,7 +666,7 @@
       <div data-node="${id}" class="rounded-xl border p-3 hover:bg-gray-50 cursor-pointer ${dis}">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <div class="text-sm font-semibold">${title}</div>
+            <div class="text-sm font-semibold flex items-center gap-2"><span class="text-gray-500">${iconSvg(id)}</span><span>${title}</span></div>
             <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
           </div>
           <div class="flex items-center gap-2">
@@ -820,43 +821,57 @@
 
     // ---------------- Node-specific details ----------------
     if (sel.node === 'receiving') {
-      const title = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
-      const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
-      const insights = [
-        `${receiving.receivedPOs}/${receiving.plannedPOs} planned POs received`,
-        `Cartons In: <b>${Math.round(num(receiving.cartonsInTotal)).toLocaleString()}</b> • Cartons Out: <b>${Math.round(num(receiving.cartonsOutTotal)).toLocaleString()}</b> • Mobile bins: <b>${Math.round(num(receiving.mobileBinsDistinct)).toLocaleString()}</b>`,
-        receiving.latePOs ? `${receiving.latePOs} POs received after baseline` : null,
-        receiving.missingPOs ? `${receiving.missingPOs} POs not yet received` : null,
-      ];
+  const title = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
 
-      const rows = (sel.sub === 'late' ? receiving.latePOList : sel.sub === 'missing' ? receiving.missingPOList : [])
-        .slice(0, 50)
-        .map(po => {
-          const rec = receivingByPO(awaitingReceivingRowsCache)?.get(po); // placeholder
-          return [po];
-        });
+  const insights = [
+    `${receiving.receivedPOs}/${receiving.plannedPOs} planned POs received`,
+    receiving.latePOs ? `${receiving.latePOs} POs received after baseline` : null,
+    receiving.missingPOs ? `${receiving.missingPOs} POs not yet received` : null,
+  ];
 
-      // Build supplier summary table
-      const supRows = receiving.suppliers
-        .sort((a, b) => (b.receivedPOs / (b.poCount || 1)) - (a.receivedPOs / (a.poCount || 1)))
-        .slice(0, 30)
-        .map(s => [
-          s.supplier,
-          `${s.receivedPOs}/${s.poCount}`,
-          `${Math.round(s.units).toLocaleString()}`,
-          `${Math.round(num(s.cartonsIn)).toLocaleString()}`,
-          `${Math.round(num(s.cartonsOut)).toLocaleString()}`,
-        ]);
+  const kpis = `
+    <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div class="rounded-lg border p-2">
+        <div class="text-[11px] text-gray-500">Cartons In</div>
+        <div class="text-sm font-semibold">${receiving.cartonsInTotal || 0}</div>
+      </div>
+      <div class="rounded-lg border p-2">
+        <div class="text-[11px] text-gray-500">Cartons Out</div>
+        <div class="text-sm font-semibold">${receiving.cartonsOutTotal || 0}</div>
+      </div>
+      <div class="rounded-lg border p-2">
+        <div class="text-[11px] text-gray-500">Mobile bins</div>
+        <div class="text-sm font-semibold">${receiving.mobileBinsDistinct || 0}</div>
+      </div>
+      <div class="rounded-lg border p-2">
+        <div class="text-[11px] text-gray-500">Late POs</div>
+        <div class="text-sm font-semibold">${receiving.latePOs || 0}</div>
+      </div>
+    </div>
+  `;
 
-      detail.innerHTML = [
-        header(title, receiving.level, subtitle),
-        bullets(insights),
-        table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
-      ].join('');
-      return;
-    }
+  const supRows = (receiving.suppliers || [])
+    .sort((a, b) => (b.cartonsOut || 0) - (a.cartonsOut || 0))
+    .slice(0, 30)
+    .map(s => [
+      s.supplier,
+      `${s.receivedPOs}/${s.poCount}`,
+      `${Math.round(s.units)}`,
+      `${s.cartonsIn || 0}`,
+      `${s.cartonsOut || 0}`,
+    ]);
 
-    if (sel.node === 'vas') {
+  detail.innerHTML = [
+    header(title, receiving.level, subtitle),
+    bullets(insights),
+    kpis,
+    table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
+  ].join('');
+  return;
+}
+
+if (sel.node === 'vas') {
       const subtitle = `Due ${fmtInTZ(vas.due, tz)} • Planned ${vas.plannedUnits} units • Applied ${vas.appliedUnits} units`;
       const insights = [
         `Completion: <b>${Math.round(vas.completion * 100)}%</b>`,
