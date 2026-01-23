@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v34)
+/* flow_live_additive.js (34)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -233,21 +233,32 @@ function iconContainer() {
     } catch { /* ignore */ }
   }
 
-  // ------------------------- Data fetch (reusing existing endpoints) -------------------------
+  
+  function asArray(x) {
+    if (Array.isArray(x)) return x;
+    if (!x) return [];
+    // Common API wrappers
+    for (const k of ['items','rows','data','records','result','results']) {
+      if (x && Array.isArray(x[k])) return x[k];
+    }
+    return [];
+  }
+
+// ------------------------- Data fetch (reusing existing endpoints) -------------------------
   async function loadPlan(ws) {
     // Prefer window.state.plan if it matches current ws
     const s = window.state || {};
     if (s.weekStart === ws && Array.isArray(s.plan) && s.plan.length) return s.plan;
     // Fallback to backend endpoints used elsewhere
-    try { return await api(`/plan?weekStart=${encodeURIComponent(ws)}`); } catch {}
-    try { return await api(`/plan/weeks/${encodeURIComponent(ws)}`); } catch {}
+    try { const r = await api(`/plan?weekStart=${encodeURIComponent(ws)}`); return asArray(r); } catch {}
+    try { const r = await api(`/plan/weeks/${encodeURIComponent(ws)}`); return asArray(r); } catch {}
     return [];
   }
 
   async function loadReceiving(ws) {
     // Receiving module uses /receiving?weekStart=... and /receiving/weeks/:ws for saves.
-    try { return await api(`/receiving?weekStart=${encodeURIComponent(ws)}`); } catch {}
-    try { return await api(`/receiving/weeks/${encodeURIComponent(ws)}`); } catch {}
+    try { const r = await api(`/receiving?weekStart=${encodeURIComponent(ws)}`); return asArray(r); } catch {}
+    try { const r = await api(`/receiving/weeks/${encodeURIComponent(ws)}`); return asArray(r); } catch {}
     return [];
   }
 
@@ -264,8 +275,8 @@ function iconContainer() {
 
     // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
     // Prefer complete for performance, but fall back to all if API supports.
-    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); } catch {}
-    try { return await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); } catch {}
+    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); return asArray(r); } catch {}
+    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); return asArray(r); } catch {}
     return [];
   }
 
@@ -338,7 +349,8 @@ function computeCartonStatsFromRecords(records) {
   // - PO: r.po_number || r.po || r.PO
   // - Mobile bin: r.mobile_bin || r.bin || r.mobileBin
   const sets = new Map(); // po -> Set(mobile_bin)
-  for (const r of (records || [])) {
+  const arr = asArray(records);
+  for (const r of arr) {
     if (!r) continue;
     if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
     const po = normalizePO(r.po_number || r.po || r.PO || '');
@@ -2013,6 +2025,9 @@ async function refresh() {
         loadReceiving(ws),
         loadRecords(ws, tz),
       ]);
+      planRows = asArray(planRows);
+      receivingRows = asArray(receivingRows);
+      records = asArray(records);
     } catch (e) {
       console.warn('[flow] load error', e);
     }
