@@ -594,8 +594,9 @@ function computeCartonStatsFromRecords(records) {
       if (!po) continue;
       const key = poToLane.get(po);
       if (!key) continue;
-      const qty = num(r.qty ?? r.quantity ?? r.units ?? 0);
-      appliedByLane.set(key, (appliedByLane.get(key) || 0) + qty);
+      const qty = num(r.qty ?? r.quantity ?? r.units ?? r.target_qty ?? r.applied_qty ?? r.applied ?? 1);
+      const q = qty > 0 ? qty : 1;
+      appliedByLane.set(key, (appliedByLane.get(key) || 0) + q);
     }
 
     // Cartons out by PO -> lane
@@ -616,29 +617,73 @@ function computeCartonStatsFromRecords(records) {
     const laneRows = [];
     let holds = 0;
     let seaCount = 0, airCount = 0;
+    let missingDocs = 0, missingOriginClear = 0, missingDepart = 0, missingArrive = 0, missingDestClear = 0;
     for (const lane of lanes.values()) {
       const manual = loadIntlLaneManual(ws, lane.key);
-      const originReadyAt = manual.origin_ready_at ? new Date(manual.origin_ready_at) : null;
+
+      let packingListReadyAt = manual.packing_list_ready_at ? new Date(manual.packing_list_ready_at) : null;
+      let originClearedAt = manual.origin_customs_cleared_at ? new Date(manual.origin_customs_cleared_at) : null;
       const departedAt = manual.departed_at ? new Date(manual.departed_at) : null;
+      const arrivedAt = manual.arrived_at ? new Date(manual.arrived_at) : null;
+      const destClearedAt = manual.dest_customs_cleared_at ? new Date(manual.dest_customs_cleared_at) : null;
+
+      // Back-compat: older builds stored a single origin_ready_at.
+      if ((!packingListReadyAt || isNaN(packingListReadyAt)) && manual.origin_ready_at) packingListReadyAt = new Date(manual.origin_ready_at);
+      if ((!originClearedAt || isNaN(originClearedAt)) && manual.origin_ready_at) originClearedAt = new Date(manual.origin_ready_at);
+
       const customsHold = !!manual.customs_hold;
 
+      // "Origin Ready" is effectively when docs are ready AND origin is cleared.
+      // For baseline comparisons we treat it as the latest of the two, when present.
+      const originReadyAt = (packingListReadyAt || originClearedAt)
+        ? new Date(Math.max(
+            packingListReadyAt && !isNaN(packingListReadyAt) ? packingListReadyAt.getTime() : 0,
+            originClearedAt && !isNaN(originClearedAt) ? originClearedAt.getTime() : 0
+          ))
+        : null;
+
       let level = 'green';
-      if (customsHold) level = 'red';
-      else {
-        // If no origin-ready set and we're past originMax + soft_yellow => at risk
-        if (!originReadyAt) {
+
+      if (customsHold) {
+        level = 'red';
+      } else {
+        // Step 1: Packing list ready (docs)
+        if (!packingListReadyAt || isNaN(packingListReadyAt)) {
           if (daysBetween(originMax, now) > BASELINE.soft_yellow_days) level = 'yellow';
           if (daysBetween(originMax, now) > BASELINE.soft_red_days) level = 'red';
-        } else if (!departedAt) {
-          // Depart target is originReady + 1 day (soft)
-          const departDue = addDays(originReadyAt, 1);
+        }
+        // Step 2: Origin cleared
+        else if (!originClearedAt || isNaN(originClearedAt)) {
+          if (daysBetween(originMax, now) > BASELINE.soft_yellow_days) level = 'yellow';
+          if (daysBetween(originMax, now) > BASELINE.soft_red_days) level = 'red';
+        }
+        // Step 3: Departed origin
+        else if (!departedAt || isNaN(departedAt)) {
+          const departDue = addDays(originClearedAt, 1);
           level = statusFromDue(departDue, null, now).level;
+        }
+        // Step 4: Arrived destination
+        else if (!arrivedAt || isNaN(arrivedAt)) {
+          const transitDays = (lane.freight === 'Air') ? BASELINE.transit_days_air : BASELINE.transit_days_sea;
+          const arriveDue = addDays(departedAt, transitDays);
+          level = statusFromDue(arriveDue, null, now).level;
+        }
+        // Step 5: Destination cleared
+        else if (!destClearedAt || isNaN(destClearedAt)) {
+          const destClearDue = addDays(arrivedAt, 2);
+          level = statusFromDue(destClearDue, null, now).level;
         }
       }
 
       if (customsHold) holds++;
       if (lane.freight === 'Sea') seaCount++;
       else if (lane.freight === 'Air') airCount++;
+
+      if (!packingListReadyAt || isNaN(packingListReadyAt)) missingDocs++;
+      else if (!originClearedAt || isNaN(originClearedAt)) missingOriginClear++;
+      else if (!departedAt || isNaN(departedAt)) missingDepart++;
+      else if (!arrivedAt || isNaN(arrivedAt)) missingArrive++;
+      else if (!destClearedAt || isNaN(destClearedAt)) missingDestClear++;
 
       const plannedUnits = Math.round(lane.plannedUnits || 0);
       const appliedUnits = Math.round(appliedByLane.get(lane.key) || 0);
@@ -668,6 +713,11 @@ function computeCartonStatsFromRecords(records) {
       seaCount,
       airCount,
       holds,
+      missingDocs,
+      missingOriginClear,
+      missingDepart,
+      missingArrive,
+      missingDestClear,
       lanes: laneRows,
     };
   }
@@ -901,14 +951,16 @@ function computeManualNodeStatuses(ws, tz) {
       badges: vasBadges,
     });
 
-    const intlBadges = [
-      { label: `${intl.seaCount || 0} sea`, sub: 'sea' },
-      { label: `${intl.airCount || 0} air`, sub: 'air' },
-      intl.holds ? { label: `${intl.holds} hold`, level: 'red', sub: 'hold' } : null,
-    ].filter(Boolean);
+    const intlBadges = [];
+    intlBadges.push({ label: `${(intl.lanes || []).length} lanes`, sub: 'lanes' });
+
+    if (intl.holds) intlBadges.push({ label: `${intl.holds} hold`, level: 'red', sub: 'hold' });
+    else if (intl.missingDocs) intlBadges.push({ label: `${intl.missingDocs} missing docs`, level: 'yellow', sub: 'docs' });
+    else if (intl.missingOriginClear) intlBadges.push({ label: `${intl.missingOriginClear} not cleared`, level: 'yellow', sub: 'origin' });
+    else intlBadges.push({ label: `${intl.seaCount || 0} sea / ${intl.airCount || 0} air`, sub: 'mode' });
     const intlCard = nodeCard({
       id: 'intl',
-      title: 'International Transit',
+      title: 'Intl. Transit & Clearing',
       subtitle: `Origin window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`,
       level: intl.level,
       badges: intlBadges,
@@ -1077,6 +1129,7 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
       const insights = [
         `${lanes.length} active lanes (Supplier × Zendesk × Freight)`,
         intl.holds ? `<b>${intl.holds}</b> lane(s) flagged for customs hold` : 'No customs holds flagged',
+        (intl.missingDocs || intl.missingOriginClear) ? `<b>${(intl.missingDocs || 0)}</b> missing docs • <b>${(intl.missingOriginClear || 0)}</b> not cleared (origin)` : null,
         `Planned <b>${Math.round(totalPlanned).toLocaleString()}</b> units • Applied <b>${Math.round(totalApplied).toLocaleString()}</b> units`,
       ];
 
@@ -1129,7 +1182,7 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
       `;
 
       detail.innerHTML = [
-        header('International Transit', intl.level, subtitle),
+        header('Intl. Transit & Clearing', intl.level, subtitle),
         bullets(insights),
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
@@ -1171,12 +1224,20 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
   }
 
   function intlLaneEditor(ws, tz, intl, lane) {
-    const m = lane.manual || {};
-    const origin = m.origin_ready_at ? String(m.origin_ready_at).slice(0, 16) : '';
-    const departed = m.departed_at ? String(m.departed_at).slice(0, 16) : '';
-    const note = String(m.note || m.intl_note || '');
-    const hold = !!m.customs_hold;
+    const manual = lane.manual || {};
     const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
+
+    const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
+
+    const pack = v(manual.packing_list_ready_at);
+    const originClr = v(manual.origin_customs_cleared_at);
+    const departed = v(manual.departed_at);
+    const arrived = v(manual.arrived_at);
+    const destClr = v(manual.dest_customs_cleared_at);
+
+    const hold = !!manual.customs_hold;
+    const note = String(manual.note || '');
+
     return `
       <div class="mt-3 rounded-xl border p-3">
         <div class="flex items-start justify-between gap-3">
@@ -1194,13 +1255,26 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
           <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Origin ready (packing list + export cleared)</div>
-            <input id="flow-intl-origin" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${origin}"/>
+            <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
+            <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
           </label>
           <label class="text-sm">
-            <div class="text-xs text-gray-500 mb-1">Departed origin (optional)</div>
+            <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
+            <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
+          </label>
+          <label class="text-sm">
+            <div class="text-xs text-gray-500 mb-1">Departed origin</div>
             <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
           </label>
+          <label class="text-sm">
+            <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
+            <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
+          </label>
+          <label class="text-sm">
+            <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
+            <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
+          </label>
+
           <label class="text-sm flex items-center gap-2 mt-6">
             <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
             <span>Customs hold</span>
@@ -1241,14 +1315,21 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
       saveBtn.addEventListener('click', () => {
         const key = saveBtn.getAttribute('data-lane') || selectedKey;
         if (!key) return;
-        const origin = detail.querySelector('#flow-intl-origin')?.value || '';
+        const pack = detail.querySelector('#flow-intl-pack')?.value || '';
+        const originClr = detail.querySelector('#flow-intl-originclr')?.value || '';
         const departed = detail.querySelector('#flow-intl-departed')?.value || '';
+        const arrived = detail.querySelector('#flow-intl-arrived')?.value || '';
+        const destClr = detail.querySelector('#flow-intl-destclr')?.value || '';
+
         const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
         const note = detail.querySelector('#flow-intl-note')?.value || '';
 
         const obj = {
-          origin_ready_at: origin ? new Date(origin).toISOString() : '',
+          packing_list_ready_at: pack ? new Date(pack).toISOString() : '',
+          origin_customs_cleared_at: originClr ? new Date(originClr).toISOString() : '',
           departed_at: departed ? new Date(departed).toISOString() : '',
+          arrived_at: arrived ? new Date(arrived).toISOString() : '',
+          dest_customs_cleared_at: destClr ? new Date(destClr).toISOString() : '',
           customs_hold: hold,
           note: String(note || ''),
         };
