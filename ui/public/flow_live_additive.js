@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v31)
+/* flow_live_additive.js (v32)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -440,9 +440,10 @@ function computeCartonStatsFromRecords(records) {
   const plannedUnits = getPlanUnits(planRows);
   const plannedPOs = uniq((planRows || []).map(r => getPO(r)).filter(Boolean)).length;
 
-  // Build PO -> Supplier and planned units by Supplier from plan (records often do not carry supplier).
+  // Build PO -> Supplier and planned units by Supplier/PO from plan (records often do not carry supplier).
   const poToSup = new Map();
   const plannedBySup = new Map();
+  const plannedByPO = new Map();
   for (const r of (planRows || [])) {
     const po = getPO(r);
     if (!po) continue;
@@ -450,6 +451,7 @@ function computeCartonStatsFromRecords(records) {
     poToSup.set(po, sup);
     const u = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
     plannedBySup.set(sup, (plannedBySup.get(sup) || 0) + u);
+    plannedByPO.set(po, (plannedByPO.get(po) || 0) + u);
   }
 
   // Normalize records payload to an array.
@@ -498,11 +500,26 @@ function computeCartonStatsFromRecords(records) {
   }
   supplierRows.sort((a, b) => (b.remaining - a.remaining) || (b.applied - a.applied));
 
-  // Top POs by applied units.
-  const poRows = Array.from(appliedByPO.entries())
-    .map(([po, applied]) => ({ po, applied }))
-    .filter(x => x.po && x.po !== 'Unknown')
-    .sort((a, b) => b.applied - a.applied);
+  // PO progress mix (planned vs applied) for a more meaningful view than "top applied".
+  const poProgress = Array.from(plannedByPO.entries()).map(([po, planned]) => {
+    const applied = appliedByPO.get(po) || 0;
+    const remaining = Math.max(0, planned - applied);
+    const pct = planned > 0 ? Math.round((applied / planned) * 100) : 0;
+    return { po, planned, applied, remaining, pct };
+  });
+
+  const buckets = { notStarted: 0, inProgress: 0, complete: 0, over: 0 };
+  for (const x of poProgress) {
+    if (!x.applied) buckets.notStarted++;
+    else if (x.applied >= x.planned * 1.05) buckets.over++;
+    else if (x.applied >= x.planned * 0.98) buckets.complete++;
+    else buckets.inProgress++;
+  }
+
+  const topRemainingPOs = poProgress
+    .filter(x => x.remaining > 0)
+    .sort((a, b) => b.remaining - a.remaining)
+    .slice(0, 8);
 
   return {
     due,
@@ -512,7 +529,8 @@ function computeCartonStatsFromRecords(records) {
     plannedPOs,
     completion,
     supplierRows,
-    poRows,
+    poMix: buckets,
+    topRemainingPOs,
   };
 }
 
@@ -1097,8 +1115,36 @@ if (sel.node === 'vas') {
       ];
 
       const fmtN = (v) => (Math.round(num(v) || 0)).toLocaleString();
+
+const vasMixHtml = (vasObj) => {
+  const mix = vasObj.poMix || { notStarted: 0, inProgress: 0, complete: 0, over: 0 };
+  const total = mix.notStarted + mix.inProgress + mix.complete + mix.over || 1;
+  const seg = (n, cls) => `<div class="h-3 ${cls}" style="width:${(n/total)*100}%;"></div>`;
+  const bar = `
+    <div class="mt-2 w-full rounded-full overflow-hidden border bg-gray-50 flex">
+      ${seg(mix.notStarted, 'bg-gray-200')}
+      ${seg(mix.inProgress, 'bg-amber-200')}
+      ${seg(mix.complete, 'bg-emerald-200')}
+      ${seg(mix.over, 'bg-indigo-200')}
+    </div>`;
+  const legend = `
+    <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
+      <div><span class="inline-block w-2 h-2 rounded-sm bg-gray-200 mr-1"></span>Not started: <b>${mix.notStarted}</b></div>
+      <div><span class="inline-block w-2 h-2 rounded-sm bg-amber-200 mr-1"></span>In progress: <b>${mix.inProgress}</b></div>
+      <div><span class="inline-block w-2 h-2 rounded-sm bg-emerald-200 mr-1"></span>Complete: <b>${mix.complete}</b></div>
+      <div><span class="inline-block w-2 h-2 rounded-sm bg-indigo-200 mr-1"></span>Over: <b>${mix.over}</b></div>
+    </div>`;
+  const top = (vasObj.topRemainingPOs || []).slice(0,6).map(x => [x.po, fmtN(x.remaining), `${x.pct}%`]);
+  const tbl = top.length
+    ? `<div class="mt-3">
+         <div class="text-xs text-gray-500 mb-1">Top remaining POs</div>
+         ${table(['PO', 'Remaining', '%'], top)}
+       </div>`
+    : `<div class="mt-3 text-xs text-gray-500">No remaining POs — on track.</div>`;
+  return bar + legend + tbl;
+};
 const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN(x.planned), fmtN(x.applied), `${x.pct}%`]);
-const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)]);
+
 
       detail.innerHTML = [
         header('VAS Processing', vas.level, subtitle),
@@ -1108,10 +1154,11 @@ const poRows = (vas.poRows || []).slice(0, 12).map(x => [x.po, fmtN(x.applied)])
             <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
             ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
           </div>
-          <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700">Top POs by applied units</div>
-            ${table(['PO', 'Applied'], poRows)}
-          </div>
+          
+<div class="rounded-xl border p-3">
+  <div class="text-sm font-semibold text-gray-700">PO progress mix</div>
+  ${vasMixHtml(vas)}
+</div>
         </div>`,
       ].join('');
       return;
@@ -1580,7 +1627,7 @@ async function refresh() {
     renderTopNodes(ws, tz, receiving, vas, intl, manual);
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
-    renderDetail(ws, tz, receiving, vas, manual);
+    renderDetail(ws, tz, receiving, vas, intl, manual);
     highlightSelection();
   }
 
