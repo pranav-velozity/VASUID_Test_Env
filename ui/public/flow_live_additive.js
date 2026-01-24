@@ -137,18 +137,21 @@
     return { level: 'red', lateDays };
   }
 
-  function pill(level) {
-    if (level === 'green') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    if (level === 'yellow') return 'bg-amber-100 text-amber-800 border-amber-200';
-    if (level === 'red') return 'bg-rose-100 text-rose-800 border-rose-200';
-    return 'bg-gray-100 text-gray-700 border-gray-200';
+  function pill(level, upcoming=false) {
+    // Upcoming phases use a lighter, more muted tint than active phases
+    // so users can distinguish what"s ahead vs where we are now.
+    if (level === 'green') return upcoming ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    if (level === 'yellow') return upcoming ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-amber-100 text-amber-800 border-amber-200';
+    if (level === 'red') return upcoming ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-rose-100 text-rose-800 border-rose-200';
+    return upcoming ? 'bg-gray-50 text-gray-600 border-gray-200' : 'bg-gray-100 text-gray-700 border-gray-200';
   }
 
-  function dot(level) {
-    if (level === 'green') return 'bg-emerald-500';
-    if (level === 'yellow') return 'bg-amber-500';
-    if (level === 'red') return 'bg-rose-500';
-    return 'bg-gray-400';
+  function dot(level, upcoming=false) {
+    // Muted dots for upcoming phases
+    if (level === 'green') return upcoming ? 'bg-emerald-300' : 'bg-emerald-500';
+    if (level === 'yellow') return upcoming ? 'bg-amber-300' : 'bg-amber-500';
+    if (level === 'red') return upcoming ? 'bg-rose-300' : 'bg-rose-500';
+    return upcoming ? 'bg-gray-300' : 'bg-gray-400';
   }
 
 function statusLabel(level) {
@@ -159,14 +162,11 @@ function statusLabel(level) {
 }
 
 function strokeForLevel(level, upcoming=false) {
-  // Matte / muted strokes so the rail doesn't overpower the UI.
-  // Upcoming phases get an even lighter tint so "current" stands out.
-  const a = upcoming ? 0.22 : 0.38;
-  if (level === 'green') return `rgba(22,163,74,${a})`;     // matte green
-  if (level === 'yellow') return `rgba(217,119,6,${a})`;    // matte amber
-  if (level === 'red') return `rgba(220,38,38,${a})`;       // matte red
-  return `rgba(148,163,184,${upcoming ? 0.28 : 0.45})`;     // slate
-}
+    // Matte palette (less saturated)
+    if (level === 'green') return upcoming ? '#d1fae5' : '#a7f3d0';
+    if (level === 'red') return upcoming ? '#ffe4e6' : '#fecaca';
+    return '#e5e7eb';
+  }
 
 
 const NODE_ICONS = {
@@ -998,82 +998,83 @@ function computeManualNodeStatuses(ws, tz) {
   }
 
   
-function renderProcessRail(nodes, nowPct=0) {
-  const rail = document.getElementById('flow-rail');
-  if (!rail) return;
+function renderProcessRail(nodes, selectedNodeId = null) {
+    const rail = document.getElementById('flow-process-rail');
+    if (!rail) return;
 
-  const levels = nodes.map(n => n.level);
-  const upcoming = nodes.map(n => !!n.upcoming);
+    // Align the spine with the *actual* card centers below (responsive + gap-safe).
+    // We render after layout so we can measure the cards.
+    const order = ['milk', 'receiving', 'vas', 'intl', 'lastmile'];
+    const labels = { milk: 'MR', receiving: 'RCV', vas: 'VAS', intl: 'T&C', lastmile: 'LM' };
 
-  // 5 nodes => 4 segments, draw in a fixed viewBox and let it stretch.
-  const segs = [
-    { from: 0, to: 1, level: levels[0], upcoming: upcoming[1] },
-    { from: 1, to: 2, level: levels[1], upcoming: upcoming[2] },
-    { from: 2, to: 3, level: levels[2], upcoming: upcoming[3] },
-    { from: 3, to: 4, level: levels[3], upcoming: upcoming[4] }
-  ];
+    const computeCurrentIdx = () => {
+      if (selectedNodeId) {
+        const idx = order.indexOf(selectedNodeId);
+        if (idx >= 0) return idx;
+      }
+      // fallback: the last non-upcoming node ("where we are")
+      for (let i = order.length - 1; i >= 0; i--) {
+        const n = nodes?.find(x => x?.id === order[i]);
+        if (n && !n.upcoming) return i;
+      }
+      return 0;
+    };
 
-  const W = 1000;
-  const H = 38;
-  const pad = 48;
-  const y = 18;
+    const currentIdx = computeCurrentIdx();
 
-  const xAt = (i)=> pad + (W - pad*2) * (i / 4);
+    const draw = () => {
+      const w = rail.clientWidth || 1000;
+      const h = 40;
+      const y = 20;
 
-  const dots = [0,1,2,3,4].map(i => ({
-    x: xAt(i),
-    level: levels[Math.max(0, i-1)] || levels[0] || 'gray',
-    upcoming: upcoming[i]
-  }));
+      const railRect = rail.getBoundingClientRect();
+      const cards = order.map(id => document.querySelector(`[data-node="${id}"]`));
+      // If cards are missing (rare during first paint), fall back to evenly spaced.
+      const xs = cards.every(Boolean)
+        ? cards.map(c => (c.getBoundingClientRect().left + c.getBoundingClientRect().right) / 2 - railRect.left)
+        : order.map((_, i) => (w * (0.08 + 0.84 * (i / (order.length - 1)))));
 
-  // Small milestone labels (text, not emoji) so it stays professional & fast.
-  const labels = [
-    { t:'MR',  x:xAt(0) },
-    { t:'RCV', x:xAt(1) },
-    { t:'VAS', x:xAt(2) },
-    { t:'T&C', x:xAt(3) },
-    { t:'LM',  x:xAt(4) },
-  ];
+      const segs = order.slice(0, -1).map((_, i) => {
+        const n = nodes?.find(x => x?.id === order[i + 1]) || {};
+        const level = n.level || 'gray';
+        const upcoming = !!n.upcoming;
+        return `<line x1="${xs[i]}" y1="${y}" x2="${xs[i + 1]}" y2="${y}" stroke="${strokeForLevel(level, upcoming)}" stroke-width="6" stroke-linecap="round" />`;
+      }).join('');
 
-  const clamped = Math.max(0, Math.min(1, Number(nowPct)||0));
-  const todayX = pad + (W - pad*2) * clamped;
+      const dots = order.map((id, i) => {
+        const n = nodes?.find(x => x?.id === id) || {};
+        const level = n.level || 'gray';
+        const upcoming = !!n.upcoming;
+        const fill = upcoming ? '#ffffff' : strokeForLevel(level, false);
+        const stroke = strokeForLevel(level, upcoming);
+        return `
+          <g>
+            <circle cx="${xs[i]}" cy="${y}" r="6" fill="${fill}" stroke="${stroke}" stroke-width="2" />
+            <text x="${xs[i]}" y="8" text-anchor="middle" font-size="10" fill="#6b7280" font-weight="600">${labels[id]}</text>
+          </g>`;
+      }).join('');
 
-  rail.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" class="w-full h-[38px]">
-      ${segs.map(s => {
-        const x1 = xAt(s.from), x2 = xAt(s.to);
-        return `<path d="M ${x1} ${y} C ${(x1+x2)/2} ${y}, ${(x1+x2)/2} ${y}, ${x2} ${y}"
-                 fill="none"
-                 stroke="${strokeForLevel(s.level, s.upcoming)}"
-                 stroke-width="6"
-                 stroke-linecap="round"/>`;
-      }).join('')}
+      const todayX = xs[currentIdx];
+      const today = `
+        <g>
+          <line x1="${todayX}" y1="${y - 14}" x2="${todayX}" y2="${y + 14}" stroke="#6b7280" stroke-width="1" />
+          <text x="${todayX}" y="${h}" text-anchor="middle" font-size="10" fill="#6b7280">Today</text>
+        </g>`;
 
-      ${dots.map((d) => `
-        <circle cx="${d.x}" cy="${y}" r="6"
-                fill="${d.upcoming ? '#fff' : strokeForLevel(d.level, false)}"
-                stroke="${strokeForLevel(d.level, d.upcoming)}"
-                stroke-width="${d.upcoming ? 2 : 0}"/>
-      `).join('')}
+      rail.innerHTML = `
+        <svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+          ${segs}
+          ${dots}
+          ${today}
+        </svg>`;
+    };
 
-      ${labels.map(l => `
-        <text x="${l.x}" y="${y-9}" text-anchor="middle"
-              font-size="10" font-weight="600"
-              fill="rgba(100,116,139,0.85)">${l.t}</text>
-      `).join('')}
-
-      <!-- Today marker -->
-      <line x1="${todayX}" y1="${y-14}" x2="${todayX}" y2="${y+14}"
-            stroke="rgba(15,23,42,0.35)" stroke-width="1"/>
-      <circle cx="${todayX}" cy="${y}" r="3.2" fill="rgba(15,23,42,0.55)"/>
-      <text x="${todayX}" y="${H-2}" text-anchor="middle"
-            font-size="10" font-weight="600"
-            fill="rgba(15,23,42,0.55)">Today</text>
-    </svg>
-  `;
-}
-
-
+    requestAnimationFrame(() => {
+      draw();
+      // redraw once more after fonts/layout settle
+      setTimeout(draw, 0);
+    });
+  }
 
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
@@ -1153,17 +1154,15 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     nodes.innerHTML = [milk, rec, vasCard, intlCard, lmCard].join('');
 
     {
-    const baselineStart = receiving.due;
-    const baselineEnd = manual.dates?.lastMileMax || addDays(baselineStart, 24);
-    const nowPct = (now - baselineStart) / (baselineEnd - baselineStart);
     const railNodes = [
       { level: milk.level, upcoming: true },
       { level: receiving.level, upcoming: now < receiving.due },
       { level: vas.level, upcoming: now < vas.due },
       { level: intl.level, upcoming: now < intl.originMax },
-      { level: manual.levels.lastMile, upcoming: now < baselineEnd }
+      { level: manual.levels.lastMile, upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)) }
     ];
-    renderProcessRail(railNodes, nowPct);
+    // Align "Today" marker to the currently selected node (or the most recent non-upcoming node).
+    renderProcessRail(railNodes, UI.selection?.node || null);
   }
 
     // Click handlers
