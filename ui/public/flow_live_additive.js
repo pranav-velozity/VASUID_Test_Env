@@ -998,87 +998,126 @@ function computeManualNodeStatuses(ws, tz) {
   }
 
   
-function renderProcessRail(nodes, selectedNodeId = null) {
+function renderProcessRail(nodes) {
     const rail = document.getElementById('flow-rail');
     if (!rail) return;
 
-    // Align the spine with the *actual* card centers below (responsive + gap-safe).
-    // We render after layout so we can measure the cards.
+    // Expect nodes: [{id, level, upcoming}]
     const order = ['milk','receiving','vas','intl','lastmile'];
-  const labels = { milk: 'MR', receiving: 'RCV', vas: 'VAS', intl: 'T&C', lastmile: 'LM' };
+    const nodeById = new Map((nodes || []).map(n => [n.id, n]));
 
-  // Determine which node is currently "ongoing".
-  // Preference order:
-  // 1) selectedNodeId (if present in nodes)
-  // 2) last non-upcoming node (based on due window)
-  // 3) fallback to first node
-  function computeCurrentIdx() {
-    if (selectedNodeId) {
-      const bySel = nodes.findIndex(n => n && n.id === selectedNodeId);
-      if (bySel >= 0) return bySel;
+    // "Ongoing" marker = last non-upcoming node (based on due windows), NOT the selected node.
+    let currentIdx = 0;
+    for (let i = 0; i < order.length; i++) {
+      const n = nodeById.get(order[i]);
+      if (n && n.upcoming === false) currentIdx = i;
     }
-    for (let i = nodes.length - 1; i >= 0; i--) {
-      if (nodes[i] && nodes[i].upcoming === false) return i;
-    }
-    return 0;
-  }
-
-  const currentIdx = computeCurrentIdx();
 
     const draw = () => {
-      const w = rail.clientWidth || 1000;
-      const h = 40;
-      const y = 20;
+      const root = document.getElementById('ops-progress-tiles');
+      if (!root) return;
 
-      const railRect = rail.getBoundingClientRect();
-      const cards = order.map(id => document.querySelector(`[data-node="${id}"]`));
-      // If cards are missing (rare during first paint), fall back to evenly spaced.
-      const xs = cards.every(Boolean)
-        ? cards.map(c => (c.getBoundingClientRect().left + c.getBoundingClientRect().right) / 2 - railRect.left)
-        : order.map((_, i) => (w * (0.08 + 0.84 * (i / (order.length - 1)))));
+      const cards = Array.from(root.querySelectorAll('[data-flow-node]'));
+      if (!cards.length) return;
 
-      const segs = order.slice(0, -1).map((_, i) => {
-        const n = nodes?.find(x => x?.id === order[i + 1]) || {};
-        const level = n.level || 'gray';
-        const upcoming = !!n.upcoming;
-        return `<line x1="${xs[i]}" y1="${y}" x2="${xs[i + 1]}" y2="${y}" stroke="${strokeForLevel(level, upcoming)}" stroke-width="6" stroke-linecap="round" />`;
-      }).join('');
+      const centers = new Map();
+      for (const el of cards) {
+        const id = el.getAttribute('data-flow-node');
+        const r = el.getBoundingClientRect();
+        centers.set(id, r.left + r.width / 2);
+      }
 
-      const dots = order.map((id, i) => {
-        const n = nodes?.find(x => x?.id === id) || {};
-        const level = n.level || 'gray';
-        const upcoming = !!n.upcoming;
-        const fill = upcoming ? '#ffffff' : strokeForLevel(level, false);
-        const stroke = strokeForLevel(level, upcoming);
-        return `
+      const rr = rail.getBoundingClientRect();
+
+      const x = (id) => {
+        const c = centers.get(id);
+        if (typeof c !== 'number') return null;
+        return Math.max(8, Math.min(rr.width - 8, c - rr.left));
+      };
+
+      const matte = (hex, alpha) => {
+        // hex like #rrggbb
+        const h = (hex || '#9ca3af').replace('#','');
+        const r = parseInt(h.slice(0,2),16) || 156;
+        const g = parseInt(h.slice(2,4),16) || 163;
+        const b = parseInt(h.slice(4,6),16) || 175;
+        return `rgba(${r},${g},${b},${alpha})`;
+      };
+
+      const strokeForLevel = (level, upcoming) => {
+        // Matte palette
+        const map = {
+          green: '#10b981',
+          red:   '#ef4444',
+          gray:  '#9ca3af'
+        };
+        const base = map[level] || map.gray;
+        return upcoming ? matte(base, 0.35) : matte(base, 0.55);
+      };
+
+      const dotFillForLevel = (level, upcoming) => {
+        const map = {
+          green: '#10b981',
+          red:   '#ef4444',
+          gray:  '#9ca3af'
+        };
+        const base = map[level] || map.gray;
+        return upcoming ? matte(base, 0.20) : matte(base, 0.45);
+      };
+
+      const label = (id) => {
+        const map = { milk:'MR', receiving:'RCV', vas:'VAS', intl:'T&C', lastmile:'LM' };
+        return map[id] || '';
+      };
+
+      // Build segments
+      let segs = '';
+      for (let i = 0; i < order.length - 1; i++) {
+        const a = order[i], b = order[i+1];
+        const xa = x(a), xb = x(b);
+        if (xa == null || xb == null) continue;
+        const nb = nodeById.get(b) || { level:'gray', upcoming:true };
+        segs += `<line x1="${xa}" y1="16" x2="${xb}" y2="16" stroke="${strokeForLevel(nb.level, nb.upcoming)}" stroke-width="6" stroke-linecap="round"></line>`;
+      }
+
+      // Dots + labels
+      let dots = '';
+      for (let i = 0; i < order.length; i++) {
+        const id = order[i];
+        const xi = x(id);
+        if (xi == null) continue;
+        const n = nodeById.get(id) || { level:'gray', upcoming:true };
+        dots += `
           <g>
-            <circle cx="${xs[i]}" cy="${y}" r="6" fill="${fill}" stroke="${stroke}" stroke-width="2" />
-            <text x="${xs[i]}" y="8" text-anchor="middle" font-size="10" fill="#6b7280" font-weight="600">${labels[id]}</text>
-          </g>`;
-      }).join('');
+            <circle cx="${xi}" cy="16" r="6" fill="${dotFillForLevel(n.level, n.upcoming)}" stroke="${strokeForLevel(n.level, n.upcoming)}" stroke-width="2"></circle>
+            <text x="${xi}" y="6" text-anchor="middle" font-size="10" fill="rgba(55,65,81,0.55)">${label(id)}</text>
+          </g>
+        `;
+      }
 
-      const todayX = xs[currentIdx];
-      const today = `
+      // Ongoing marker aligned to current node center
+      const ongoingId = order[Math.max(0, Math.min(order.length-1, currentIdx))];
+      const xo = x(ongoingId);
+      const ongoing = (xo == null) ? '' : `
         <g>
-          <line x1="${todayX}" y1="${y - 14}" x2="${todayX}" y2="${y + 14}" stroke="#6b7280" stroke-width="1" />
-          <text x="${todayX}" y="${h}" text-anchor="middle" font-size="10" fill="#6b7280">Ongoing</text>
-        </g>`;
+          <line x1="${xo}" y1="2" x2="${xo}" y2="30" stroke="rgba(17,24,39,0.35)" stroke-width="1"></line>
+          <text x="${xo}" y="40" text-anchor="middle" font-size="10" fill="rgba(17,24,39,0.55)">ongoing</text>
+        </g>
+      `;
 
       rail.innerHTML = `
-        <svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <svg width="100%" height="48" viewBox="0 0 ${rr.width} 48" preserveAspectRatio="none">
           ${segs}
           ${dots}
-          ${today}
+          ${ongoing}
         </svg>`;
     };
 
     requestAnimationFrame(() => {
       draw();
-      // redraw once more after fonts/layout settle
       setTimeout(draw, 0);
     });
   }
-
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     // use a single 'now' reference for all upcoming/past comparisons
@@ -1158,14 +1197,13 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     {
     const railNodes = [
-      { id: 'milk', level: milk.level, upcoming: true },
-      { id: 'receiving', level: receiving.level, upcoming: now < receiving.due },
-      { id: 'vas', level: vas.level, upcoming: now < vas.due },
-      { id: 'intl', level: intl.level, upcoming: now < intl.due },
-      { id: 'lastmile', level: lastmile.level, upcoming: now < lastmile.due }
+      { id:'milk', level: milk.level, upcoming: true },
+      { id:'receiving', level: receiving.level, upcoming: now < receiving.due },
+      { id:'vas', level: vas.level, upcoming: now < vas.due },
+      { id:'intl', level: intl.level, upcoming: now < intl.originMax },
+      { id:'lastmile', level: manual.levels.lastMile, upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)) }
     ];
-    // Align "Ongoing" marker to the currently selected node (or the most recent non-upcoming node).
-    renderProcessRail(railNodes, UI.selection?.node || null);
+    renderProcessRail(railNodes);
   }
 
     // Click handlers
