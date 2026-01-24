@@ -1194,7 +1194,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const now = new Date();
     const sel = UI.selection;
 
-    function header(title, level, subtitle) {
+    // "upcoming" is optional and controls muted styling for phases that
+    // haven't started yet. Must be passed explicitly.
+    function header(title, level, subtitle, upcoming = false) {
       return `
         <div class="flex items-start justify-between gap-3">
           <div>
@@ -1203,7 +1205,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level, !!upcoming)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level, !!upcoming)}</span>
           </div>
         </div>
       `;
