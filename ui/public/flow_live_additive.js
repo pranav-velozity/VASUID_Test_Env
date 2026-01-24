@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v40)
+/* flow_live_additive.js (v1)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -960,7 +960,7 @@ function computeManualNodeStatuses(ws, tz) {
     }
   }
 
-  function nodeCard({ id, title, subtitle, level, badges = [], disabled = false }) {
+  function nodeCard({ id, title, subtitle, level, badges = [], disabled = false, upcoming = false }) {
     const dis = disabled ? 'opacity-50 pointer-events-none' : '';
     const badgeHtml = badges.map(b => {
       const cls = b.level ? pill(b.level) : 'bg-gray-100 text-gray-700 border-gray-200';
@@ -975,7 +975,7 @@ function computeManualNodeStatuses(ws, tz) {
           </div>
           <div class="flex items-center gap-2">
             <span class="dot ${dot(level, !!upcoming)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level)}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level, !!upcoming)}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -2091,8 +2091,15 @@ async function refresh() {
     if (resetBtn && !resetBtn.dataset.bound) {
       resetBtn.dataset.bound = '1';
       resetBtn.onclick = () => {
+        // Flow-only reset (do not broadcast global events that can break other pages)
         UI.selection = { node: 'receiving', sub: null };
-        window.dispatchEvent(new Event('state:ready'));
+        try {
+          // clear lightweight per-week manual inputs
+          localStorage.removeItem(`flow:intl:${UI.currentWs}`);
+          localStorage.removeItem(`flow:lastmile:${UI.currentWs}`);
+        } catch {}
+        // Re-render just this page
+        refresh();
       };
     }
 
