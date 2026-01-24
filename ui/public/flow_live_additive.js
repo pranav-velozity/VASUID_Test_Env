@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v1)
+/* flow_live_additive.js (v40)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -158,13 +158,16 @@ function statusLabel(level) {
   return 'Future';
 }
 
-function strokeForLevel(level) {
-  // Matte / less saturated strokes so the rail doesn't overpower the UI
-  if (level === 'green') return 'rgba(16,185,129,0.45)';
-  if (level === 'yellow') return 'rgba(245,158,11,0.45)';
-  if (level === 'red') return 'rgba(244,63,94,0.45)';
-  return 'rgba(148,163,184,0.55)';
+function strokeForLevel(level, upcoming=false) {
+  // Matte / muted strokes so the rail doesn't overpower the UI.
+  // Upcoming phases get an even lighter tint so "current" stands out.
+  const a = upcoming ? 0.22 : 0.38;
+  if (level === 'green') return `rgba(22,163,74,${a})`;     // matte green
+  if (level === 'yellow') return `rgba(217,119,6,${a})`;    // matte amber
+  if (level === 'red') return `rgba(220,38,38,${a})`;       // matte red
+  return `rgba(148,163,184,${upcoming ? 0.28 : 0.45})`;     // slate
 }
+
 
 const NODE_ICONS = {
   milk: `<svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -971,8 +974,8 @@ function computeManualNodeStatuses(ws, tz) {
             <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
+            <span class="dot ${dot(level, !!upcoming)}"></span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level)}</span>
           </div>
         </div>
         <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
@@ -995,40 +998,83 @@ function computeManualNodeStatuses(ws, tz) {
   }
 
   
-function renderProcessRail(levels) {
+function renderProcessRail(nodes, nowPct=0) {
   const rail = document.getElementById('flow-rail');
   if (!rail) return;
 
-  // 5 nodes => 4 segments, draw in a fixed viewBox and let it stretch
+  const levels = nodes.map(n => n.level);
+  const upcoming = nodes.map(n => !!n.upcoming);
+
+  // 5 nodes => 4 segments, draw in a fixed viewBox and let it stretch.
   const segs = [
-    { from: 0, to: 1, level: levels[0] },
-    { from: 1, to: 2, level: levels[1] },
-    { from: 2, to: 3, level: levels[2] },
-    { from: 3, to: 4, level: levels[3] },
+    { from: 0, to: 1, level: levels[0], upcoming: upcoming[1] },
+    { from: 1, to: 2, level: levels[1], upcoming: upcoming[2] },
+    { from: 2, to: 3, level: levels[2], upcoming: upcoming[3] },
+    { from: 3, to: 4, level: levels[3], upcoming: upcoming[4] }
   ];
 
-  // Segment x positions at 10%, 30%, 50%, 70%, 90% (matches 5 columns visually)
-  const xs = [80, 260, 440, 620, 800];
-  // Render near the top so it sits visually between the header and cards
-  const y = 12;
+  const W = 1000;
+  const H = 38;
+  const pad = 48;
+  const y = 18;
 
-  const paths = segs.map((seg, i) => {
-    const x1 = xs[seg.from];
-    const x2 = xs[seg.to];
-    // rounded “capsule” segment with a tiny notch (feels connected)
-    return `<path d="M ${x1} ${y} L ${x2} ${y}" stroke="${strokeForLevel(seg.level)}" stroke-width="6" stroke-linecap="round" fill="none"/>`;
-  }).join('');
+  const xAt = (i)=> pad + (W - pad*2) * (i / 4);
 
-  // small connector dots at node centers
-  const dots = xs.map((x, i) => `<circle cx="${x}" cy="${y}" r="3.5" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>`).join('');
+  const dots = [0,1,2,3,4].map(i => ({
+    x: xAt(i),
+    level: levels[Math.max(0, i-1)] || levels[0] || 'gray',
+    upcoming: upcoming[i]
+  }));
+
+  // Small milestone labels (text, not emoji) so it stays professional & fast.
+  const labels = [
+    { t:'MR',  x:xAt(0) },
+    { t:'RCV', x:xAt(1) },
+    { t:'VAS', x:xAt(2) },
+    { t:'T&C', x:xAt(3) },
+    { t:'LM',  x:xAt(4) },
+  ];
+
+  const clamped = Math.max(0, Math.min(1, Number(nowPct)||0));
+  const todayX = pad + (W - pad*2) * clamped;
 
   rail.innerHTML = `
-    <svg viewBox="0 0 880 24" preserveAspectRatio="none" class="w-full h-6">
-      ${paths}
-      ${dots}
+    <svg viewBox="0 0 ${W} ${H}" class="w-full h-[38px]">
+      ${segs.map(s => {
+        const x1 = xAt(s.from), x2 = xAt(s.to);
+        return `<path d="M ${x1} ${y} C ${(x1+x2)/2} ${y}, ${(x1+x2)/2} ${y}, ${x2} ${y}"
+                 fill="none"
+                 stroke="${strokeForLevel(s.level, s.upcoming)}"
+                 stroke-width="6"
+                 stroke-linecap="round"/>`;
+      }).join('')}
+
+      ${dots.map((d) => `
+        <circle cx="${d.x}" cy="${y}" r="6"
+                fill="${d.upcoming ? '#fff' : strokeForLevel(d.level, false)}"
+                stroke="${strokeForLevel(d.level, d.upcoming)}"
+                stroke-width="${d.upcoming ? 2 : 0}"/>
+      `).join('')}
+
+      ${labels.map(l => `
+        <text x="${l.x}" y="${y-9}" text-anchor="middle"
+              font-size="10" font-weight="600"
+              fill="rgba(100,116,139,0.85)">${l.t}</text>
+      `).join('')}
+
+      <!-- Today marker -->
+      <line x1="${todayX}" y1="${y-14}" x2="${todayX}" y2="${y+14}"
+            stroke="rgba(15,23,42,0.35)" stroke-width="1"/>
+      <circle cx="${todayX}" cy="${y}" r="3.2" fill="rgba(15,23,42,0.55)"/>
+      <text x="${todayX}" y="${H-2}" text-anchor="middle"
+            font-size="10" font-weight="600"
+            fill="rgba(15,23,42,0.55)">Today</text>
     </svg>
   `;
 }
+
+
+
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const nodes = document.getElementById('flow-nodes');
@@ -1036,6 +1082,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     const milk = nodeCard({
       id: 'milk',
+      upcoming: true,
       title: 'Milk Run',
       subtitle: 'Future expansion',
       level: 'gray',
@@ -1052,6 +1099,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     const rec = nodeCard({
       id: 'receiving',
+      upcoming: now < receiving.due,
       title: 'Receiving',
       subtitle: `Due ${fmtInTZ(receiving.due, tz)}`,
       level: receiving.level,
@@ -1064,6 +1112,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     ];
     const vasCard = nodeCard({
       id: 'vas',
+      upcoming: now < vas.due,
       title: 'VAS Processing',
       subtitle: `Due ${fmtInTZ(vas.due, tz)}`,
       level: vas.level,
@@ -1079,7 +1128,8 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     else intlBadges.push({ label: `${intl.seaCount || 0} sea / ${intl.airCount || 0} air`, sub: 'mode' });
     const intlCard = nodeCard({
       id: 'intl',
-      title: 'Intl. Transit & Clearing',
+      upcoming: now < intl.originMax,
+      title: 'Transit & Clearing',
       subtitle: `Origin window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`,
       level: intl.level,
       badges: intlBadges,
@@ -1091,6 +1141,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     ].filter(Boolean);
     const lmCard = nodeCard({
       id: 'lastmile',
+      upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)),
       title: 'Last Mile',
       subtitle: `Window ${fmtInTZ(manual.baselines.lastMileMin, tz)} – ${fmtInTZ(manual.baselines.lastMileMax, tz)}`,
       level: manual.levels.lastMile,
@@ -1099,7 +1150,19 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     nodes.innerHTML = [milk, rec, vasCard, intlCard, lmCard].join('');
 
-    renderProcessRail([receiving.level, vas.level, intl.level, manual.levels.lastMile]);
+    {
+    const baselineStart = receiving.due;
+    const baselineEnd = manual.dates?.lastMileMax || addDays(baselineStart, 24);
+    const nowPct = (now - baselineStart) / (baselineEnd - baselineStart);
+    const railNodes = [
+      { level: milk.level, upcoming: true },
+      { level: receiving.level, upcoming: now < receiving.due },
+      { level: vas.level, upcoming: now < vas.due },
+      { level: intl.level, upcoming: now < intl.originMax },
+      { level: manual.levels.lastMile, upcoming: now < baselineEnd }
+    ];
+    renderProcessRail(railNodes, nowPct);
+  }
 
     // Click handlers
     $$('#flow-nodes [data-node]').forEach(card => {
@@ -1137,8 +1200,8 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
             <div class="text-sm text-gray-500 mt-0.5">${subtitle || ''}</div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="dot ${dot(level)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)} whitespace-nowrap">${statusLabel(level)}</span>
+            <span class="dot ${dot(level, !!upcoming)}"></span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level)}</span>
           </div>
         </div>
       `;
@@ -1176,7 +1239,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
       <div class="rounded-lg border p-2">
         <div class="text-[11px] text-gray-500">Cartons In</div>
-        <div class="text-sm font-semibold">${receiving.cartonsInTotal || 0}</div>
+        <div class="text-lg font-semibold whitespace-nowrap truncate max-w-[220px]">${receiving.cartonsInTotal || 0}</div>
       </div>
       <div class="rounded-lg border p-2">
         <div class="text-[11px] text-gray-500">Cartons Out</div>
@@ -1330,7 +1393,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       `;
 
       detail.innerHTML = [
-        header('Intl. Transit & Clearing', intl.level, subtitle),
+        header('Transit & Clearing', intl.level, subtitle),
         bullets(insights),
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
@@ -1380,7 +1443,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
       const insights = [
         'Track delivery per container / AWB (derived from Intl lanes).',
-        contRows.length ? `${contRows.filter(r => r.delivery_at).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Intl. Transit & Clearing to start tracking Last Mile.',
+        contRows.length ? `${contRows.filter(r => r.delivery_at).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
       ];
 
       const kpis = `
@@ -1424,7 +1487,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const selected = selectedKey ? contRows.find(x => x.key === selectedKey) : null;
 
       const editor = selected ? lastMileEditor(ws, tz, selected) : `
-        <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No containers found. Add containers under Intl. Transit & Clearing.</div>
+        <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No containers found. Add containers under Transit & Clearing.</div>
       `;
 
       detail.innerHTML = [
