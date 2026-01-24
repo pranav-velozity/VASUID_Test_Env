@@ -1077,6 +1077,8 @@ function renderProcessRail(nodes, nowPct=0) {
 
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
+    // use a single 'now' reference for all upcoming/past comparisons
+    const now = new Date();
     const nodes = document.getElementById('flow-nodes');
     if (!nodes) return;
 
