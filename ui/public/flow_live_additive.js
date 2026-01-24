@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v1)
+/* flow_live_additive.js (v41)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -998,7 +998,7 @@ function computeManualNodeStatuses(ws, tz) {
   }
 
   
-function renderProcessRail(nodes) {
+  function renderProcessRail(nodes, forcedCurrentIdx = null) {
     const rail = document.getElementById('flow-rail');
     if (!rail) return;
 
@@ -1006,11 +1006,16 @@ function renderProcessRail(nodes) {
     const order = ['milk','receiving','vas','intl','lastmile'];
     const nodeById = new Map((nodes || []).map(n => [n.id, n]));
 
-    // "Ongoing" marker = last non-upcoming node (based on due windows), NOT the selected node.
+    // "Ongoing" marker = operational phase (NOT the selected node).
+    // If a forced index is provided, use that; else infer from upcoming flags.
     let currentIdx = 0;
-    for (let i = 0; i < order.length; i++) {
-      const n = nodeById.get(order[i]);
-      if (n && n.upcoming === false) currentIdx = i;
+    if (Number.isFinite(forcedCurrentIdx)) {
+      currentIdx = Math.max(0, Math.min(order.length - 1, forcedCurrentIdx));
+    } else {
+      for (let i = 0; i < order.length; i++) {
+        const n = nodeById.get(order[i]);
+        if (n && n.upcoming === false) currentIdx = i;
+      }
     }
 
     const draw = () => {
@@ -1196,15 +1201,27 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     nodes.innerHTML = [milk, rec, vasCard, intlCard, lmCard].join('');
 
     {
-    const railNodes = [
-      { id:'milk', level: milk.level, upcoming: true },
-      { id:'receiving', level: receiving.level, upcoming: now < receiving.due },
-      { id:'vas', level: vas.level, upcoming: now < vas.due },
-      { id:'intl', level: intl.level, upcoming: now < intl.originMax },
-      { id:'lastmile', level: manual.levels.lastMile, upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)) }
-    ];
-    renderProcessRail(railNodes);
-  }
+      // --- Process rail (spine) ---
+      // "Ongoing" should follow the operational stage (progress-based), not today's date.
+      let ongoingIdx = 2; // default to VAS
+      if ((receiving.receivedPOs || 0) < (receiving.plannedPOs || 0)) {
+        ongoingIdx = 1;
+      } else {
+        // Intl should only become "ongoing" once its origin window has started.
+        const intlInWindow = (intl.originMin instanceof Date) ? (now >= intl.originMin) : false;
+        if (intlInWindow) ongoingIdx = 3;
+        else ongoingIdx = 2;
+      }
+
+      const railNodes = [
+        { id: 'milk', level: milk.level, upcoming: (0 > ongoingIdx) },
+        { id: 'receiving', level: receiving.level, upcoming: (1 > ongoingIdx) },
+        { id: 'vas', level: vas.level, upcoming: (2 > ongoingIdx) },
+        { id: 'intl', level: intl.level, upcoming: (3 > ongoingIdx) },
+        { id: 'lastmile', level: manual.levels.lastMile, upcoming: (4 > ongoingIdx) },
+      ];
+      renderProcessRail(railNodes, ongoingIdx);
+    }
 
     // Click handlers
     $$('#flow-nodes [data-node]').forEach(card => {
