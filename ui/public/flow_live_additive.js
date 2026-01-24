@@ -999,7 +999,7 @@ function computeManualNodeStatuses(ws, tz) {
 
   
 function renderProcessRail(nodes, selectedNodeId = null) {
-    const rail = document.getElementById('flow-process-rail');
+    const rail = document.getElementById('flow-rail');
     if (!rail) return;
 
     // Align the spine with the *actual* card centers below (responsive + gap-safe).
