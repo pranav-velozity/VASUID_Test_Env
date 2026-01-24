@@ -1004,23 +1004,26 @@ function renderProcessRail(nodes, selectedNodeId = null) {
 
     // Align the spine with the *actual* card centers below (responsive + gap-safe).
     // We render after layout so we can measure the cards.
-    const order = ['milk', 'receiving', 'vas', 'intl', 'lastmile'];
-    const labels = { milk: 'MR', receiving: 'RCV', vas: 'VAS', intl: 'T&C', lastmile: 'LM' };
+    const order = ['milk','receiving','vas','intl','lastmile'];
+  const labels = { milk: 'MR', receiving: 'RCV', vas: 'VAS', intl: 'T&C', lastmile: 'LM' };
 
-    const computeCurrentIdx = () => {
-      if (selectedNodeId) {
-        const idx = order.indexOf(selectedNodeId);
-        if (idx >= 0) return idx;
-      }
-      // fallback: the last non-upcoming node ("where we are")
-      for (let i = order.length - 1; i >= 0; i--) {
-        const n = nodes?.find(x => x?.id === order[i]);
-        if (n && !n.upcoming) return i;
-      }
-      return 0;
-    };
+  // Determine which node is currently "ongoing".
+  // Preference order:
+  // 1) selectedNodeId (if present in nodes)
+  // 2) last non-upcoming node (based on due window)
+  // 3) fallback to first node
+  function computeCurrentIdx() {
+    if (selectedNodeId) {
+      const bySel = nodes.findIndex(n => n && n.id === selectedNodeId);
+      if (bySel >= 0) return bySel;
+    }
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      if (nodes[i] && nodes[i].upcoming === false) return i;
+    }
+    return 0;
+  }
 
-    const currentIdx = computeCurrentIdx();
+  const currentIdx = computeCurrentIdx();
 
     const draw = () => {
       const w = rail.clientWidth || 1000;
@@ -1058,7 +1061,7 @@ function renderProcessRail(nodes, selectedNodeId = null) {
       const today = `
         <g>
           <line x1="${todayX}" y1="${y - 14}" x2="${todayX}" y2="${y + 14}" stroke="#6b7280" stroke-width="1" />
-          <text x="${todayX}" y="${h}" text-anchor="middle" font-size="10" fill="#6b7280">Today</text>
+          <text x="${todayX}" y="${h}" text-anchor="middle" font-size="10" fill="#6b7280">Ongoing</text>
         </g>`;
 
       rail.innerHTML = `
@@ -1155,13 +1158,13 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     {
     const railNodes = [
-      { level: milk.level, upcoming: true },
-      { level: receiving.level, upcoming: now < receiving.due },
-      { level: vas.level, upcoming: now < vas.due },
-      { level: intl.level, upcoming: now < intl.originMax },
-      { level: manual.levels.lastMile, upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)) }
+      { id: 'milk', level: milk.level, upcoming: true },
+      { id: 'receiving', level: receiving.level, upcoming: now < receiving.due },
+      { id: 'vas', level: vas.level, upcoming: now < vas.due },
+      { id: 'intl', level: intl.level, upcoming: now < intl.due },
+      { id: 'lastmile', level: lastmile.level, upcoming: now < lastmile.due }
     ];
-    // Align "Today" marker to the currently selected node (or the most recent non-upcoming node).
+    // Align "Ongoing" marker to the currently selected node (or the most recent non-upcoming node).
     renderProcessRail(railNodes, UI.selection?.node || null);
   }
 
