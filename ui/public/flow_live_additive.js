@@ -966,6 +966,8 @@ function computeManualNodeStatuses(ws, tz) {
       <div class="grid grid-cols-1 gap-3">
         <!-- Top row: Journey map (2/3) + Detail (1/3) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <!-- Journey map (2/3) + Insights (1/3) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <!-- Journey map tile -->
           <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-2">
             <div class="flex items-center justify-between mb-2">
@@ -975,15 +977,15 @@ function computeManualNodeStatuses(ws, tz) {
             <div id="flow-journey" class="w-full"></div>
           </div>
 
-          <!-- Detail tile (middle tile, moved to right 1/3) -->
+          <!-- Insights tile moved to right 1/3 -->
           <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px] lg:col-span-1">
-            <div id="flow-detail" class="h-full"></div>
+            <div id="flow-footer"></div>
           </div>
         </div>
 
-        <!-- Footer tile (Insights + light trends) stays where it is -->
-        <div class="rounded-2xl border bg-white shadow-sm p-3">
-          <div id="flow-footer"></div>
+        <!-- Detail tile moved below (full width) -->
+        <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[360px]">
+          <div id="flow-detail" class="h-full"></div>
         </div>
       </div>
 
@@ -1249,41 +1251,63 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       } catch { return ''; }
     };
 
-    // Journey path geometry (viewBox units)
+    // Journey path geometry (viewBox units) - inverted S road
+    const road = {
+      A: { x: 80,  y: 60 },   // start
+      B: { x: 920, y: 60 },   // top-right corner
+      C: { x: 920, y: 140 },  // mid-right corner
+      D: { x: 120, y: 140 },  // mid-left corner
+      E: { x: 120, y: 220 },  // bottom-left corner
+      F: { x: 920, y: 220 },  // end
+    };
+
+    // Node placement on the road (per your reference layout)
     const pts = {
-      milk:      { x: 90,  y: 70 },
-      receiving: { x: 290, y: 110 },
-      vas:       { x: 520, y: 70 },
-      intl:      { x: 760, y: 150 },
-      lastmile:  { x: 940, y: 90 },
+      milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
+      receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
+      vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
+      intl:      { x: road.D.x,                         y: Math.round((road.D.y + road.E.y) / 2) }, // middle of second curve (left vertical)
+      lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
     const order = ['milk','receiving','vas','intl','lastmile'];
 
-    // Road path (single smooth path for the background)
-    const roadPath = `
-      M ${pts.milk.x} ${pts.milk.y}
-      C 200 40, 240 140, ${pts.receiving.x} ${pts.receiving.y}
-      S 430 40, ${pts.vas.x} ${pts.vas.y}
-      S 700 40, ${pts.intl.x} ${pts.intl.y}
-      S 860 60, ${pts.lastmile.x} ${pts.lastmile.y}
-    `;
+    // Road path (inverted S; straight segments with rounded joins)
+    const roadPath = `M ${road.A.x} ${road.A.y} L ${road.B.x} ${road.B.y} L ${road.C.x} ${road.C.y} L ${road.D.x} ${road.D.y} L ${road.E.x} ${road.E.y} L ${road.F.x} ${road.F.y}`;
 
-    // Colored segments (straight-ish between key points) for progress emphasis
+// Colored segments along the road between milestones (keeps visuals consistent with the path)
     let segs = '';
+    const segPathBetween = (fromId, toId) => {
+      // Build a path that follows the road corners as needed
+      if (fromId === 'milk' && toId === 'receiving') {
+        return `M ${pts.milk.x} ${pts.milk.y} L ${pts.receiving.x} ${pts.receiving.y}`;
+      }
+      if (fromId === 'receiving' && toId === 'vas') {
+        return `M ${pts.receiving.x} ${pts.receiving.y} L ${road.B.x} ${road.B.y} L ${road.C.x} ${road.C.y} L ${pts.vas.x} ${pts.vas.y}`;
+      }
+      if (fromId === 'vas' && toId === 'intl') {
+        return `M ${pts.vas.x} ${pts.vas.y} L ${road.D.x} ${road.D.y} L ${pts.intl.x} ${pts.intl.y}`;
+      }
+      if (fromId === 'intl' && toId === 'lastmile') {
+        return `M ${pts.intl.x} ${pts.intl.y} L ${road.E.x} ${road.E.y} L ${road.F.x} ${road.F.y}`;
+      }
+      // Fallback: direct line
+      const a = pts[fromId]; const b = pts[toId];
+      if (!a || !b) return '';
+      return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+    };
+
     for (let i = 0; i < order.length - 1; i++) {
-      const a = pts[order[i]];
-      const b = pts[order[i+1]];
+      const fromId = order[i];
+      const toId = order[i+1];
       const nb = nodes[i+1] || { level:'gray', upcoming:true };
-      if (!a || !b) continue;
-      // small curve between points for segment overlay
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      segs += `<path d="M ${a.x} ${a.y} Q ${mx} ${my - 30} ${b.x} ${b.y}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="14" stroke-linecap="round" />`;
+      const d = segPathBetween(fromId, toId);
+      if (!d) continue;
+      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />`;
     }
 
     // Center dashed line
-    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round" />`;
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Milestones (icons in white circles)
     let milestones = '';
@@ -1295,14 +1319,17 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const icon = iconSvgFor(id);
       const isOngoing = (i === ongoingIdx);
       const ring = isOngoing ? 'rgba(17,24,39,0.25)' : 'rgba(17,24,39,0.12)';
-      const labelY = p.y + 44;
+      const rightSide = p.x < 760;
+      const labelX = rightSide ? (p.x + 34) : (p.x - 34);
+      const labelAnchor = rightSide ? 'start' : 'end';
+      const labelY = p.y + 4;
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
           <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
-          <text x="${p.x}" y="${labelY}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.65)">${n.short}</text>
+          <text x="${labelX}" y="${labelY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
         </g>
       `;
     }
@@ -1339,7 +1366,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       <div class="w-full overflow-hidden">
         <svg viewBox="0 0 1000 260" preserveAspectRatio="xMidYMid meet" aria-label="Journey map">
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.60)" stroke-width="18" stroke-linecap="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.60)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
           ${segs}
           ${dashed}
           ${milestones}
