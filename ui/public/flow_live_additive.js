@@ -1286,18 +1286,18 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const order = ['milk','receiving','vas','intl','lastmile'];
 
     // Road path (inverted S; straight segments with rounded joins)
-    const r = 40;
+    const rad = 40;
     // Road path (inverted S with rounded corners)
     const roadPath = `
       M ${road.A.x} ${road.A.y}
-      L ${road.B.x - r} ${road.A.y}
-      A ${r} ${r} 0 0 1 ${road.B.x} ${road.A.y + r}
-      L ${road.B.x} ${road.C.y - r}
-      A ${r} ${r} 0 0 1 ${road.B.x - r} ${road.C.y}
-      L ${road.D.x + r} ${road.C.y}
-      A ${r} ${r} 0 0 1 ${road.D.x} ${road.C.y + r}
-      L ${road.D.x} ${road.E.y - r}
-      A ${r} ${r} 0 0 1 ${road.D.x + r} ${road.E.y}
+      L ${road.B.x - rad} ${road.A.y}
+      A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
+      L ${road.B.x} ${road.C.y - rad}
+      A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
+      L ${road.D.x + rad} ${road.C.y}
+      A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
+      L ${road.D.x} ${road.E.y - rad}
+      A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
       L ${road.F.x} ${road.F.y}
     `;
 
@@ -1311,26 +1311,26 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       if (fromId === 'receiving' && toId === 'vas') {
         return `
           M ${pts.receiving.x} ${pts.receiving.y}
-          L ${road.B.x - r} ${road.A.y}
-          A ${r} ${r} 0 0 1 ${road.B.x} ${road.A.y + r}
-          L ${road.B.x} ${road.C.y - r}
-          A ${r} ${r} 0 0 1 ${road.B.x - r} ${road.C.y}
+          L ${road.B.x - rad} ${road.A.y}
+          A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
+          L ${road.B.x} ${road.C.y - rad}
+          A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
           L ${pts.vas.x} ${road.C.y}
         `;
       }
       if (fromId === 'vas' && toId === 'intl') {
         return `
           M ${pts.vas.x} ${road.C.y}
-          L ${road.D.x + r} ${road.C.y}
-          A ${r} ${r} 0 0 1 ${road.D.x} ${road.C.y + r}
+          L ${road.D.x + rad} ${road.C.y}
+          A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
           L ${road.D.x} ${pts.intl.y}
         `;
       }
       if (fromId === 'intl' && toId === 'lastmile') {
         return `
           M ${road.D.x} ${pts.intl.y}
-          L ${road.D.x} ${road.E.y - r}
-          A ${r} ${r} 0 0 1 ${road.D.x + r} ${road.E.y}
+          L ${road.D.x} ${road.E.y - rad}
+          A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
           L ${pts.lastmile.x} ${pts.lastmile.y}
         `;
       }
