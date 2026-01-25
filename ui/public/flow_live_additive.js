@@ -1001,6 +1001,8 @@ function computeManualNodeStatuses(ws, tz) {
   function renderProcessRail(nodes, forcedCurrentIdx = null) {
     const rail = document.getElementById('flow-rail');
     if (!rail) return;
+    // Show rail on desktop (it may be hidden in the static markup)
+    rail.classList.remove('hidden');
 
     // Expect nodes: [{id, level, upcoming}]
     const order = ['milk','receiving','vas','intl','lastmile'];
@@ -1019,7 +1021,7 @@ function computeManualNodeStatuses(ws, tz) {
     }
 
     const draw = () => {
-      const root = document.getElementById('ops-progress-tiles');
+      const root = document.getElementById('flow-nodes') || document.getElementById('ops-progress-tiles');
       if (!root) return;
 
       const cards = Array.from(root.querySelectorAll('[data-flow-node]'));
@@ -1214,7 +1216,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
       }
 
       const railNodes = [
-        { id: 'milk', level: milk.level, upcoming: (0 > ongoingIdx) },
+        { id: 'milk', level: 'gray', upcoming: true },
         { id: 'receiving', level: receiving.level, upcoming: (1 > ongoingIdx) },
         { id: 'vas', level: vas.level, upcoming: (2 > ongoingIdx) },
         { id: 'intl', level: intl.level, upcoming: (3 > ongoingIdx) },
