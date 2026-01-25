@@ -1128,7 +1128,7 @@ function computeManualNodeStatuses(ws, tz) {
           // Force an explicit size for use inside the spine SVG (ignore Tailwind classes)
           // Keep original viewBox/path/stroke etc.
           return raw
-            .replace(/class="[^"]*"/g, 'width="18" height="18"')
+            .replace(/class="[^"]*"/g, 'width="24" height="24"')
             .replace('<svg ', '<svg x="0" y="0" ');
         } catch (e) {
           return '';
@@ -1156,7 +1156,7 @@ function computeManualNodeStatuses(ws, tz) {
         dots += `
           <g>
             <circle cx="${xi}" cy="16" r="8" fill="${dotFillForLevel(n.level, n.upcoming)}" stroke="${strokeForLevel(n.level, n.upcoming)}" stroke-width="2"></circle>
-            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 9},${-2})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
+            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-2})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
           </g>
         `;
       }
