@@ -2395,3 +2395,54 @@ async function refresh() {
   ensureFlowPageExists();
   showHideByHash();
 })();
+
+
+
+(function(){
+  try {
+    if (document.getElementById('flow-ui-polish-style')) return;
+    var style = document.createElement('style');
+    style.id = 'flow-ui-polish-style';
+    style.type = 'text/css';
+    style.appendChild(document.createTextNode(`
+/* ===== UI POLISH PATCH (SAFE, ADDITIVE) ===== */
+
+/* 1) Spine node indicators: prefer icons, readable size */
+.spine-node .spine-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.spine-node .node-icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.9;
+}
+
+.spine-node.is-current .node-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* 2) Subtle contrast for top (nodes) tile only */
+.flow-tile--nodes {
+  background: #F9FAFB;
+  border: 1px solid #EEF0F3;
+}
+/* ===== END UI POLISH PATCH ===== */
+`));
+    document.head.appendChild(style);
+
+    // Prefer icons over text labels on spine nodes if icons exist
+    document.querySelectorAll('.spine-node').forEach(function(n){
+      var icon = n.querySelector('.node-icon');
+      var label = n.querySelector('.spine-label');
+      if (icon && label) {
+        label.style.display = 'none';
+      }
+    });
+  } catch(e) {
+    // Never break rendering
+  }
+})();
