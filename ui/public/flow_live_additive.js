@@ -122,11 +122,33 @@
 
   function shiftWeekStart(ws, deltaWeeks) {
     try {
+      // Always navigate by week starts anchored on **Monday**.
+      // If the stored ws drifts (e.g., user navigated from a non-Monday),
+      // normalize to the Monday of that week before shifting.
       const base = new Date(`${ws}T00:00:00Z`);
       if (isNaN(base)) return ws;
-      const next = addDays(base, (Number(deltaWeeks) || 0) * 7);
+
+      // 0=Sun..6=Sat in UTC
+      const dow = base.getUTCDay();
+      const sinceMon = (dow + 6) % 7; // days since Monday
+      const monday = addDays(base, -sinceMon);
+
+      const next = addDays(monday, (Number(deltaWeeks) || 0) * 7);
       return isoDate(next);
     } catch { return ws; }
+  }
+
+  function normalizeWeekStartToMonday(ws) {
+    try {
+      const base = new Date(`${ws}T00:00:00Z`);
+      if (isNaN(base)) return ws;
+      const dow = base.getUTCDay();
+      const sinceMon = (dow + 6) % 7;
+      const monday = addDays(base, -sinceMon);
+      return isoDate(monday);
+    } catch {
+      return ws;
+    }
   }
 
 
@@ -2209,6 +2231,14 @@ async function refresh() {
       d.setDate(d.getDate() - delta);
       ws = isoDate(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())));
     }
+    // Enforce Monday week-starts. This prevents silent drift that can make
+    // the week appear to "lose" data when users navigate.
+    ws = normalizeWeekStartToMonday(ws);
+    if (!window.state) window.state = {};
+    window.state.weekStart = ws;
+    const wkInp = document.getElementById('week-start');
+    if (wkInp) wkInp.value = ws;
+
     UI.currentWs = ws;
     const tz = getBizTZ();
 
@@ -2242,7 +2272,8 @@ async function refresh() {
       btn.dataset.bound = '1';
       btn.onclick = () => {
         try {
-          const nextWs = shiftWeekStart(UI.currentWs || ws, delta);
+          // Shift and re-normalize to Monday (defensive even if stored ws drifts)
+          const nextWs = normalizeWeekStartToMonday(shiftWeekStart(UI.currentWs || ws, delta));
           // Update both global state and any week input, but do not broadcast.
           if (!window.state) window.state = {};
           window.state.weekStart = nextWs;
