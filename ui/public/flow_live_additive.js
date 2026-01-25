@@ -1156,7 +1156,7 @@ function computeManualNodeStatuses(ws, tz) {
         dots += `
           <g>
             <circle cx="${xi}" cy="16" r="8" fill="${dotFillForLevel(n.level, n.upcoming)}" stroke="${strokeForLevel(n.level, n.upcoming)}" stroke-width="2"></circle>
-            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-2})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
+            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-12})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
           </g>
         `;
       }
