@@ -964,32 +964,50 @@ function computeManualNodeStatuses(ws, tz) {
       </div>
 
       <div class="grid grid-cols-1 gap-3">
-        <!-- Top tile -->
-        <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes">
-          <div class="flex items-center justify-between mb-2">
-            <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
-            <div id="flow-day" class="text-xs text-gray-500"></div>
+        <!-- Top row: Journey map (2/3) + Detail (1/3) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <!-- Journey map tile -->
+          <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-2">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
+              <div id="flow-day" class="text-xs text-gray-500"></div>
+            </div>
+            <div id="flow-journey" class="w-full"></div>
           </div>
-          <!-- Process rail sits above the cards to avoid overlap -->
-          <div id="flow-rail" class="hidden md:block mt-0 mb-2 pointer-events-none"></div>
-          <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2"></div>
+
+          <!-- Detail tile (middle tile, moved to right 1/3) -->
+          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px] lg:col-span-1">
+            <div id="flow-detail" class="h-full"></div>
+          </div>
         </div>
 
-        <!-- Bottom tile -->
-        <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px]">
-          <div id="flow-detail" class="h-full"></div>
-        </div>
-
-        <!-- Footer tile (light trends) -->
+        <!-- Footer tile (Insights + light trends) stays where it is -->
         <div class="rounded-2xl border bg-white shadow-sm p-3">
           <div id="flow-footer"></div>
         </div>
       </div>
 
       <div class="mt-3 text-xs text-gray-500">
+
         Baseline is editable in <code>flow_live_additive.js</code>. Receiving + VAS are data-driven; International Transit + Last Mile are lightweight manual (stored locally per week).
       </div>
     `;
+
+    // Journey map CSS (additive; never breaks if duplicated)
+    try {
+      if (!document.getElementById('flow-journey-style')) {
+        const st = document.createElement('style');
+        st.id = 'flow-journey-style';
+        st.textContent = `
+          /* Journey map sizing + crispness */
+          #flow-journey svg { width: 100%; height: 240px; display: block; }
+          @media (min-width: 1024px) { #flow-journey svg { height: 260px; } }
+          .flow-journey-hit { cursor: pointer; }
+          .flow-journey-hit:focus { outline: none; }
+        `;
+        document.head.appendChild(st);
+      }
+    } catch {}
   }
 
   function setSubheader(ws) {
@@ -1157,7 +1175,7 @@ function computeManualNodeStatuses(ws, tz) {
         dots += `
           <g>
             <!-- icon replaces connector marker (no dot) -->
-            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},8)">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
+            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-12})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
           </g>
         `;
       }
@@ -1185,6 +1203,170 @@ function computeManualNodeStatuses(ws, tz) {
       setTimeout(draw, 0);
     });
   }
+
+
+function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
+    const root = document.getElementById('flow-journey');
+    if (!root) return;
+
+    const now = new Date();
+
+    // Determine operational "ongoing" index (same logic as before)
+    let ongoingIdx = 2; // default VAS
+    if ((receiving.receivedPOs || 0) < (receiving.plannedPOs || 0)) {
+      ongoingIdx = 1;
+    } else {
+      const intlInWindow = (intl.originMin instanceof Date) ? (now >= intl.originMin) : false;
+      ongoingIdx = intlInWindow ? 3 : 2;
+    }
+
+    // Node model (milk disabled)
+    const nodes = [
+      { id:'milk', label:'Milk Run', short:'MR', level:'gray', upcoming:true, disabled:true },
+      { id:'receiving', label:'Receiving', short:'RCV', level: receiving.level, upcoming: now < receiving.due },
+      { id:'vas', label:'VAS', short:'VAS', level: vas.level, upcoming: now < vas.due },
+      { id:'intl', label:'Transit & Clearing', short:'T&C', level: intl.level, upcoming: now < intl.originMax },
+      { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)) },
+    ];
+
+    const matte = (hex, alpha) => {
+      const h = (hex || '#9ca3af').replace('#','');
+      const r = parseInt(h.slice(0,2),16) || 156;
+      const g = parseInt(h.slice(2,4),16) || 163;
+      const b = parseInt(h.slice(4,6),16) || 175;
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+    const levelColor = (level) => ({ green:'#10b981', red:'#ef4444', gray:'#9ca3af' }[level] || '#9ca3af');
+    const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.35) : matte(levelColor(level), 0.60);
+
+    const iconSvgFor = (id) => {
+      try {
+        const raw = (typeof NODE_ICONS !== 'undefined' && NODE_ICONS && NODE_ICONS[id]) ? String(NODE_ICONS[id]) : '';
+        if (!raw) return '';
+        return raw
+          .replace(/class="[^"]*"/g, 'width="26" height="26"')
+          .replace('<svg ', '<svg x="0" y="0" ');
+      } catch { return ''; }
+    };
+
+    // Journey path geometry (viewBox units)
+    const pts = {
+      milk:      { x: 90,  y: 70 },
+      receiving: { x: 290, y: 110 },
+      vas:       { x: 520, y: 70 },
+      intl:      { x: 760, y: 150 },
+      lastmile:  { x: 940, y: 90 },
+    };
+
+    const order = ['milk','receiving','vas','intl','lastmile'];
+
+    // Road path (single smooth path for the background)
+    const roadPath = `
+      M ${pts.milk.x} ${pts.milk.y}
+      C 200 40, 240 140, ${pts.receiving.x} ${pts.receiving.y}
+      S 430 40, ${pts.vas.x} ${pts.vas.y}
+      S 700 40, ${pts.intl.x} ${pts.intl.y}
+      S 860 60, ${pts.lastmile.x} ${pts.lastmile.y}
+    `;
+
+    // Colored segments (straight-ish between key points) for progress emphasis
+    let segs = '';
+    for (let i = 0; i < order.length - 1; i++) {
+      const a = pts[order[i]];
+      const b = pts[order[i+1]];
+      const nb = nodes[i+1] || { level:'gray', upcoming:true };
+      if (!a || !b) continue;
+      // small curve between points for segment overlay
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      segs += `<path d="M ${a.x} ${a.y} Q ${mx} ${my - 30} ${b.x} ${b.y}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="14" stroke-linecap="round" />`;
+    }
+
+    // Center dashed line
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round" />`;
+
+    // Milestones (icons in white circles)
+    let milestones = '';
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      const p = pts[id];
+      const n = nodes[i];
+      if (!p || !n) continue;
+      const icon = iconSvgFor(id);
+      const isOngoing = (i === ongoingIdx);
+      const ring = isOngoing ? 'rgba(17,24,39,0.25)' : 'rgba(17,24,39,0.12)';
+      const labelY = p.y + 44;
+
+      milestones += `
+        <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
+          <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
+          ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
+                   `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
+          <text x="${p.x}" y="${labelY}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.65)">${n.short}</text>
+        </g>
+      `;
+    }
+
+    const ongoingId = order[Math.max(0, Math.min(order.length - 1, ongoingIdx))];
+    const op = pts[ongoingId];
+    const ongoing = (!op) ? '' : `
+      <g>
+        <line x1="${op.x}" y1="${op.y + 28}" x2="${op.x}" y2="${op.y + 70}" stroke="rgba(17,24,39,0.25)" stroke-width="1" />
+        <text x="${op.x}" y="${op.y + 86}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
+      </g>
+    `;
+
+    // Compact stats blocks under the journey (wow factor but stable)
+    const stat = (title, a, b) => `
+      <div class="rounded-xl border bg-white p-2">
+        <div class="text-xs font-semibold text-gray-700">${title}</div>
+        <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
+        ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
+      </div>
+    `;
+
+    // Use existing computed values; never assume presence
+    const recA = `${(receiving.receivedPOs||0)}/${(receiving.plannedPOs||0)} POs`;
+    const recB = `${(receiving.cartonsOutTotal||0)} out • ${(receiving.latePOs||0)} late`;
+    const vasA = `${Math.round((vas.completion||0)*100)}% complete`;
+    const vasB = `${(vas.appliedUnits||0)}/${(vas.plannedUnits||0)} units`;
+    const intlA = `${(intl.lanes||[]).length} lanes`;
+    const intlB = `${(intl.missingDocs||0)} docs missing • ${(intl.holds||0)} hold`;
+    const lmA = `${(manual.manual?.last_mile_open||0)}/${(manual.manual?.last_mile_total||0)} open`;
+    const lmB = manual.manual?.delivered_at ? `Delivered set` : `Delivered (set)`;
+
+    root.innerHTML = `
+      <div class="w-full overflow-hidden">
+        <svg viewBox="0 0 1000 260" preserveAspectRatio="xMidYMid meet" aria-label="Journey map">
+          <!-- road base -->
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.60)" stroke-width="18" stroke-linecap="round" />
+          ${segs}
+          ${dashed}
+          ${milestones}
+          ${ongoing}
+        </svg>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+        ${stat('Receiving', recA, recB)}
+        ${stat('VAS applied', vasA, vasB)}
+        ${stat('Transit & Clearing', intlA, intlB)}
+        ${stat('Last Mile', lmA, lmB)}
+      </div>
+    `;
+
+    // Click handlers (use existing selection + detail render; never assume)
+    try {
+      root.querySelectorAll('[data-journey-node]').forEach(el => {
+        el.addEventListener('click', () => {
+          const node = el.getAttribute('data-node');
+          UI.selection = { node, sub: null };
+          renderDetail(ws, tz, receiving, vas, intl, manual);
+          highlightSelection();
+        });
+      });
+    } catch {}
+  }
+
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     // use a single 'now' reference for all upcoming/past comparisons
@@ -1299,11 +1481,24 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
   }
 
   function highlightSelection() {
-    const { node } = UI.selection;
+    const { node } = UI.selection || {};
+    // Legacy cards (if present)
     $$('#flow-nodes [data-node]').forEach(el => {
       if (el.getAttribute('data-node') === node) el.classList.add('ring-2', 'ring-[#990033]');
       else el.classList.remove('ring-2', 'ring-[#990033]');
     });
+    // Journey map milestones (SVG groups)
+    try {
+      const root = document.getElementById('flow-journey');
+      if (root) {
+        root.querySelectorAll('[data-journey-node]').forEach(el => {
+          // We can't "ring" SVG groups with Tailwind, so we toggle a data attr and let stroke width handle it via re-render.
+          // Best-effort: add a class for potential CSS hooks.
+          if (el.getAttribute('data-node') === node) el.classList.add('is-selected');
+          else el.classList.remove('is-selected');
+        });
+      }
+    } catch {}
   }
 
   function renderDetail(ws, tz, receiving, vas, intl, manual) {
@@ -2559,7 +2754,7 @@ async function refresh() {
       UI.reportCache = { ws, tz, receiving, vas, intl, manual, records: [] };
     }
 
-    renderTopNodes(ws, tz, receiving, vas, intl, manual);
+    renderJourneyTop(ws, tz, receiving, vas, intl, manual);
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
     renderDetail(ws, tz, receiving, vas, intl, manual);
