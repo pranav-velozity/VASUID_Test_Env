@@ -964,7 +964,7 @@ function computeManualNodeStatuses(ws, tz) {
 
       <div class="grid grid-cols-1 gap-3">
         <!-- Top tile -->
-        <div class="rounded-2xl border bg-white shadow-sm p-3">
+        <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes">
           <div class="flex items-center justify-between mb-2">
             <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
             <div id="flow-day" class="text-xs text-gray-500"></div>
@@ -1140,8 +1140,8 @@ function computeManualNodeStatuses(ws, tz) {
         const n = nodeById.get(id) || { level:'gray', upcoming:true };
         dots += `
           <g>
-            <circle cx="${xi}" cy="16" r="6" fill="${dotFillForLevel(n.level, n.upcoming)}" stroke="${strokeForLevel(n.level, n.upcoming)}" stroke-width="2"></circle>
-            <text x="${xi}" y="6" text-anchor="middle" font-size="10" fill="rgba(55,65,81,0.55)">${label(id)}</text>
+            <circle cx="${xi}" cy="16" r="8" fill="${dotFillForLevel(n.level, n.upcoming)}" stroke="${strokeForLevel(n.level, n.upcoming)}" stroke-width="2"></circle>
+            <text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>
           </g>
         `;
       }
@@ -1152,7 +1152,7 @@ function computeManualNodeStatuses(ws, tz) {
       const ongoing = (xo == null) ? '' : `
         <g>
           <line x1="${xo}" y1="2" x2="${xo}" y2="30" stroke="rgba(17,24,39,0.35)" stroke-width="1"></line>
-          <text x="${xo}" y="40" text-anchor="middle" font-size="10" fill="rgba(17,24,39,0.55)">ongoing</text>
+          <text x="${xo}" y="40" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
         </g>
       `;
 
@@ -2399,50 +2399,20 @@ async function refresh() {
 
 
 (function(){
-  try {
+  try{
     if (document.getElementById('flow-ui-polish-style')) return;
-    var style = document.createElement('style');
-    style.id = 'flow-ui-polish-style';
-    style.type = 'text/css';
+    var style=document.createElement('style');
+    style.id='flow-ui-polish-style';
+    style.type='text/css';
     style.appendChild(document.createTextNode(`
-/* ===== UI POLISH PATCH (SAFE, ADDITIVE) ===== */
-
-/* 1) Spine node indicators: prefer icons, readable size */
-.spine-node .spine-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+/* ===== UI POLISH (SAFE, ADDITIVE) ===== */
+/* Top tile subtle contrast */
+#flow-top-tile.flow-tile--nodes{
+  background:#F9FAFB;
+  border-color:#EEF0F3;
 }
-
-.spine-node .node-icon {
-  width: 18px;
-  height: 18px;
-  opacity: 0.9;
-}
-
-.spine-node.is-current .node-icon {
-  width: 20px;
-  height: 20px;
-}
-
-/* 2) Subtle contrast for top (nodes) tile only */
-.flow-tile--nodes {
-  background: #F9FAFB;
-  border: 1px solid #EEF0F3;
-}
-/* ===== END UI POLISH PATCH ===== */
+/* ===== END UI POLISH ===== */
 `));
     document.head.appendChild(style);
-
-    // Prefer icons over text labels on spine nodes if icons exist
-    document.querySelectorAll('.spine-node').forEach(function(n){
-      var icon = n.querySelector('.node-icon');
-      var label = n.querySelector('.spine-label');
-      if (icon && label) {
-        label.style.display = 'none';
-      }
-    });
-  } catch(e) {
-    // Never break rendering
-  }
+  }catch(e){}
 })();
