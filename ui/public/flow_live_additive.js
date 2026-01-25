@@ -1279,7 +1279,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
       receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
       vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
-      intl:      { x: road.D.x,                         y: (road.C.y + r) }, // middle of second curve (left corner)
+      intl:      { x: road.D.x,                         y: (road.C.y + rad) }, // middle of second curve (left corner)
       lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
