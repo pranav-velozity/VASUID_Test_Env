@@ -485,7 +485,8 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      <!-- 3-tile layout: Top (nodes+spine), Middle (detail), Bottom (insights) -->
+      <div class="grid grid-cols-1 gap-3">
         <!-- Top tile -->
         <div class="rounded-2xl border bg-white shadow-sm p-3">
           <div class="flex items-center justify-between mb-2">
@@ -496,9 +497,18 @@
           <div id="flow-nodes" class="grid grid-cols-1 md:grid-cols-5 gap-2"></div>
         </div>
 
-        <!-- Bottom tile -->
+        <!-- Middle tile -->
         <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px]">
           <div id="flow-detail" class="h-full"></div>
+        </div>
+
+        <!-- Bottom tile (insights) -->
+        <div class="rounded-2xl border bg-white shadow-sm p-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold text-gray-700">Insights</div>
+            <div id="flow-insights-meta" class="text-xs text-gray-500"></div>
+          </div>
+          <div id="flow-insights" class="mt-2"></div>
         </div>
       </div>
 
@@ -563,8 +573,9 @@
     const rail = document.getElementById('flow-rail');
     if (!rail) return;
 
+    // Keys MUST match the node card ids (node-<id>) to ensure perfect center alignment.
     const nodes = [
-      { key: 'milk_run', label: 'MR', level: 'gray', upcoming: true },
+      { key: 'milk', label: 'MR', level: 'gray', upcoming: true },
       { key: 'receiving', label: 'RCV', level: receiving?.level || 'gray', upcoming: false },
       { key: 'vas', label: 'VAS', level: vas?.level || 'gray', upcoming: false },
       { key: 'intl', label: 'T&C', level: manual?.levels?.intl || 'gray', upcoming: false },
@@ -738,9 +749,11 @@ function renderTopNodes(ws, tz, receiving, vas, manual) {
     $$('#flow-nodes [data-node]').forEach(el => {
       if (el.getAttribute('data-node') === node) el.classList.add('ring-2', 'ring-[#990033]');
       else el.classList.remove('ring-2', 'ring-[#990033]');
-    // Keep rail marker aligned with selection
-    renderProcessRail({ ongoingKey: UI.selection?.node || null, tz: UI.tz, receiving: UI.receiving, vas: UI.vas, manual: UI.manual });
     });
+    // Keep rail marker aligned with selection (best-effort; never throw)
+    try {
+      renderProcessRail({ ongoingKey: UI.selection?.node || null, tz: UI.tz, receiving: UI.receiving, vas: UI.vas, manual: UI.manual });
+    } catch { /* ignore */ }
   }
 
   function renderDetail(ws, tz, receiving, vas, manual) {
@@ -884,6 +897,63 @@ function renderTopNodes(ws, tz, receiving, vas, manual) {
 
     // default
     detail.innerHTML = header('Flow', 'gray', 'Click a node above to see details.');
+  }
+
+  function renderInsights(ws, tz, receiving, vas, manual) {
+    const wrap = document.getElementById('flow-insights');
+    if (!wrap) return;
+    const meta = document.getElementById('flow-insights-meta');
+    if (meta) meta.textContent = ws ? `Week ${ws}` : '';
+
+    const safe = (x, d = '—') => (x === 0 ? '0' : (x ? String(x) : d));
+
+    const card = (title, level, lines) => {
+      const xs = (lines || []).filter(Boolean).slice(0, 6);
+      return `
+        <div class="rounded-xl border p-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold">${escapeHtml(title)}</div>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level)}">${safe(level, 'GRAY').toUpperCase()}</span>
+          </div>
+          <ul class="mt-2 space-y-1 text-sm">
+            ${xs.map(x => `<li class="flex gap-2"><span class="text-gray-400">•</span><span>${x}</span></li>`).join('')}
+          </ul>
+        </div>
+      `;
+    };
+
+    const rLines = [
+      (receiving && typeof receiving.receivedPOs === 'number' && typeof receiving.plannedPOs === 'number')
+        ? `<b>${receiving.receivedPOs}/${receiving.plannedPOs}</b> planned POs received` : null,
+      receiving?.latePOs ? `<b>${receiving.latePOs}</b> received after baseline` : null,
+      receiving?.missingPOs ? `<b>${receiving.missingPOs}</b> not yet received` : null,
+      receiving?.lastReceived ? `Last received: <b>${escapeHtml(fmtInTZ(receiving.lastReceived, tz))}</b>` : null,
+    ];
+
+    const vLines = [
+      (vas && typeof vas.completion === 'number') ? `Completion: <b>${Math.round(vas.completion * 100)}%</b>` : null,
+      (vas && typeof vas.appliedUnits === 'number' && typeof vas.plannedUnits === 'number')
+        ? `<b>${vas.appliedUnits}</b> / <b>${vas.plannedUnits}</b> units applied` : null,
+      vas?.plannedPOs ? `<b>${vas.plannedPOs}</b> planned POs` : null,
+      vas?.due ? `Due: <b>${escapeHtml(fmtInTZ(vas.due, tz))}</b>` : null,
+    ];
+
+    const m = manual?.manual || {};
+    const mLines = [
+      `Intl mode: <b>${escapeHtml(manual?.intlMode || 'Sea')}</b>`,
+      m.origin_ready_at ? `Origin ready set: <b>${escapeHtml(fmtInTZ(new Date(m.origin_ready_at), tz))}</b>` : 'Origin ready: not set',
+      m.customs_hold ? '<b>Customs hold</b> flagged' : null,
+      m.delivered_at ? `Delivered set: <b>${escapeHtml(fmtInTZ(new Date(m.delivered_at), tz))}</b>` : 'Delivered: not set',
+      m.last_mile_issue ? '<b>Last mile issue</b> flagged' : null,
+    ];
+
+    wrap.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        ${card('Receiving', receiving?.level || 'gray', rLines)}
+        ${card('VAS', vas?.level || 'gray', vLines)}
+        ${card('Transit & Last Mile', (manual?.levels?.lastMile === 'red' || manual?.levels?.intl === 'red') ? 'red' : (manual?.levels?.lastMile === 'green' && manual?.levels?.intl === 'green') ? 'green' : 'gray', mLines)}
+      </div>
+    `;
   }
 
   function manualFormIntl(ws, tz, manual) {
@@ -1056,10 +1126,17 @@ function renderTopNodes(ws, tz, receiving, vas, manual) {
     const vas = computeVASStatus(ws, tz, planRows, records);
     const manual = computeManualNodeStatuses(ws, tz);
 
+    // Cache for safe re-renders (e.g., rail realignment on selection)
+    UI.tz = tz;
+    UI.receiving = receiving;
+    UI.vas = vas;
+    UI.manual = manual;
+
     renderTopNodes(ws, tz, receiving, vas, manual);
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
     renderDetail(ws, tz, receiving, vas, manual);
+    renderInsights(ws, tz, receiving, vas, manual);
     highlightSelection();
   }
 
