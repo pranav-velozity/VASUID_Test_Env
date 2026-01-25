@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v42)
+/* flow_live_additive.js (v41)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -1186,7 +1186,7 @@ function computeManualNodeStatuses(ws, tz) {
       const ongoing = (xo == null) ? '' : `
         <g>
           <line x1="${xo}" y1="2" x2="${xo}" y2="30" stroke="rgba(17,24,39,0.35)" stroke-width="1"></line>
-          <text x="${xo}" y="40" text-anchor="${(id==='intl') ? 'end' : 'middle'}" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
+          <text x="${xo}" y="40" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
         </g>
       `;
 
@@ -1400,7 +1400,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const ongoing = (!op) ? '' : `
       <g>
         <line x1="${op.x}" y1="${op.y + 28}" x2="${op.x}" y2="${op.y + 70}" stroke="rgba(17,24,39,0.25)" stroke-width="1" />
-        <text x="${op.x}" y="${op.y + 86}" text-anchor="${(id==='intl') ? 'end' : 'middle'}" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
+        <text x="${op.x}" y="${op.y + 86}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
       </g>
     `;
 
