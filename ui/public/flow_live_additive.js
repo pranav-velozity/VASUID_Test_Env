@@ -964,9 +964,7 @@ function computeManualNodeStatuses(ws, tz) {
       </div>
 
       <div class="grid grid-cols-1 gap-3">
-        <!-- Top row: Journey map (2/3) + Detail (1/3) -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <!-- Journey map (2/3) + Insights (1/3) -->
+        <!-- Top row: Journey map (2/3) + Insights (1/3) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <!-- Journey map tile -->
           <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-2">
@@ -976,14 +974,14 @@ function computeManualNodeStatuses(ws, tz) {
             </div>
             <div id="flow-journey" class="w-full"></div>
           </div>
-
           <!-- Insights tile moved to right 1/3 -->
           <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px] lg:col-span-1">
             <div id="flow-footer"></div>
           </div>
         </div>
+        </div>
 
-        <!-- Detail tile moved below (full width) -->
+        <!-- Detail tile moved to bottom (full width) -->
         <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[360px]">
           <div id="flow-detail" class="h-full"></div>
         </div>
@@ -1240,6 +1238,19 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     };
     const levelColor = (level) => ({ green:'#10b981', red:'#ef4444', gray:'#9ca3af' }[level] || '#9ca3af');
     const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.35) : matte(levelColor(level), 0.60);
+    const statusText = (n) => {
+      if (!n) return '—';
+      if (n.disabled || n.upcoming) return 'Future';
+      if (n.level === 'green') return 'On Track';
+      if (n.level === 'red') return 'Delayed';
+      return 'GRAY';
+    };
+    const statusLevel = (n) => {
+      if (!n) return 'gray';
+      if (n.disabled || n.upcoming) return 'gray';
+      return n.level || 'gray';
+    };
+
 
     const iconSvgFor = (id) => {
       try {
@@ -1273,26 +1284,56 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const order = ['milk','receiving','vas','intl','lastmile'];
 
     // Road path (inverted S; straight segments with rounded joins)
-    const roadPath = `M ${road.A.x} ${road.A.y} L ${road.B.x} ${road.B.y} L ${road.C.x} ${road.C.y} L ${road.D.x} ${road.D.y} L ${road.E.x} ${road.E.y} L ${road.F.x} ${road.F.y}`;
+    const r = 40;
+    // Road path (inverted S with rounded corners)
+    const roadPath = `
+      M ${road.A.x} ${road.A.y}
+      L ${road.B.x - r} ${road.A.y}
+      A ${r} ${r} 0 0 1 ${road.B.x} ${road.A.y + r}
+      L ${road.B.x} ${road.C.y - r}
+      A ${r} ${r} 0 0 1 ${road.B.x - r} ${road.C.y}
+      L ${road.D.x + r} ${road.C.y}
+      A ${r} ${r} 0 0 1 ${road.D.x} ${road.C.y + r}
+      L ${road.D.x} ${road.E.y - r}
+      A ${r} ${r} 0 0 1 ${road.D.x + r} ${road.E.y}
+      L ${road.F.x} ${road.F.y}
+    `;
 
 // Colored segments along the road between milestones (keeps visuals consistent with the path)
     let segs = '';
     const segPathBetween = (fromId, toId) => {
-      // Build a path that follows the road corners as needed
+      // Paths follow the same rounded road geometry so colors sit on the “asphalt”.
       if (fromId === 'milk' && toId === 'receiving') {
         return `M ${pts.milk.x} ${pts.milk.y} L ${pts.receiving.x} ${pts.receiving.y}`;
       }
       if (fromId === 'receiving' && toId === 'vas') {
-        return `M ${pts.receiving.x} ${pts.receiving.y} L ${road.B.x} ${road.B.y} L ${road.C.x} ${road.C.y} L ${pts.vas.x} ${pts.vas.y}`;
+        return `
+          M ${pts.receiving.x} ${pts.receiving.y}
+          L ${road.B.x - r} ${road.A.y}
+          A ${r} ${r} 0 0 1 ${road.B.x} ${road.A.y + r}
+          L ${road.B.x} ${road.C.y - r}
+          A ${r} ${r} 0 0 1 ${road.B.x - r} ${road.C.y}
+          L ${pts.vas.x} ${road.C.y}
+        `;
       }
       if (fromId === 'vas' && toId === 'intl') {
-        return `M ${pts.vas.x} ${pts.vas.y} L ${road.D.x} ${road.D.y} L ${pts.intl.x} ${pts.intl.y}`;
+        return `
+          M ${pts.vas.x} ${road.C.y}
+          L ${road.D.x + r} ${road.C.y}
+          A ${r} ${r} 0 0 1 ${road.D.x} ${road.C.y + r}
+          L ${road.D.x} ${pts.intl.y}
+        `;
       }
       if (fromId === 'intl' && toId === 'lastmile') {
-        return `M ${pts.intl.x} ${pts.intl.y} L ${road.E.x} ${road.E.y} L ${road.F.x} ${road.F.y}`;
+        return `
+          M ${road.D.x} ${pts.intl.y}
+          L ${road.D.x} ${road.E.y - r}
+          A ${r} ${r} 0 0 1 ${road.D.x + r} ${road.E.y}
+          L ${pts.lastmile.x} ${pts.lastmile.y}
+        `;
       }
-      // Fallback: direct line
-      const a = pts[fromId]; const b = pts[toId];
+      // Fallback: straight
+      const a = pts[fromId], b = pts[toId];
       if (!a || !b) return '';
       return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
     };
@@ -1324,12 +1365,27 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const labelAnchor = rightSide ? 'start' : 'end';
       const labelY = p.y + 4;
 
+      const st = statusText(n);
+      const stLevel = statusLevel(n);
+      const stBg = matte(levelColor(stLevel), 0.14);
+      const stFg = matte(levelColor(stLevel), 0.92);
+      const pillW = Math.max(54, 12 + (String(st).length * 7));
+      const pillH = 18;
+      const pillY = p.y + 12;
+      const pillX = rightSide ? labelX : (labelX - pillW);
+      const pillTextX = rightSide ? (labelX + pillW/2) : (labelX - pillW/2);
+
+
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
           <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
           <text x="${labelX}" y="${labelY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
+          <g>
+            <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
+            <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
+          </g>
         </g>
       `;
     }
@@ -1344,13 +1400,22 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     `;
 
     // Compact stats blocks under the journey (wow factor but stable)
-    const stat = (title, a, b) => `
-      <div class="rounded-xl border bg-white p-2">
-        <div class="text-xs font-semibold text-gray-700">${title}</div>
-        <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
-        ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
-      </div>
-    `;
+    const stat = (title, a, b, n) => {
+      const st = statusText(n);
+      const stLevel = statusLevel(n);
+      const bg = matte(levelColor(stLevel), 0.14);
+      const fg = matte(levelColor(stLevel), 0.92);
+      return `
+        <div class="rounded-xl border bg-white p-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs font-semibold text-gray-700">${title}</div>
+            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-[11px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
+          ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
+        </div>
+      `;
+    };
 
     // Use existing computed values; never assume presence
     const recA = `${(receiving.receivedPOs||0)}/${(receiving.plannedPOs||0)} POs`;
@@ -1374,10 +1439,10 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         </svg>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-        ${stat('Receiving', recA, recB)}
-        ${stat('VAS applied', vasA, vasB)}
-        ${stat('Transit & Clearing', intlA, intlB)}
-        ${stat('Last Mile', lmA, lmB)}
+        ${stat('Receiving', recA, recB, nodes[1])}
+        ${stat('VAS applied', vasA, vasB, nodes[2])}
+        ${stat('Transit & Clearing', intlA, intlB, nodes[3])}
+        ${stat('Last Mile', lmA, lmB, nodes[4])}
       </div>
     `;
 
