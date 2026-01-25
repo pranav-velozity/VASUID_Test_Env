@@ -1186,7 +1186,7 @@ function computeManualNodeStatuses(ws, tz) {
       const ongoing = (xo == null) ? '' : `
         <g>
           <line x1="${xo}" y1="2" x2="${xo}" y2="30" stroke="rgba(17,24,39,0.35)" stroke-width="1"></line>
-          <text x="${xo}" y="40" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
+          <text x="${xo}" y="40" text-anchor="${(id==='intl') ? 'end' : 'middle'}" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
         </g>
       `;
 
@@ -1280,7 +1280,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
       receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
       vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
-      intl:      { x: Math.round(road.D.x + rad * 0.707), y: Math.round(road.C.y + rad * 0.707) }, // middle of second curve (on arc)
+      intl:      { x: Math.round(road.D.x + rad * 0.293), y: Math.round(road.C.y + rad * 0.293) }, // midpoint on left curve
       lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
@@ -1289,17 +1289,17 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     // Road path (inverted S; straight segments with rounded joins)
     // Road path (inverted S with rounded corners)
     const roadPath = `
-      M ${road.A.x} ${road.A.y}
-      L ${road.B.x - rad} ${road.A.y}
-      A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
-      L ${road.B.x} ${road.C.y - rad}
-      A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
-      L ${road.D.x + rad} ${road.C.y}
-      A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
-      L ${road.D.x} ${road.E.y - rad}
-      A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
-      L ${road.F.x} ${road.F.y}
-    `;
+  M ${road.A.x} ${road.A.y}
+  H ${road.B.x - rad}
+  A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
+  V ${road.C.y - rad}
+  A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
+  H ${road.D.x + rad}
+  A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
+  V ${road.E.y - rad}
+  A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
+  H ${road.F.x}
+`;
 
 // Colored segments along the road between milestones (keeps visuals consistent with the path)
     let segs = '';
@@ -1400,7 +1400,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const ongoing = (!op) ? '' : `
       <g>
         <line x1="${op.x}" y1="${op.y + 28}" x2="${op.x}" y2="${op.y + 70}" stroke="rgba(17,24,39,0.25)" stroke-width="1" />
-        <text x="${op.x}" y="${op.y + 86}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
+        <text x="${op.x}" y="${op.y + 86}" text-anchor="${(id==='intl') ? 'end' : 'middle'}" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
       </g>
     `;
 
