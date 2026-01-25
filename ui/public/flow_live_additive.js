@@ -1226,7 +1226,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       { id:'receiving', label:'Receiving', short:'RCV', level: receiving.level, upcoming: now < receiving.due },
       { id:'vas', label:'VAS', short:'VAS', level: vas.level, upcoming: now < vas.due },
       { id:'intl', label:'Transit & Clearing', short:'T&C', level: intl.level, upcoming: now < intl.originMax },
-      { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: now < (manual.dates?.lastMileMax || addDays(receiving.due,24)) },
+      { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: false },
     ];
 
     const matte = (hex, alpha) => {
@@ -1236,18 +1236,20 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const b = parseInt(h.slice(4,6),16) || 175;
       return `rgba(${r},${g},${b},${alpha})`;
     };
-    const levelColor = (level) => ({ green:'#10b981', red:'#ef4444', gray:'#9ca3af' }[level] || '#9ca3af');
-    const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.35) : matte(levelColor(level), 0.60);
+    const levelColor = (level) => ({ green:'#34d399', red:'#fb7185', yellow:'#facc15', gray:'#9ca3af' }[level] || '#9ca3af');
+    const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.28) : matte(levelColor(level), 0.50);
     const statusText = (n) => {
       if (!n) return '—';
-      if (n.disabled || n.upcoming) return 'Future';
+      if (n.disabled) return 'Future';
+      if (n.upcoming) return 'Upcoming';
       if (n.level === 'green') return 'On Track';
       if (n.level === 'red') return 'Delayed';
       return 'GRAY';
     };
     const statusLevel = (n) => {
       if (!n) return 'gray';
-      if (n.disabled || n.upcoming) return 'gray';
+      if (n.disabled) return 'gray';
+      if (n.upcoming) return 'yellow';
       return n.level || 'gray';
     };
 
@@ -1277,7 +1279,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
       receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
       vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
-      intl:      { x: road.D.x,                         y: Math.round((road.D.y + road.E.y) / 2) }, // middle of second curve (left vertical)
+      intl:      { x: road.D.x,                         y: (road.C.y + r) }, // middle of second curve (left corner)
       lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
@@ -1360,20 +1362,22 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const icon = iconSvgFor(id);
       const isOngoing = (i === ongoingIdx);
       const ring = isOngoing ? 'rgba(17,24,39,0.25)' : 'rgba(17,24,39,0.12)';
-      const rightSide = p.x < 760;
-      const labelX = rightSide ? (p.x + 34) : (p.x - 34);
-      const labelAnchor = rightSide ? 'start' : 'end';
-      const labelY = p.y + 4;
+      const labelX = p.x;
+      const labelAnchor = 'middle';
+      // Node name above icon
+      const nameY = p.y - 34;
 
       const st = statusText(n);
       const stLevel = statusLevel(n);
       const stBg = matte(levelColor(stLevel), 0.14);
       const stFg = matte(levelColor(stLevel), 0.92);
-      const pillW = Math.max(54, 12 + (String(st).length * 7));
+
+      // Status pill below icon
+      const pillW = Math.max(58, 14 + (String(st).length * 7));
       const pillH = 18;
-      const pillY = p.y + 12;
-      const pillX = rightSide ? labelX : (labelX - pillW);
-      const pillTextX = rightSide ? (labelX + pillW/2) : (labelX - pillW/2);
+      const pillY = p.y + 22;
+      const pillX = p.x - (pillW / 2);
+      const pillTextX = p.x;
 
 
       milestones += `
@@ -1381,7 +1385,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
-          <text x="${labelX}" y="${labelY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
+          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
             <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
@@ -1431,7 +1435,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       <div class="w-full overflow-hidden">
         <svg viewBox="0 0 1000 260" preserveAspectRatio="xMidYMid meet" aria-label="Journey map">
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.60)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
           ${segs}
           ${dashed}
           ${milestones}
