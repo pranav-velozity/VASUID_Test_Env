@@ -959,6 +959,7 @@ function computeManualNodeStatuses(ws, tz) {
           <button id="flow-prev-week" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50" title="Previous week">←</button>
           <button id="flow-next-week" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50" title="Next week">→</button>
           <button id="flow-reset" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Reset view</button>
+          <button id="flow-download-pdf" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Download PDF</button>
         </div>
       </div>
 
@@ -1155,7 +1156,7 @@ function computeManualNodeStatuses(ws, tz) {
         const n = nodeById.get(id) || { level:'gray', upcoming:true };
         dots += `
           <g>
-            <circle cx="${xi}" cy="16" r="8" fill="${dotFillForLevel(n.level, n.upcoming)}" stroke="${strokeForLevel(n.level, n.upcoming)}" stroke-width="2"></circle>
+            <!-- icon replaces connector marker (no dot) -->
             ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-12})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
           </g>
         `;
@@ -2242,6 +2243,208 @@ function manualFormIntl(ws, tz, manual) {
     `;
   }
 
+
+  // ------------------------- PDF Reporting (Print-to-PDF) -------------------------
+  // Generates a multi-page printable report in a new window and triggers the browser print dialog.
+  // This avoids external PDF libraries and is resilient to undefined data.
+  function escHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  function pct(n, d) {
+    const nn = Number(n) || 0;
+    const dd = Number(d) || 0;
+    if (!dd) return '0%';
+    return `${Math.round((nn / dd) * 100)}%`;
+  }
+
+  function fmtDateLocal(d, tz) {
+    try {
+      if (!d) return '—';
+      const dt = (d instanceof Date) ? d : new Date(d);
+      if (isNaN(dt)) return '—';
+      return fmtInTZ(dt, tz);
+    } catch { return '—'; }
+  }
+
+  function weekRangeText(ws, tz) {
+    try {
+      const start = makeBizLocalDate(ws, '00:00', tz);
+      const end = new Date(start.getTime()); end.setDate(end.getDate() + 5); // Mon..Sat-ish for display
+      return `${fmtInTZ(start, tz)} – ${fmtInTZ(end, tz)}`;
+    } catch { return String(ws || ''); }
+  }
+
+  function buildReportHTML(cache) {
+    const ws = cache?.ws || '';
+    const tz = cache?.tz || getBizTZ();
+    const receiving = cache?.receiving || {};
+    const vas = cache?.vas || {};
+    const intl = cache?.intl || {};
+    const manual = cache?.manual || {};
+
+    const suppliers = Array.isArray(receiving.suppliers) ? receiving.suppliers : [];
+
+    const execRows = [
+      ['Week', escHtml(String(ws))],
+      ['Receiving', `${escHtml(pct(receiving.receivedPOs, receiving.plannedPOs))} (${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)} POs)`],
+      ['Cartons out', escHtml(receiving.cartonsOutTotal ?? 0)],
+      ['VAS applied', `${escHtml(pct(vas.appliedUnits, vas.plannedUnits))} (${escHtml(vas.appliedUnits ?? 0)}/${escHtml(vas.plannedUnits ?? 0)} units)`],
+      ['Transit lanes', escHtml(intl.lanesTotal ?? (manual?.intl?.lanes ?? 0) ?? 0)],
+      ['Docs missing', escHtml(intl.docsMissing ?? (manual?.intl?.docsMissing ?? 0) ?? 0)],
+      ['Last Mile open', `${escHtml(manual?.lastmile?.open ?? manual?.lastMile?.open ?? 0)}/${escHtml(manual?.lastmile?.total ?? manual?.lastMile?.total ?? 0)}`],
+    ];
+
+    const supplierTable = suppliers.length ? `
+      <table>
+        <thead>
+          <tr><th>Supplier</th><th>POs received</th><th>Planned units</th><th>Cartons in</th><th>Cartons out</th></tr>
+        </thead>
+        <tbody>
+          ${suppliers.map(s => `
+            <tr>
+              <td>${escHtml(s.supplier)}</td>
+              <td>${escHtml(s.receivedPOs)}/${escHtml(s.poCount)}</td>
+              <td>${escHtml(s.units)}</td>
+              <td>${escHtml(s.cartonsIn)}</td>
+              <td>${escHtml(s.cartonsOut)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : `<div class="muted">No supplier breakdown available for this week.</div>`;
+
+    const nodePage = (title, bodyHtml) => `
+      <section class="page">
+        <div class="hdr">
+          <div class="h1">${escHtml(title)}</div>
+          <div class="muted">Week start: ${escHtml(ws)} • Generated: ${escHtml(new Date().toLocaleString())}</div>
+        </div>
+        ${bodyHtml}
+      </section>
+    `;
+
+    const execPage = `
+      <section class="page">
+        <div class="hdr">
+          <div class="h1">Flow — Executive summary</div>
+          <div class="muted">${escHtml(weekRangeText(ws, tz))} • Week start: ${escHtml(ws)}</div>
+        </div>
+
+        <div class="grid2">
+          ${execRows.map(([k,v]) => `<div class="kv"><div class="k">${escHtml(k)}</div><div class="v">${v}</div></div>`).join('')}
+        </div>
+
+        <div class="spacer"></div>
+        <div class="h2">Notes</div>
+        <div class="muted">Ongoing state is based on the current process node (not date math).</div>
+      </section>
+    `;
+
+    const receivingPage = nodePage('Receiving', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(receiving.due, tz))}</div></div>
+        <div class="kv"><div class="k">Last received</div><div class="v">${escHtml(fmtDateLocal(receiving.lastReceived, tz))}</div></div>
+        <div class="kv"><div class="k">POs received</div><div class="v">${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)}</div></div>
+        <div class="kv"><div class="k">Late POs</div><div class="v">${escHtml(receiving.latePOs ?? 0)}</div></div>
+        <div class="kv"><div class="k">Cartons in</div><div class="v">${escHtml(receiving.cartonsInTotal ?? 0)}</div></div>
+        <div class="kv"><div class="k">Cartons out</div><div class="v">${escHtml(receiving.cartonsOutTotal ?? 0)}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="h2">Supplier breakdown</div>
+      ${supplierTable}
+    `);
+
+    const vasPage = nodePage('VAS Processing', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(vas.due, tz))}</div></div>
+        <div class="kv"><div class="k">Applied</div><div class="v">${escHtml(vas.appliedUnits ?? 0)} / ${escHtml(vas.plannedUnits ?? 0)} units (${escHtml(pct(vas.appliedUnits, vas.plannedUnits))})</div></div>
+        <div class="kv"><div class="k">Completion</div><div class="v">${escHtml(pct(vas.completedPOs, vas.plannedPOs))} (${escHtml(vas.completedPOs ?? 0)}/${escHtml(vas.plannedPOs ?? 0)} POs)</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted">Source: completed production records aggregated for the selected week.</div>
+    `);
+
+    const intlPage = nodePage('Transit & Clearing', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Origin window</div><div class="v">${escHtml(intl.windowText ?? '—')}</div></div>
+        <div class="kv"><div class="k">Lanes</div><div class="v">${escHtml(intl.lanesTotal ?? 0)}</div></div>
+        <div class="kv"><div class="k">Mode split</div><div class="v">${escHtml(intl.modeText ?? '—')}</div></div>
+        <div class="kv"><div class="k">Docs missing</div><div class="v">${escHtml(intl.docsMissing ?? 0)}</div></div>
+        <div class="kv"><div class="k">Holds</div><div class="v">${escHtml(intl.holds ?? 0)}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted">International Transit is lightweight manual data stored locally per week (unless data-driven fields are present).</div>
+    `);
+
+    const lm = manual?.lastmile || manual?.lastMile || {};
+    const lastMilePage = nodePage('Last Mile', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Delivery window</div><div class="v">${escHtml((intl && intl.lastMileWindowText) || lm.windowText || '—')}</div></div>
+        <div class="kv"><div class="k">Open</div><div class="v">${escHtml(lm.open ?? 0)}</div></div>
+        <div class="kv"><div class="k">Total</div><div class="v">${escHtml(lm.total ?? 0)}</div></div>
+        <div class="kv"><div class="k">Status</div><div class="v">${escHtml(lm.statusText || '—')}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted">Last Mile is lightweight manual data stored locally per week.</div>
+    `);
+
+    const style = `
+      <style>
+        :root { color-scheme: light; }
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; padding: 0; color: #111827; }
+        .page { padding: 24px 28px; page-break-after: always; }
+        .page:last-child { page-break-after: auto; }
+        .hdr { margin-bottom: 14px; }
+        .h1 { font-size: 18px; font-weight: 700; }
+        .h2 { font-size: 13px; font-weight: 700; margin: 10px 0 8px; }
+        .muted { color: rgba(17,24,39,0.65); font-size: 11px; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .kv { border: 1px solid rgba(17,24,39,0.10); border-radius: 10px; padding: 10px; }
+        .k { font-size: 10px; color: rgba(17,24,39,0.60); margin-bottom: 4px; }
+        .v { font-size: 12px; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(17,24,39,0.10); }
+        th { font-size: 10px; color: rgba(17,24,39,0.60); font-weight: 700; }
+        .spacer { height: 10px; }
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      </style>
+    `;
+
+    return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
+      ${execPage}
+      ${receivingPage}
+      ${vasPage}
+      ${intlPage}
+      ${lastMilePage}
+    </body></html>`;
+  }
+
+  function downloadFlowReportPdf(cache) {
+    try {
+      const html = buildReportHTML(cache || {});
+      const w = window.open('', '_blank');
+      if (!w) return;
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+      // Give the browser a moment to render before printing.
+      w.focus();
+      setTimeout(() => {
+        try { w.print(); } catch(e) {}
+      }, 250);
+    } catch (e) {
+      console.warn('[flow] report build failed', e);
+    }
+  }
+
 async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
@@ -2286,6 +2489,17 @@ async function refresh() {
         refresh();
       };
     }
+
+    // PDF report download (Flow-local). Opens print dialog for Save-as-PDF.
+    const pdfBtn = document.getElementById('flow-download-pdf');
+    if (pdfBtn && !pdfBtn.dataset.bound) {
+      pdfBtn.dataset.bound = '1';
+      pdfBtn.onclick = () => {
+        try { downloadFlowReportPdf(UI.reportCache || { ws: UI.currentWs || ws, tz }); }
+        catch (e) { console.warn('[flow] pdf failed', e); }
+      };
+    }
+
 
 
 
@@ -2337,6 +2551,13 @@ async function refresh() {
     const vas = computeVASStatus(ws, tz, planRows, records);
     const intl = computeInternationalTransit(ws, tz, planRows, records, vas.due);
     const manual = computeManualNodeStatuses(ws, tz);
+
+    // Cache for PDF reporting (best-effort; never required for UI rendering)
+    try {
+      UI.reportCache = { ws, tz, receiving, vas, intl, manual, records: Array.isArray(records) ? records : (records?.records || records?.rows || records?.data || []) };
+    } catch (e) {
+      UI.reportCache = { ws, tz, receiving, vas, intl, manual, records: [] };
+    }
 
     renderTopNodes(ws, tz, receiving, vas, intl, manual);
     // default selection if invalid
