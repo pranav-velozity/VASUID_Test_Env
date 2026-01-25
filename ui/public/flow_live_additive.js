@@ -57,6 +57,16 @@
     return `${y}-${m}-${da}`;
   }
 
+  // IMPORTANT: Week navigation uses UTC-midnight anchors (YYYY-MM-DDT00:00:00Z).
+  // In non-UTC local timezones, isoDate() (local getters) can shift the day backward.
+  // Use UTC getters for any weekStart computations.
+  function isoDateUTC(d) {
+    const y = d.getUTCFullYear();
+    const m = pad2(d.getUTCMonth() + 1);
+    const da = pad2(d.getUTCDate());
+    return `${y}-${m}-${da}`;
+  }
+
   // Format in business TZ with Intl (avoid heavy libs)
   function fmtInTZ(date, tz) {
     try {
@@ -134,7 +144,7 @@
       const monday = addDays(base, -sinceMon);
 
       const next = addDays(monday, (Number(deltaWeeks) || 0) * 7);
-      return isoDate(next);
+      return isoDateUTC(next);
     } catch { return ws; }
   }
 
@@ -145,7 +155,7 @@
       const dow = base.getUTCDay();
       const sinceMon = (dow + 6) % 7;
       const monday = addDays(base, -sinceMon);
-      return isoDate(monday);
+      return isoDateUTC(monday);
     } catch {
       return ws;
     }
@@ -2229,7 +2239,7 @@ async function refresh() {
       const dow = d.getDay(); // 0=Sun
       const delta = (dow + 6) % 7; // days since Monday
       d.setDate(d.getDate() - delta);
-      ws = isoDate(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())));
+      ws = isoDateUTC(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())));
     }
     // Enforce Monday week-starts. This prevents silent drift that can make
     // the week appear to "lose" data when users navigate.
