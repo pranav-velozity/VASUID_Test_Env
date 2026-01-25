@@ -1273,6 +1273,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       E: { x: 120, y: 220 },  // bottom-left corner
       F: { x: 920, y: 220 },  // end
     };
+    const rad = 40;
 
     // Node placement on the road (per your reference layout)
     const pts = {
@@ -1286,7 +1287,6 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const order = ['milk','receiving','vas','intl','lastmile'];
 
     // Road path (inverted S; straight segments with rounded joins)
-    const rad = 40;
     // Road path (inverted S with rounded corners)
     const roadPath = `
       M ${road.A.x} ${road.A.y}
