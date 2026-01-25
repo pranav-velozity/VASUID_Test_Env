@@ -1266,12 +1266,12 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     // Journey path geometry (viewBox units) - inverted S road
     const road = {
-      A: { x: 80,  y: 60 },   // start
-      B: { x: 920, y: 60 },   // top-right corner
-      C: { x: 920, y: 140 },  // mid-right corner
-      D: { x: 120, y: 140 },  // mid-left corner
-      E: { x: 120, y: 220 },  // bottom-left corner
-      F: { x: 920, y: 220 },  // end
+      A: { x: 80,  y: 70 },   // start
+      B: { x: 920, y: 70 },   // top-right corner
+      C: { x: 920, y: 185 },  // mid-right corner
+      D: { x: 120, y: 185 },  // mid-left corner
+      E: { x: 120, y: 315 },  // bottom-left corner
+      F: { x: 920, y: 315 },  // end
     };
     const rad = 40;
 
@@ -1280,7 +1280,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
       receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
       vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
-      intl:      { x: road.D.x,                         y: (road.C.y + rad) }, // middle of second curve (left corner)
+      intl:      { x: Math.round(road.D.x + rad * 0.707), y: Math.round(road.C.y + rad * 0.707) }, // middle of second curve (on arc)
       lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
@@ -1323,12 +1323,13 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           M ${pts.vas.x} ${road.C.y}
           L ${road.D.x + rad} ${road.C.y}
           A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
-          L ${road.D.x} ${pts.intl.y}
+          L ${pts.intl.x} ${pts.intl.y}
         `;
       }
       if (fromId === 'intl' && toId === 'lastmile') {
         return `
-          M ${road.D.x} ${pts.intl.y}
+          M ${pts.intl.x} ${pts.intl.y}
+          L ${road.D.x} ${pts.intl.y}
           L ${road.D.x} ${road.E.y - rad}
           A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
           L ${pts.lastmile.x} ${pts.lastmile.y}
@@ -1433,7 +1434,10 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     root.innerHTML = `
       <div class="w-full overflow-hidden">
-        <svg viewBox="0 0 1000 260" preserveAspectRatio="xMidYMid meet" aria-label="Journey map">
+        <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:320px; width:100%;">
+
+          <!-- road shadow (subtle) -->
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
           <!-- road base -->
           <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" />
           <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
