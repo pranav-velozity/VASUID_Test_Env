@@ -1157,7 +1157,7 @@ function computeManualNodeStatuses(ws, tz) {
         dots += `
           <g>
             <!-- icon replaces connector marker (no dot) -->
-            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},6)">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
+            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},8)">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
           </g>
         `;
       }
