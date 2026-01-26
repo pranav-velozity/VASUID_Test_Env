@@ -1937,7 +1937,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     if (sel.node === 'intl') {
       const lanes = (intl.lanes || []).slice();
       const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
-      const wcState = loadIntlWeekContainers(wsNow);
+      const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
@@ -2029,7 +2029,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const laneByKey = {};
       for (const l of lanes) laneByKey[l.key] = l;
 
-      const wcState = loadIntlWeekContainers(wsNow);
+      const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
       const contRows = [];
@@ -3277,4 +3277,3 @@ async function refresh() {
 
 // PATCH: swallow setFooterHealth errors (null DOM) so setWeek() continues.
 ;(function(){var _sfh=window.setFooterHealth;if(typeof _sfh!=='function')return;window.setFooterHealth=function(){try{return _sfh.apply(this,arguments);}catch(e){console.warn('setFooterHealth suppressed',e);}};})();
-
