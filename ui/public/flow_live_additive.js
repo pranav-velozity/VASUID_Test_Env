@@ -2527,10 +2527,15 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           <textarea id="flow-lm-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
         </label>
 
-        <div class="flex items-center justify-between mt-3">
-          <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
-          <button id="flow-lm-save" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
-        </div>
+	        <div class="flex items-center justify-between mt-3">
+	          <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
+	          <button id="flow-lm-save"
+	            data-cont="${escapeAttr(r.key)}"
+	            data-uid="${escapeAttr(r.uid)}"
+	            data-cid="${escapeAttr(r.container_id || '')}"
+	            data-vessel="${escapeAttr(r.vessel || '')}"
+	            class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+	        </div>
       </div>
     `;
   }
@@ -2555,8 +2560,11 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       saveBtn.dataset.bound = '1';
       saveBtn.addEventListener('click', () => {
         const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
-        const uid = saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '');
-        if (!uid) return;
+	        const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
+	        // Fallback identifiers (for resilience if uid mapping drifts)
+	        const cidHint = String(saveBtn.getAttribute('data-cid') || '').trim();
+	        const vesselHint = String(saveBtn.getAttribute('data-vessel') || '').trim();
+	        if (!uid && !cidHint) return;
 
         const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
         const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
@@ -2565,7 +2573,22 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const wcState = loadIntlWeekContainers(ws);
         const containers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers.slice() : [];
 
-        const idx = containers.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid);
+		        // Prefer stable uid, but fall back to (container_id + vessel) if needed.
+		        let idx = uid ? containers.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid) : -1;
+		        // If we are still on a legacy synthetic key like "idx0", use it as a last-resort index.
+		        if (idx < 0 && /^idx\d+$/.test(uid)) {
+		          const n = Number(uid.replace('idx', ''));
+		          if (!Number.isNaN(n) && n >= 0 && n < containers.length) idx = n;
+		        }
+	        if (idx < 0 && cidHint) {
+	          idx = containers.findIndex(c => {
+	            const id = String(c.container_id || c.container || '').trim();
+	            if (!id || id !== cidHint) return false;
+	            const v = String(c.vessel || '').trim();
+	            // If vessel is provided, match it; otherwise match on id only.
+	            return vesselHint ? (v === vesselHint) : true;
+	          });
+	        }
         if (idx >= 0) {
           containers[idx] = {
             ...(containers[idx] || {}),
