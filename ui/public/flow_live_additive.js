@@ -744,6 +744,20 @@ function computeCartonStatsFromRecords(records) {
       }
     } catch { /* ignore */ }
 
+
+    // Ensure every container has a stable uid (repair older records)
+    try {
+      let changed = false;
+      state.containers = (Array.isArray(state.containers) ? state.containers : []).map(c => {
+        const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+        if (!String(c.container_uid || '').trim()) changed = true;
+        return { ...c, container_uid: uid, container_id: String(c.container_id || c.container || '').trim() };
+      });
+      if (changed) {
+        localStorage.setItem(k, JSON.stringify({ ...state, _v: 1 }));
+      }
+    } catch { /* ignore */ }
+
     if (!Array.isArray(state.containers)) state.containers = [];
     return state;
   }
