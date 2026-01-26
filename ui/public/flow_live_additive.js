@@ -2408,14 +2408,43 @@ function manualFormIntl(ws, tz, manual) {
   // ------------------------- Mount / Refresh -------------------------
   
   function renderFooterTrends(el, nodes, weekKey) {
-    // Reserved space (Insights removed for now)
-    if (!el) return;
+    // Backwards-compatible overload:
+    // Some builds call renderFooterTrends(weekKey, tz, records, receiving, vas, intl, lm).
+    if (typeof el === 'string') {
+      const wk = el;
+      const receiving = arguments[3] || null;
+      const vas = arguments[4] || null;
+      const intl = arguments[5] || null;
+      const lm = arguments[6] || null;
+
+      const footerEl = document.getElementById('vo-footer');
+      const n = [
+        { id: 'receiving', label: 'Receiving', color: (receiving && receiving.color) || '#10b981' },
+        { id: 'vas', label: 'VAS', color: (vas && vas.color) || '#10b981' },
+        { id: 'intl', label: 'Transit', color: (intl && intl.color) || '#10b981' },
+        { id: 'lm', label: 'Last Mile', color: (lm && lm.color) || '#10b981' },
+      ];
+      return renderFooterTrends(footerEl, n, wk);
+    }
+
+    // Normal signature: (el: HTMLElement, nodes: [{label,color}], weekKey: string)
+    if (!el || typeof el !== 'object' || typeof el.innerHTML === 'undefined') return;
+
+    const applied = (typeof getAppliedThisWeek === 'function') ? getAppliedThisWeek(weekKey) : 0;
+    const worst = (Array.isArray(nodes) && nodes.length)
+      ? nodes.reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc, nodes[0])
+      : { label: 'Health', color: '#10b981' };
+
+    const pill = (colorToStatus(worst.color) || 'On Track');
     el.innerHTML = `
-      <div class="h-full w-full flex items-center justify-center text-sm text-gray-400">
-        <div>
-          <div class="font-semibold text-gray-500">Reserved</div>
-          <div class="mt-1">(Insights panel intentionally hidden)</div>
-        </div>
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+              style="background:${statusBg(worst.color)}; border-color:${statusStroke(worst.color)};">
+          <span class="inline-block h-2 w-2 rounded-full" style="background:${worst.color};"></span>
+          <span class="font-semibold">Health:</span>
+          <span>${pill}</span>
+        </span>
+        <span class="text-xs text-gray-700">Applied this week: <span class="font-semibold">${fmtInt(applied)}</span></span>
       </div>
     `;
   }
