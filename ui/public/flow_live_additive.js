@@ -2055,10 +2055,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         contRows.push({
           key: `wc::${uid}`,
           uid,
+          src_idx: i,
           supplier: supplierDisplay,
           ticket: ticketDisplay,
           freight: freightDisplay,
-          container_id: cid || '—',
+          container_id: cid,
+          container_id_display: cid || '—',
           size_ft: String(c.size_ft || '').trim(),
           vessel,
           delivery_at: String(c.delivery_at || '').trim(),
@@ -2104,7 +2106,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
           r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
           escapeHtml(r.freight || ''),
-          escapeHtml(r.container_id || ''),
+          escapeHtml(r.container_id_display || ''),
           escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
           escapeHtml(r.vessel || '—'),
           r.delivery_at ? escapeHtml(toLocalDT(r.delivery_at).replace('T',' ')) : '<span class="text-gray-400">—</span>',
@@ -2502,7 +2504,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div class="text-sm font-semibold text-gray-700">Delivery</div>
             <div class="text-xs text-gray-500 mt-0.5">
               <b>${escapeHtml(r.supplier)}</b> • ${r.ticket ? `Zendesk <b>${escapeHtml(r.ticket)}</b> • ` : ''}${escapeHtml(r.freight)} •
-              <b>${escapeHtml(r.container_id)}</b>${r.vessel ? ` • ${escapeHtml(r.vessel)}` : ''}
+              <b>${escapeHtml(r.container_id_display || r.container_id)}</b>${r.vessel ? ` • ${escapeHtml(r.vessel)}` : ''}
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -2532,7 +2534,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 	          <button id="flow-lm-save"
 	            data-cont="${escapeAttr(r.key)}"
 	            data-uid="${escapeAttr(r.uid)}"
-	            data-cid="${escapeAttr(r.container_id || '')}"
+			    data-idx="${escapeAttr(String(r.src_idx))}"
+			    data-cid="${escapeAttr(r.container_id || '')}"
 	            data-vessel="${escapeAttr(r.vessel || '')}"
 	            class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
 	        </div>
@@ -2564,6 +2567,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 	        // Fallback identifiers (for resilience if uid mapping drifts)
 	        const cidHint = String(saveBtn.getAttribute('data-cid') || '').trim();
 	        const vesselHint = String(saveBtn.getAttribute('data-vessel') || '').trim();
+        const idxHint = (() => { const s = String(saveBtn.getAttribute('data-idx') || '').trim(); const n = Number(s); return (s && !Number.isNaN(n)) ? n : null; })();
 	        if (!uid && !cidHint) return;
 
         const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
@@ -2580,6 +2584,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 		          const n = Number(uid.replace('idx', ''));
 		          if (!Number.isNaN(n) && n >= 0 && n < containers.length) idx = n;
 		        }
+			// If the UI carried the source index, use it as a deterministic fallback.
+			if (idx < 0 && idxHint !== null && idxHint >= 0 && idxHint < containers.length) idx = idxHint;
 	        if (idx < 0 && cidHint) {
 	          idx = containers.findIndex(c => {
 	            const id = String(c.container_id || c.container || '').trim();
