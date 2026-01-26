@@ -2558,16 +2558,18 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       });
     });
 
-    const saveBtn = detail.querySelector('#flow-lm-save');
-    if (saveBtn && !saveBtn.dataset.bound) {
-      saveBtn.dataset.bound = '1';
-      saveBtn.addEventListener('click', () => {
-        const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
-        const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
-        // Fallback identifiers (for resilience if uid mapping drifts)
-        const cidHint = String(saveBtn.getAttribute('data-cid') || '').trim();
-        const vesselHint = String(saveBtn.getAttribute('data-vessel') || '').trim();
-        const idxHint = (() => { const s = String(saveBtn.getAttribute('data-idx') || '').trim(); const n = Number(s); return (s && !Number.isNaN(n)) ? n : null; })();
+    // Last Mile save (event delegation to survive re-renders)
+    if (!detail.dataset.lmSaveBound) {
+      detail.dataset.lmSaveBound = '1';
+      detail.addEventListener('click', (ev) => {
+        const t = ev.target;
+        if (!(t && t.id === 'flow-lm-save')) return;
+
+        const contKey = t.getAttribute('data-cont') || selectedKey;
+        const uid = String(t.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
+        const cidHint = String(t.getAttribute('data-cid') || '').trim();
+        const vesselHint = String(t.getAttribute('data-vessel') || '').trim();
+        const idxHint = (() => { const s = String(t.getAttribute('data-idx') || '').trim(); const n = Number(s); return (s && !Number.isNaN(n)) ? n : null; })();
 
         const msg = detail.querySelector('#flow-lm-save-msg');
         const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
@@ -2613,7 +2615,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         containers[idx] = { ...before, ...patch };
         saveIntlWeekContainers(ws, containers);
 
-        // Verify write and show a deterministic status
         const post = loadIntlWeekContainers(ws);
         const postArr = (post && Array.isArray(post.containers)) ? post.containers : [];
         const postUid = String(containers[idx].container_uid || containers[idx].uid || '').trim();
@@ -2625,10 +2626,13 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           msg.className = ok ? 'text-xs text-emerald-700' : 'text-xs text-amber-700';
         }
         if (!ok) {
-          try {
-            console.warn('[LastMile Save] write verify failed', { ws, idx, before, patch, postSample: (postIdx>=0 ? postArr[postIdx] : null) });
-          } catch { /* ignore */ }
+          try { console.warn('[LastMile Save] verification failed', { ws, contKey, uid, idxHint, cidHint, vesselHint, patch, postArr: postArr.map((c,i)=>({i, uid:String(c.container_uid||c.uid||'').trim(), id:String(c.container_id||'').trim(), del:String(c.delivery_at||''), pod:!!c.pod_received})) }); } catch {}
         }
+
+        // Re-render so table/status reflect immediately
+        refresh();
+      });
+    }
 
         setTimeout(() => refresh(), 10);
 
