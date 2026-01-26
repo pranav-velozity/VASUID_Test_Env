@@ -1,4 +1,12 @@
-/* flow_live_additive.js (v45)
+// LOAD GUARD: prevent double-injection from re-running this additive module
+;(function(){
+  try {
+    if (window.__vo_flow_live_additive_loaded) { return; }
+    window.__vo_flow_live_additive_loaded = true;
+  } catch (e) { /* ignore */ }
+})();
+
+/* flow_live_additive.js (v46)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -1967,6 +1975,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
+
+
+
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
       const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
       const totalOut = lanes.reduce((a, r) => a + (r.cartonsOut || 0), 0);
@@ -3086,9 +3097,20 @@ async function refresh() {
         UI.selection = { node: 'receiving', sub: null };
         try {
           // clear lightweight per-week manual inputs
-          localStorage.removeItem(`flow:intl:${UI.currentWs}`);
-          localStorage.removeItem(`flow:lastmile:${UI.currentWs}`);
+        try {
+          const ws0 = UI.currentWs || ws;
+          // legacy per-lane keys: flow:intl:<ws>:<laneKey>
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k.startsWith(`flow:intl:${ws0}:`)) localStorage.removeItem(k);
+          }
+          // week-level stores
+          localStorage.removeItem(`flow:intl_weekcontainers:${ws0}`);
+          localStorage.removeItem(`flow:lastmile_receipts:${ws0}`);
+          localStorage.removeItem(`vo_flow_v1:${(window.state?.facility || '').trim() || 'default'}:${ws0}`);
         } catch {}
+
         // Re-render just this page
         refresh();
       };
