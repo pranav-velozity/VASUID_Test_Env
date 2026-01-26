@@ -672,6 +672,21 @@ function computeCartonStatsFromRecords(records) {
     try { return d.toISOString(); } catch { return ''; }
   }
 
+  // Convert an ISO timestamp into a value suitable for <input type="datetime-local">.
+  // We render in the browser's local timezone to match datetime-local semantics.
+  function toLocalDT(iso) {
+    const s = String(iso || '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    if (!d || Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth() + 1);
+    const da = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mi = pad2(d.getMinutes());
+    return `${y}-${m}-${da}T${hh}:${mi}`;
+  }
+
   function _uid(prefix) {
     const pfx = prefix ? String(prefix) : 'id';
     return `${pfx}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
@@ -2032,7 +2047,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           container_id: cid || '—',
           size_ft: String(c.size_ft || '').trim(),
           vessel,
-          delivery_at: c.delivery_at ? String(c.delivery_at).slice(0, 16) : '',
+          delivery_at: toLocalDT(c.delivery_at),
           pod_received: !!c.pod_received,
           note: String(c.last_mile_note || ''),
           laneCount: lane_keys.length,
@@ -2120,7 +2135,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const manual = lane.manual || {};
     const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
 
-    const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
+    const v = (iso) => toLocalDT(iso);
 
     const pack = v(manual.packing_list_ready_at);
     const originClr = v(manual.origin_customs_cleared_at);
@@ -2357,7 +2372,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         const row = btn.closest('.flow-wc-row');
-        if (row) row.remove();
+	      if (row) {
+	        // Track explicit removals so Save containers can delete them from the week store.
+	        try {
+	          const uid = String(row.dataset.uid || '').trim();
+	          if (uid) {
+	            window.__flowWcRemovedUids = window.__flowWcRemovedUids || new Set();
+	            window.__flowWcRemovedUids.add(uid);
+	          }
+	        } catch { /* ignore */ }
+	        row.remove();
+	      }
       });
     });
 
@@ -2365,8 +2390,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     if (wcSave && !wcSave.dataset.bound) {
       wcSave.dataset.bound = '1';
       wcSave.addEventListener('click', () => {
-        const state = loadIntlWeekContainers(ws);
-        const containers = Array.from(detail.querySelectorAll('.flow-wc-row')).map(row => {
+	        const state = loadIntlWeekContainers(ws);
+	        const updates = Array.from(detail.querySelectorAll('.flow-wc-row')).map(row => {
           const uid = String(row.dataset.uid || '').trim() || _uid('c');
           const container_id = String(row.querySelector('.flow-wc-id')?.value || '').trim();
           const size_ft = String(row.querySelector('.flow-wc-size')?.value || '').trim();
@@ -2377,7 +2402,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             ? uniqNonEmpty(Array.from(sel.options).filter(o => o.selected).map(o => o.value))
             : [];
           return {
-            ...(state.containers || []).find(c => String(c.container_uid || c.uid || '').trim() === uid) || {},
+	            ...(state.containers || []).find(c => String(c.container_uid || c.uid || '').trim() === uid) || {},
             container_uid: uid,
             container_id,
             size_ft,
@@ -2385,9 +2410,30 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             pos,
             lane_keys,
           };
-        }).filter(c => c.container_id || c.vessel || (c.lane_keys && c.lane_keys.length) || c.pos);
+	        }).filter(c => c.container_id || c.vessel || (c.lane_keys && c.lane_keys.length) || c.pos);
 
-        saveIntlWeekContainers(ws, containers);
+	        // Merge updates into prior week containers to avoid accidental overwrites.
+	        const prior = (state && Array.isArray(state.containers)) ? state.containers.slice() : [];
+	        const priorByUid = new Map(prior.map(c => [String(c.container_uid || c.uid || '').trim(), c]));
+	        const removed = (window.__flowWcRemovedUids instanceof Set) ? window.__flowWcRemovedUids : new Set();
+	        const next = [];
+	        // Keep existing containers unless explicitly removed.
+	        for (const c of prior) {
+	          const uid = String(c.container_uid || c.uid || '').trim();
+	          if (uid && removed.has(uid)) continue;
+	          next.push(c);
+	        }
+	        // Apply updates (replace existing by uid, else append)
+	        for (const u of updates) {
+	          const uid = String(u.container_uid || u.uid || '').trim();
+	          if (!uid) continue;
+	          const idx = next.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid);
+	          if (idx >= 0) next[idx] = { ...(next[idx] || {}), ...u, container_uid: uid };
+	          else next.push(u);
+	        }
+
+	        saveIntlWeekContainers(ws, next);
+	        try { if (window.__flowWcRemovedUids instanceof Set) window.__flowWcRemovedUids.clear(); } catch { /* ignore */ }
         const msg = detail.querySelector('#flow-wc-save-msg');
         if (msg) msg.textContent = 'Saved';
         setTimeout(() => refresh(), 10);
@@ -2430,7 +2476,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
 
   function lastMileEditor(ws, tz, r) {
-    const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
+    const v = (iso) => toLocalDT(iso);
     const delivery = v(r.delivery_at);
     const pod = !!r.pod_received;
     const note = String(r.note || '');
