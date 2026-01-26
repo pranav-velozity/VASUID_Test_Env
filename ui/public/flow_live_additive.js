@@ -39,6 +39,37 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  // Defensive helper: some endpoints / callers occasionally pass objects instead of arrays.
+  // Normalizing prevents "... is not iterable" crashes that would blank the Flow page.
+  function asArray(x) {
+    if (Array.isArray(x)) return x;
+    if (x && Array.isArray(x.rows)) return x.rows;
+    if (x && Array.isArray(x.records)) return x.records;
+    if (x && Array.isArray(x.items)) return x.items;
+    if (x && Array.isArray(x.data)) return x.data;
+    return [];
+  }
+
+  // Receiving module compatibility: some builds call this helper from receiving_live_additive.js.
+  // If it isn't present (due to file splits / refactors), we provide a safe, data-driven version.
+  // This keeps Flow + Receiving from hard-crashing during refresh.
+  if (typeof window.computeCartonsOutByPOFromState !== "function") {
+    window.computeCartonsOutByPOFromState = function computeCartonsOutByPOFromState(state) {
+      const rows = asArray(state?.mobileBins || state?.mobile_bins || state?.bins || state?.binRows);
+      const out = Object.create(null);
+      for (const r of rows) {
+        const po = (r.supplier_po ?? r.supplierPO ?? r.po_number ?? r.po ?? r.PO ?? "").toString().trim();
+        if (!po) continue;
+        const n = Number(
+          r.cartons_out ?? r.cartonsOut ?? r.cartons_out_count ?? r.cartonsOutCount ?? r.cartons ?? 0
+        );
+        if (!Number.isFinite(n)) continue;
+        out[po] = (out[po] || 0) + n;
+      }
+      return out;
+    };
+  }
+
   function getApiBase() {
     const m = document.querySelector('meta[name="api-base"]');
     return (m?.content || '').replace(/\/$/, '');
@@ -228,7 +259,7 @@
 
   function getPlanUnits(planRows) {
     // common fields seen in codebase: planned_qty, qty, units
-    return (planRows || []).reduce((acc, r) => {
+    return asArray(planRows).reduce((acc, r) => {
       const n = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0);
       return acc + (Number.isFinite(n) ? n : 0);
     }, 0);
@@ -236,7 +267,7 @@
 
   function groupPlanBySupplier(planRows) {
     const m = new Map();
-    for (const r of planRows || []) {
+    for (const r of asArray(planRows)) {
       const sup = normalizeSupplier(r.supplier_name || r.supplier || r.vendor);
       const po = String(r.po_number || r.po || '').trim();
       const units = Number(r.planned_qty ?? r.qty ?? r.units ?? r.quantity ?? 0) || 0;
@@ -250,7 +281,7 @@
 
   function receivingByPO(receivingRows) {
     const m = new Map();
-    for (const r of receivingRows || []) {
+    for (const r of asArray(receivingRows)) {
       const po = String(r.po_number || r.po || '').trim();
       if (!po) continue;
       m.set(po, r);
@@ -263,11 +294,11 @@
     const due = makeBizLocalDate(ws, BASELINE.receiving_due.time, tz); // Monday noon
     const byPO = receivingByPO(receivingRows);
 
-    const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim()));
+    const plannedPOs = uniq(asArray(planRows).map(r => String(r.po_number || r.po || '').trim()));
 
     // PO -> Supplier map (for insight drill-downs)
     const poSupplierMap = new Map();
-    for (const r of (planRows || [])) {
+    for (const r of asArray(planRows)) {
       const po = String(r.po_number || r.po || '').trim();
       if (!po) continue;
       const sup = String(r.supplier || r.supplier_name || '').trim();
@@ -294,10 +325,10 @@
 
     // Supplier breakdown (planned vs received)
     const planBySup = groupPlanBySupplier(planRows);
-    const recSupSet = new Set((receivingRows || []).map(r => normalizeSupplier(r.supplier_name || r.supplier || r.vendor)));
+    const recSupSet = new Set(asArray(receivingRows).map(r => normalizeSupplier(r.supplier_name || r.supplier || r.vendor)));
     const suppliers = planBySup.map(x => {
       // count received POs per supplier
-      const pos = uniq((planRows || []).filter(r => normalizeSupplier(r.supplier_name || r.supplier || r.vendor) === x.supplier)
+      const pos = uniq(asArray(planRows).filter(r => normalizeSupplier(r.supplier_name || r.supplier || r.vendor) === x.supplier)
         .map(r => String(r.po_number || r.po || '').trim()));
       const received = pos.filter(po => {
         const rec = byPO.get(po);
@@ -341,14 +372,14 @@
     const due = makeBizLocalDate(isoDate(addDays(new Date(`${ws}T00:00:00Z`), BASELINE.vas_complete_due.dayOffset)), BASELINE.vas_complete_due.time, tz);
 
     const plannedUnits = getPlanUnits(planRows);
-    const plannedPOs = uniq((planRows || []).map(r => String(r.po_number || r.po || '').trim())).length;
+    const plannedPOs = uniq(asArray(planRows).map(r => String(r.po_number || r.po || '').trim())).length;
 
     // Records: treat each record as one applied unit if it has a UID; otherwise count qty if present.
     let appliedUnits = 0;
     const appliedBySup = new Map();
     const appliedByPO = new Map();
 
-    for (const r of records || []) {
+    for (const r of asArray(records)) {
       const qty = Number(r.qty ?? r.quantity ?? r.units ?? 1);
       const n = Number.isFinite(qty) && qty > 0 ? qty : 1;
       appliedUnits += n;
