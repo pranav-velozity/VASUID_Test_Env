@@ -1246,7 +1246,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       green: '#34d399',
       red: '#fb7185',
       upcoming: '#cbd5e1',
-      yellow: '#facc15',
+      yellow: '#e6b800',
       gray: '#f6d365',
       future: '#e5e7eb',
     }[level] || '#9ca3af');
