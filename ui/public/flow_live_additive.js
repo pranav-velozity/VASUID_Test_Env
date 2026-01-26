@@ -1236,7 +1236,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const b = parseInt(h.slice(4,6),16) || 175;
       return `rgba(${r},${g},${b},${alpha})`;
     };
-    const levelColor = (level) => ({ green:'#34d399', red:'#fb7185', yellow:'#facc15', gray:'#9ca3af' }[level] || '#9ca3af');
+    const levelColor = (level) => ({ green:'#34d399', red:'#fb7185', yellow:'#facc15', gray:'#f2c94c' }[level] || '#9ca3af');
     const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.28) : matte(levelColor(level), 0.50);
     const statusText = (n) => {
       if (!n) return '—';
@@ -1280,7 +1280,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
       receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
       vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
-      intl:      { x: Math.round(road.D.x + rad), y: Math.round(road.E.y) }, // midpoint on left curve
+      intl:      { x: Math.round((road.D.x + rad + road.F.x) / 2), y: road.E.y }, // middle of third straight
       lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
@@ -1319,19 +1319,21 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         `;
       }
       if (fromId === 'vas' && toId === 'intl') {
+        // second straight -> left curve -> bottom straight to Transit & Clearing (mid of bottom line)
+        const x1 = road.D.x + rad;
         return `
           M ${pts.vas.x} ${road.C.y}
-          L ${road.D.x + rad} ${road.C.y}
+          L ${x1} ${road.C.y}
           A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
+          L ${road.D.x} ${road.E.y - rad}
+          A ${rad} ${rad} 0 0 1 ${x1} ${road.E.y}
           L ${pts.intl.x} ${pts.intl.y}
         `;
       }
       if (fromId === 'intl' && toId === 'lastmile') {
+        // bottom line straight to Last Mile
         return `
           M ${pts.intl.x} ${pts.intl.y}
-          L ${road.D.x} ${pts.intl.y}
-          L ${road.D.x} ${road.E.y - rad}
-          A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
           L ${pts.lastmile.x} ${pts.lastmile.y}
         `;
       }
@@ -1439,8 +1441,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           <!-- road shadow (subtle) -->
           <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
           ${segs}
           ${dashed}
           ${milestones}
@@ -2405,139 +2407,19 @@ function manualFormIntl(ws, tz, manual) {
 
   // ------------------------- Mount / Refresh -------------------------
   
-  function renderFooterTrends(ws, tz, records, receiving, vas, intl, manual) {
-    const el = document.getElementById('flow-footer');
+  function renderFooterTrends(el, nodes, weekKey) {
+    // Reserved space (Insights removed for now)
     if (!el) return;
-
-    const recs = Array.isArray(records)
-      ? records
-      : (records && Array.isArray(records.records) ? records.records
-        : (records && Array.isArray(records.rows) ? records.rows
-          : (records && Array.isArray(records.data) ? records.data : [])));
-
-    
-    // Insights summary (always show something, even if records are empty)
-    const safeN = (v) => (Math.round(num(v) || 0)).toLocaleString();
-    const recPct = receiving && receiving.plannedPOs ? Math.round(((receiving.receivedPOs || 0) / (receiving.plannedPOs || 1)) * 100) : 0;
-    const vasPct = vas ? Math.round((vas.completion || 0) * 100) : 0;
-    const lanesN = intl && Array.isArray(intl.lanes) ? intl.lanes.length : 0;
-    const lmOpen = (() => {
-      try {
-        const lanes = (intl && Array.isArray(intl.lanes)) ? intl.lanes : [];
-        let total = 0, open = 0;
-        for (const l of lanes) {
-          const list = (l && l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers : [];
-          for (const c of list) {
-            const hasAny = c && (String(c.container_id || c.container || '').trim() || String(c.vessel || '').trim() || String(c.pos || '').trim());
-            if (!hasAny) continue;
-            total++;
-            if (!c.delivery_at) open++;
-          }
-        }
-        return { total, open };
-      } catch { return { total: 0, open: 0 }; }
-    })();
-
-    const insightsHtml = `
-      <div class="flex items-start justify-between gap-3">
+    el.innerHTML = `
+      <div class="h-full w-full flex items-center justify-center text-sm text-gray-400">
         <div>
-          <div class="text-sm font-semibold text-gray-700">Insights</div>
-          <div class="text-xs text-gray-500 mt-0.5">Quick read for the selected week</div>
+          <div class="font-semibold text-gray-500">Reserved</div>
+          <div class="mt-1">(Insights panel intentionally hidden)</div>
         </div>
       </div>
-      <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
-        <div class="rounded-lg border p-2">
-          <div class="text-[11px] text-gray-500">Receiving</div>
-          <div class="text-sm font-semibold">${recPct}%</div>
-          <div class="text-[11px] text-gray-500">${(receiving?.receivedPOs||0)}/${(receiving?.plannedPOs||0)} POs • ${safeN(receiving?.cartonsOutTotal||0)} out</div>
-        </div>
-        <div class="rounded-lg border p-2">
-          <div class="text-[11px] text-gray-500">VAS applied</div>
-          <div class="text-sm font-semibold">${vasPct}%</div>
-          <div class="text-[11px] text-gray-500">${safeN(vas?.appliedUnits||0)}/${safeN(vas?.plannedUnits||0)} units</div>
-        </div>
-        <div class="rounded-lg border p-2">
-          <div class="text-[11px] text-gray-500">Transit &amp; Clearing</div>
-          <div class="text-sm font-semibold">${lanesN}</div>
-          <div class="text-[11px] text-gray-500">${safeN(intl?.holds||0)} hold • ${safeN(intl?.missingDocs||0)} docs missing</div>
-        </div>
-        <div class="rounded-lg border p-2">
-          <div class="text-[11px] text-gray-500">Last Mile</div>
-          <div class="text-sm font-semibold">${safeN(lmOpen.total - lmOpen.open)}/${safeN(lmOpen.total)}</div>
-          <div class="text-[11px] text-gray-500">${safeN(lmOpen.open)} open</div>
-        </div>
-      </div>
-    `;
-// Build day buckets for business week (Mon..Sun) in business TZ
-    const wsDate = new Date(`${ws}T00:00:00Z`);
-    const days = Array.from({ length: 7 }, (_, i) => isoDate(addDays(wsDate, i)));
-    const byDay = new Map(days.map(d => [d, 0]));
-
-    const tsFields = ['completed_at', 'completedAt', 'applied_at', 'appliedAt', 'updated_at', 'updatedAt', 'created_at', 'createdAt', 'timestamp', 'ts', 'scanned_at', 'scan_time'];
-
-    const bizISO = (dateObj) => {
-      try {
-        const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(dateObj);
-        const y = parts.find(p => p.type === 'year')?.value;
-        const m = parts.find(p => p.type === 'month')?.value;
-        const d = parts.find(p => p.type === 'day')?.value;
-        return (y && m && d) ? `${y}-${m}-${d}` : null;
-      } catch {
-        // fallback: UTC date
-        return isoDate(new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate())));
-      }
-    };
-    for (const r of recs || []) {
-      if (!r) continue;
-      if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
-      let ts = null;
-      for (const f of tsFields) {
-        if (r[f]) { ts = r[f]; break; }
-      }
-      const d = ts ? new Date(ts) : null;
-      if (!d || isNaN(d)) continue;
-      // map to YYYY-MM-DD in business timezone so the bars feel intuitive
-      const dayIso = bizISO(d);
-      if (!byDay.has(dayIso)) continue;
-
-      const qty = num(
-        r.applied_qty ?? r.appliedQty ?? r.applied_units ?? r.appliedUnits ?? r.applied ??
-        r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ??
-        r.qty ?? r.quantity ?? r.units ?? 0
-      );
-      byDay.set(dayIso, (byDay.get(dayIso) || 0) + qty);
-    }
-
-    const vals = days.map(d => byDay.get(d) || 0);
-    const maxV = Math.max(1, ...vals);
-    const total = vals.reduce((a, b) => a + b, 0);
-
-    const bars = days.map((d, i) => {
-      const v = vals[i];
-      const h = Math.round((v / maxV) * 42); // px
-      const label = new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short' });
-      return `
-        <div class="flex flex-col items-center justify-end gap-1">
-          <div class="w-6 rounded-md bg-gray-200 border" style="height:46px; display:flex; align-items:flex-end; justify-content:center;">
-            <div class="w-full rounded-md bg-gray-800/20" style="height:${h}px;"></div>
-          </div>
-          <div class="text-[10px] text-gray-500">${label}</div>
-        </div>
-      `;
-    }).join('');
-
-    el.innerHTML = `${insightsHtml}
-
-      <div class="mt-4 flex items-start justify-between gap-3">
-        <div>
-          <div class="text-sm font-semibold text-gray-700">This week trend (light)</div>
-          <div class="text-xs text-gray-500 mt-0.5">Applied units per day (from completed records)</div>
-        </div>
-        <div class="text-sm font-semibold">${Math.round(total).toLocaleString()}</div>
-      </div>
-      <div class="mt-3 flex gap-2 items-end">${bars}</div>
     `;
   }
+
 
 
   // ------------------------- PDF Reporting (Print-to-PDF) -------------------------
