@@ -657,6 +657,118 @@ function computeCartonStatsFromRecords(records) {
     return `flow:intl:${ws}:${key}`;
   }
 
+  // Week-level containers store (independent of selected lane)
+  function intlWeekContainersKey(ws) {
+    return `flow:intl_weekcontainers:${ws}`;
+  }
+
+  // Safe conversion for <input type="datetime-local"> values.
+  // Returns '' if blank or invalid instead of throwing.
+  function safeISO(v) {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    if (!d || Number.isNaN(d.getTime())) return '';
+    try { return d.toISOString(); } catch { return ''; }
+  }
+
+  function _uid(prefix) {
+    const pfx = prefix ? String(prefix) : 'id';
+    return `${pfx}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+  }
+
+  function loadIntlWeekContainers(ws) {
+    const k = intlWeekContainersKey(ws);
+    let state = { containers: [], _v: 1 };
+    try {
+      const raw = localStorage.getItem(k);
+      if (raw) state = JSON.parse(raw) || state;
+    } catch { /* ignore */ }
+
+    // One-time migration from legacy lane-level containers:
+    // flow:intl:<ws>:<laneKey> { containers: [...] }
+    // We merge into week store and preserve last-mile fields.
+    try {
+      const alreadyMigrated = !!state._migratedFromLaneContainers;
+      if (!alreadyMigrated) {
+        const merged = [];
+        const seen = new Map(); // uid -> container
+        for (let i = 0; i < localStorage.length; i++) {
+          const lk = localStorage.key(i);
+          if (!lk || !lk.startsWith(`flow:intl:${ws}:`)) continue;
+          let laneKeyStr = lk.slice(`flow:intl:${ws}:`.length);
+          let laneObj = {};
+          try { laneObj = JSON.parse(localStorage.getItem(lk) || '{}') || {}; } catch { laneObj = {}; }
+          const arr = Array.isArray(laneObj.containers) ? laneObj.containers : [];
+          for (const c of arr) {
+            const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+            const prior = seen.get(uid) || {};
+            const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : (prior.lane_keys || []);
+            const nextLaneKeys = Array.from(new Set([...(lane_keys || []), laneKeyStr].filter(Boolean)));
+            const mergedC = {
+              ...prior,
+              ...c,
+              container_uid: uid,
+              container_id: String(c.container_id || c.container || prior.container_id || '').trim(),
+              vessel: String(c.vessel || prior.vessel || '').trim(),
+              size_ft: String(c.size_ft || prior.size_ft || '40').trim(),
+              pos: String(c.pos || prior.pos || '').trim(),
+              lane_keys: nextLaneKeys,
+            };
+            seen.set(uid, mergedC);
+          }
+        }
+        merged.push(...seen.values());
+        state = {
+          ...state,
+          containers: merged.length ? merged : (Array.isArray(state.containers) ? state.containers : []),
+          _migratedFromLaneContainers: true,
+          _v: 1,
+        };
+        localStorage.setItem(k, JSON.stringify(state));
+      }
+    } catch { /* ignore */ }
+
+    if (!Array.isArray(state.containers)) state.containers = [];
+    return state;
+  }
+
+  function saveIntlWeekContainers(ws, containers) {
+    const k = intlWeekContainersKey(ws);
+    let prev = { containers: [] };
+    try { prev = JSON.parse(localStorage.getItem(k) || '{}') || prev; } catch { prev = { containers: [] }; }
+
+    const prevByUid = new Map();
+    const prevById = new Map();
+    (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
+      const uid = String(c.container_uid || c.uid || '').trim();
+      const id = String(c.container_id || c.container || '').trim();
+      if (uid) prevByUid.set(uid, c);
+      if (id) prevById.set(id, c);
+    });
+
+    const next = (Array.isArray(containers) ? containers : []).map(c => {
+      const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+      const id = String(c.container_id || c.container || '').trim();
+      const prior = prevByUid.get(uid) || (id && prevById.get(id)) || {};
+      return {
+        ...prior,
+        ...c,
+        container_uid: uid,
+        container_id: id,
+        size_ft: String(c.size_ft || prior.size_ft || '40').trim(),
+        vessel: String(c.vessel || prior.vessel || '').trim(),
+        pos: String(c.pos || prior.pos || '').trim(),
+        lane_keys: Array.from(new Set((Array.isArray(c.lane_keys) ? c.lane_keys : (prior.lane_keys || [])).filter(Boolean))),
+        _updatedAt: new Date().toISOString(),
+      };
+    });
+
+    const state = { ...(prev || {}), containers: next, _v: 1, _migratedFromLaneContainers: true };
+    try { localStorage.setItem(k, JSON.stringify(state)); } catch { /* ignore */ }
+    return state;
+  }
+
   function loadIntlLaneManual(ws, key) {
     try {
       const raw = localStorage.getItem(intlStorageKey(ws, key));
