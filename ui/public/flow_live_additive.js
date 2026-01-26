@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v42)
+/* flow_live_additive.js (v41)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -2563,13 +2563,13 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       saveBtn.dataset.bound = '1';
       saveBtn.addEventListener('click', () => {
         const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
-	        const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
-	        // Fallback identifiers (for resilience if uid mapping drifts)
-	        const cidHint = String(saveBtn.getAttribute('data-cid') || '').trim();
-	        const vesselHint = String(saveBtn.getAttribute('data-vessel') || '').trim();
+        const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
+        // Fallback identifiers (for resilience if uid mapping drifts)
+        const cidHint = String(saveBtn.getAttribute('data-cid') || '').trim();
+        const vesselHint = String(saveBtn.getAttribute('data-vessel') || '').trim();
         const idxHint = (() => { const s = String(saveBtn.getAttribute('data-idx') || '').trim(); const n = Number(s); return (s && !Number.isNaN(n)) ? n : null; })();
-	        if (!uid && !cidHint) return;
 
+        const msg = detail.querySelector('#flow-lm-save-msg');
         const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
         const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
         const note = detail.querySelector('#flow-lm-note')?.value || '';
@@ -2577,37 +2577,61 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const wcState = loadIntlWeekContainers(ws);
         const containers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers.slice() : [];
 
-		        // Prefer stable uid, but fall back to (container_id + vessel) if needed.
-		        let idx = uid ? containers.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid) : -1;
-		        // If we are still on a legacy synthetic key like "idx0", use it as a last-resort index.
-		        if (idx < 0 && /^idx\d+$/.test(uid)) {
-		          const n = Number(uid.replace('idx', ''));
-		          if (!Number.isNaN(n) && n >= 0 && n < containers.length) idx = n;
-		        }
-			// If the UI carried the source index, use it as a deterministic fallback.
-			if (idx < 0 && idxHint !== null && idxHint >= 0 && idxHint < containers.length) idx = idxHint;
-	        if (idx < 0 && cidHint) {
-	          idx = containers.findIndex(c => {
-	            const id = String(c.container_id || c.container || '').trim();
-	            if (!id || id !== cidHint) return false;
-	            const v = String(c.vessel || '').trim();
-	            // If vessel is provided, match it; otherwise match on id only.
-	            return vesselHint ? (v === vesselHint) : true;
-	          });
-	        }
-        if (idx >= 0) {
-          containers[idx] = {
-            ...(containers[idx] || {}),
-            delivery_at: delivery ? safeISO(delivery) : '',
-            pod_received: pod,
-            last_mile_note: String(note || ''),
-          };
-          saveIntlWeekContainers(ws, containers);
+        // ---- Deterministic resolution of which container to update ----
+        let idx = uid ? containers.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid) : -1;
+        if (idx < 0 && idxHint !== null && idxHint >= 0 && idxHint < containers.length) idx = idxHint;
+        if (idx < 0 && /^idx\d+$/.test(uid)) {
+          const n = Number(uid.replace('idx', ''));
+          if (!Number.isNaN(n) && n >= 0 && n < containers.length) idx = n;
+        }
+        if (idx < 0 && cidHint) {
+          idx = containers.findIndex(c => {
+            const id = String(c.container_id || c.container || '').trim();
+            if (!id || id !== cidHint) return false;
+            const v = String(c.vessel || '').trim();
+            return vesselHint ? (v === vesselHint) : true;
+          });
         }
 
-        const msg = detail.querySelector('#flow-lm-save-msg');
-        if (msg) msg.textContent = 'Saved';
+        if (idx < 0) {
+          if (msg) {
+            msg.textContent = 'Save failed: container not found (see console)';
+            msg.className = 'text-xs text-red-600';
+          }
+          try {
+            console.warn('[LastMile Save] container not found', { ws, contKey, uid, idxHint, cidHint, vesselHint, containers: containers.map((c,i)=>({i, uid:String(c.container_uid||c.uid||'').trim(), id:String(c.container_id||'').trim(), vessel:String(c.vessel||'').trim()})) });
+          } catch { /* ignore */ }
+          return;
+        }
+
+        const before = containers[idx] || {};
+        const patch = {
+          delivery_at: delivery ? safeISO(delivery) : '',
+          pod_received: pod,
+          last_mile_note: String(note || ''),
+        };
+        containers[idx] = { ...before, ...patch };
+        saveIntlWeekContainers(ws, containers);
+
+        // Verify write and show a deterministic status
+        const post = loadIntlWeekContainers(ws);
+        const postArr = (post && Array.isArray(post.containers)) ? post.containers : [];
+        const postUid = String(containers[idx].container_uid || containers[idx].uid || '').trim();
+        const postIdx = postUid ? postArr.findIndex(c => String(c.container_uid || c.uid || '').trim() === postUid) : -1;
+        const ok = (postIdx >= 0) && (String(postArr[postIdx].delivery_at || '') === String(patch.delivery_at || '')) && (Boolean(postArr[postIdx].pod_received) == Boolean(patch.pod_received));
+
+        if (msg) {
+          msg.textContent = ok ? 'Saved ✓' : 'Saved (but not reflected) — see console';
+          msg.className = ok ? 'text-xs text-emerald-700' : 'text-xs text-amber-700';
+        }
+        if (!ok) {
+          try {
+            console.warn('[LastMile Save] write verify failed', { ws, idx, before, patch, postSample: (postIdx>=0 ? postArr[postIdx] : null) });
+          } catch { /* ignore */ }
+        }
+
         setTimeout(() => refresh(), 10);
+
       });
     }
   }
