@@ -1953,7 +1953,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         ];
       });
 
-      const selectedKey = (sel.sub && String(sel.sub).includes('::')) ? sel.sub : (contRows[0]?.key || null);
+      const selectedKey = sel.sub ? String(sel.sub) : (contRows[0]?.key || null);
       const selected = selectedKey ? contRows.find(x => x.key === selectedKey) : null;
 
       const editor = selected ? lastMileEditor(ws, tz, selected) : `
@@ -1988,7 +1988,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
   function intlLaneEditor(ws, tz, intl, lane) {
     const manual = lane.manual || {};
     const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
-    const isAir = /air/i.test(String(lane.freight || ''));
 
     const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
 
@@ -2001,66 +2000,72 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
 
-    const availableTickets = Array.isArray(lane.availableTickets) ? lane.availableTickets : [];
+    // Week-level containers (independent of selected lane)
+    const weekState = loadIntlWeekContainers(ws);
+    const weekContainers = Array.isArray(intl?.weekContainers) ? intl.weekContainers : (weekState.containers || []);
+    const lanes = Array.isArray(intl?.lanes) ? intl.lanes : [];
+    const laneOptions = lanes.map(l => ({
+      key: l.key,
+      label: `${l.supplier} • ${(l.ticket && l.ticket !== 'NO_TICKET') ? l.ticket : '—'} • ${l.freight}`
+    }));
 
-    const containers = Array.isArray(manual.containers) ? manual.containers : [];
-    const rows = (containers.length ? containers : [{ container_uid: '', container_id: '', size_ft: '40', vessel: '', pos: '', ticket_ids: [] }])
-      .map((c, idx) => {
-        const uid = String(c.container_uid || c.uid || '').trim();
-        const id = String(c.container_id || c.container || '').trim();
-        const size = String(c.size_ft || '40').trim();
-        const vessel = String(c.vessel || '').trim();
-        const pos = String(c.pos || c.po_list || '').trim();
+    const contRows = (weekContainers.length ? weekContainers : [{
+      container_uid: _uid('c'),
+      container_id: '',
+      size_ft: '40',
+      vessel: '',
+      pos: '',
+      lane_keys: [lane.key],
+    }]).map((c) => {
+      const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+      const cid = String(c.container_id || '').trim();
+      const size_ft = String(c.size_ft || '').trim() || '40';
+      const vessel = String(c.vessel || '').trim();
+      const pos = String(c.pos || '').trim();
+      const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : [];
 
-        // Zendesk tickets riding in this container (pick from Upload Plan for this week).
-        // Back-compat: if not present, default to the lane's ticket (if any).
-        const picked = Array.isArray(c.ticket_ids)
-          ? c.ticket_ids.map(x => String(x || '').trim()).filter(Boolean)
-          : (c.ticket ? [String(c.ticket).trim()] : []);
-        const fallback = (picked.length ? picked : (lane.ticket && lane.ticket !== 'NO_TICKET' ? [String(lane.ticket).trim()] : []));
-        const selectedTickets = uniqNonEmpty(fallback);
-
-        const ticketSelect = availableTickets.length
-          ? `<select class="flow-cont-tickets w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
-              ${availableTickets.map(t => {
-                const tt = String(t || '').trim();
-                const sel = selectedTickets.includes(tt) ? 'selected' : '';
-                return `<option value="${escapeAttr(tt)}" ${sel}>${escapeHtml(tt)}</option>`;
+      return `
+        <div class="flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-uid="${escapeAttr(uid)}">
+          <label class="col-span-12 sm:col-span-5 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Lanes on this container</div>
+            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
+              ${laneOptions.map(o => {
+                const sel = lane_keys.includes(o.key) ? 'selected' : '';
+                return `<option value="${escapeAttr(o.key)}" ${sel}>${escapeHtml(o.label)}</option>`;
               }).join('')}
             </select>
-            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>`
-          : `<div class="text-xs text-gray-500">No Zendesk tickets found in Upload Plan for this supplier/mode.</div>`;
-        return `
-          <div class="flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-idx="${idx}" data-uid="${escapeAttr(uid)}">
-            <label class="col-span-12 sm:col-span-4 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">Zendesk ticket(s)</div>
-              ${ticketSelect}
-            </label>
-            <label class="col-span-12 sm:col-span-4 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
-              <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(id)}" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
-            </label>
-            <label class="col-span-6 sm:col-span-2 text-xs ${isAir ? 'hidden' : ''}">
-              <div class="text-[11px] text-gray-500 mb-1">Size</div>
-              <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
-                <option value="20" ${size === '20' ? 'selected' : ''}>20ft</option>
-                <option value="40" ${size === '40' ? 'selected' : ''}>40ft</option>
-              </select>
-            </label>
-            <label class="col-span-6 sm:col-span-6 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
-              <input class="flow-cont-vessel w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(vessel)}" placeholder="e.g. MAERSK XYZ"/>
-            </label>
-            <label class="col-span-12 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">POs in this container (comma-separated)</div>
-              <input class="flow-cont-pos w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(pos)}" placeholder="WADA002089, WAAE002227"/>
-            </label>
-            <div class="col-span-12 flex justify-end">
-              <button class="flow-cont-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
-            </div>
+            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>
+          </label>
+
+          <label class="col-span-12 sm:col-span-4 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Container / AWB (free text)</div>
+            <input class="flow-wc-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(cid)}" placeholder="e.g. TGHU1234567 / 176-12345678"/>
+          </label>
+
+          <label class="col-span-6 sm:col-span-1 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Size</div>
+            <select class="flow-wc-size w-full px-2 py-1.5 border rounded-lg bg-white">
+              <option value="20" ${size_ft === '20' ? 'selected' : ''}>20</option>
+              <option value="40" ${size_ft === '40' ? 'selected' : ''}>40</option>
+            </select>
+          </label>
+
+          <label class="col-span-6 sm:col-span-2 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
+            <input class="flow-wc-vessel w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(vessel)}" placeholder="e.g. MAERSK XYZ"/>
+          </label>
+
+          <label class="col-span-12 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">POs (optional, comma-separated)</div>
+            <input class="flow-wc-pos w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(pos)}" placeholder="WADA002089, WAAE002227"/>
+          </label>
+
+          <div class="col-span-12 flex justify-end">
+            <button class="flow-wc-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
           </div>
-        `;
-      }).join('');
+        </div>
+      `;
+    }).join('');
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -2079,10 +2084,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              ${iconDoc()} <span>Milestones</span>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
                 <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
@@ -2103,8 +2106,10 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
               </label>
+            </div>
 
-              <label class="text-sm flex items-center gap-2 mt-6">
+            <div class="flex items-center gap-3 mt-3">
+              <label class="text-sm flex items-center gap-2">
                 <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
                 <span>Customs hold</span>
               </label>
@@ -2114,25 +2119,31 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
               <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
             </label>
+
+            <div class="flex items-center justify-between mt-3">
+              <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
+              <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+            </div>
           </div>
 
           <div class="rounded-xl border p-3">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                ${iconContainer()} <span>Containers & Vessel</span>
+                ${iconContainer()} <span>Containers (week-level)</span>
               </div>
-              <button id="flow-cont-add" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Add container</button>
+              <div class="flex items-center gap-2">
+                <button id="flow-wc-add" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Add</button>
+                <button id="flow-wc-save" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Save containers</button>
+              </div>
             </div>
-            <div id="flow-cont-list" data-is-air="${isAir ? '1' : '0'}" data-tickets="${escapeAttr(JSON.stringify(availableTickets))}" class="mt-3 flex flex-col gap-2">
-              ${rows}
+            <div id="flow-wc-list" class="mt-3 flex flex-col gap-2">
+              ${contRows}
             </div>
-            <div class="text-[11px] text-gray-500 mt-2">Tip: for Air, use AWB / Shipment Ref. Vessel is free text. Add POs if helpful.</div>
+            <div id="flow-wc-save-msg" class="text-xs text-gray-500 mt-2"></div>
+            <div class="text-[11px] text-gray-500 mt-2">
+              One container can map to multiple lanes. These containers feed Last Mile immediately.
+            </div>
           </div>
-        </div>
-
-        <div class="flex items-center justify-between mt-3">
-          <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
-          <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
         </div>
       </div>
     `;
@@ -2154,75 +2165,103 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     });
 
 
-    // Containers UI (add/remove)
-    const addBtn = detail.querySelector('#flow-cont-add');
-    if (addBtn && !addBtn.dataset.bound) {
-      addBtn.dataset.bound = '1';
-      addBtn.addEventListener('click', () => {
-        const list = detail.querySelector('#flow-cont-list');
+    // Week-level Containers UI (add/remove/save)
+    const wcAdd = detail.querySelector('#flow-wc-add');
+    if (wcAdd && !wcAdd.dataset.bound) {
+      wcAdd.dataset.bound = '1';
+      wcAdd.addEventListener('click', () => {
+        const list = detail.querySelector('#flow-wc-list');
         if (!list) return;
-        const isAir = String(list.dataset.isAir || '') === '1';
-        let tickets = [];
-        try { tickets = JSON.parse(list.dataset.tickets || '[]') || []; } catch { tickets = []; }
+
+        // Clone lane options from the first existing multi-select (rendered from data) to keep UX stable.
+        const protoSelect = detail.querySelector('.flow-wc-lanes');
+        const optionsHtml = protoSelect ? protoSelect.innerHTML : '';
 
         const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
           ? crypto.randomUUID()
-          : `c_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+          : _uid('c');
+
         const wrap = document.createElement('div');
-        wrap.className = 'flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
+        wrap.className = 'flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
         wrap.dataset.uid = uid;
 
-        const ticketSelect = (Array.isArray(tickets) && tickets.length)
-          ? `<select class="flow-cont-tickets w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
-              ${tickets.map(t => {
-                const tt = String(t || '').trim();
-                return `<option value="${escapeAttr(tt)}">${escapeHtml(tt)}</option>`;
-              }).join('')}
-            </select>
-            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>`
-          : `<div class="text-xs text-gray-500">No Zendesk tickets found in Upload Plan for this supplier/mode.</div>`;
-
         wrap.innerHTML = `
-          <label class="col-span-12 sm:col-span-4 text-xs">
-            <div class="text-[11px] text-gray-500 mb-1">Zendesk ticket(s)</div>
-            ${ticketSelect}
+          <label class="col-span-12 sm:col-span-5 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Lanes on this container</div>
+            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white" multiple></select>
+            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>
           </label>
           <label class="col-span-12 sm:col-span-4 text-xs">
-            <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
-            <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
+            <div class="text-[11px] text-gray-500 mb-1">Container / AWB (free text)</div>
+            <input class="flow-wc-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. TGHU1234567 / 176-12345678"/>
           </label>
-          <label class="col-span-6 sm:col-span-2 text-xs ${isAir ? 'hidden' : ''}">
+          <label class="col-span-6 sm:col-span-1 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Size</div>
-            <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
-              <option value="20">20ft</option>
-              <option value="40" selected>40ft</option>
+            <select class="flow-wc-size w-full px-2 py-1.5 border rounded-lg bg-white">
+              <option value="20">20</option>
+              <option value="40" selected>40</option>
             </select>
           </label>
-          <label class="col-span-6 sm:col-span-6 text-xs">
+          <label class="col-span-6 sm:col-span-2 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
-            <input class="flow-cont-vessel w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. MAERSK XYZ"/>
+            <input class="flow-wc-vessel w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. MAERSK XYZ"/>
           </label>
           <label class="col-span-12 text-xs">
-            <div class="text-[11px] text-gray-500 mb-1">POs in this container (comma-separated)</div>
-            <input class="flow-cont-pos w-full px-2 py-1.5 border rounded-lg" value="" placeholder="WADA002089, WAAE002227"/>
+            <div class="text-[11px] text-gray-500 mb-1">POs (optional, comma-separated)</div>
+            <input class="flow-wc-pos w-full px-2 py-1.5 border rounded-lg" value="" placeholder="WADA002089, WAAE002227"/>
           </label>
           <div class="col-span-12 flex justify-end">
-            <button class="flow-cont-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
+            <button class="flow-wc-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
           </div>
         `;
         list.appendChild(wrap);
+        const sel = wrap.querySelector('.flow-wc-lanes');
+        if (sel && optionsHtml) sel.innerHTML = optionsHtml;
       });
     }
 
-    detail.querySelectorAll('.flow-cont-remove').forEach(btn => {
+    detail.querySelectorAll('.flow-wc-remove').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        const row = btn.closest('.flow-cont-row');
+        const row = btn.closest('.flow-wc-row');
         if (row) row.remove();
       });
     });
+
+    const wcSave = detail.querySelector('#flow-wc-save');
+    if (wcSave && !wcSave.dataset.bound) {
+      wcSave.dataset.bound = '1';
+      wcSave.addEventListener('click', () => {
+        const state = loadIntlWeekContainers(ws);
+        const containers = Array.from(detail.querySelectorAll('.flow-wc-row')).map(row => {
+          const uid = String(row.dataset.uid || '').trim() || _uid('c');
+          const container_id = String(row.querySelector('.flow-wc-id')?.value || '').trim();
+          const size_ft = String(row.querySelector('.flow-wc-size')?.value || '').trim();
+          const vessel = String(row.querySelector('.flow-wc-vessel')?.value || '').trim();
+          const pos = String(row.querySelector('.flow-wc-pos')?.value || '').trim();
+          const sel = row.querySelector('.flow-wc-lanes');
+          const lane_keys = sel && sel.options
+            ? uniqNonEmpty(Array.from(sel.options).filter(o => o.selected).map(o => o.value))
+            : [];
+          return {
+            ...(state.containers || []).find(c => String(c.container_uid || c.uid || '').trim() === uid) || {},
+            container_uid: uid,
+            container_id,
+            size_ft,
+            vessel,
+            pos,
+            lane_keys,
+          };
+        }).filter(c => c.container_id || c.vessel || (c.lane_keys && c.lane_keys.length) || c.pos);
+
+        saveIntlWeekContainers(ws, { ...state, containers });
+        const msg = detail.querySelector('#flow-wc-save-msg');
+        if (msg) msg.textContent = 'Saved';
+        setTimeout(() => refresh(), 10);
+      });
+    }
 
 
     const saveBtn = detail.querySelector('#flow-intl-save');
@@ -2239,44 +2278,14 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
         const note = detail.querySelector('#flow-intl-note')?.value || '';
-
-        // Containers & vessel (free text)
-        const containers = Array.from(detail.querySelectorAll('.flow-cont-row')).map(row => {
-          const container_id = row.querySelector('.flow-cont-id')?.value || '';
-          const size_ft = row.querySelector('.flow-cont-size')?.value || '';
-          const vessel = row.querySelector('.flow-cont-vessel')?.value || '';
-          const pos = row.querySelector('.flow-cont-pos')?.value || '';
-          const uid = String(row.dataset.uid || '').trim() || (
-            (typeof crypto !== 'undefined' && crypto.randomUUID)
-              ? crypto.randomUUID()
-              : `c_${Date.now()}_${Math.random().toString(16).slice(2)}`
-          );
-
-          const sel = row.querySelector('.flow-cont-tickets');
-          const ticket_ids = sel && sel.options
-            ? uniqNonEmpty(Array.from(sel.options).filter(o => o.selected).map(o => o.value))
-            : [];
-
-          // Preserve last mile fields if present on existing objects (merged in saveIntlLaneManual)
-          return {
-            container_uid: uid,
-            ticket_ids,
-            container_id: String(container_id || '').trim(),
-            size_ft: String(size_ft || '').trim(),
-            vessel: String(vessel || '').trim(),
-            pos: String(pos || '').trim(),
-          };
-        }).filter(c => c.container_id || c.vessel || c.pos || (c.ticket_ids && c.ticket_ids.length));
-
         const obj = {
-          packing_list_ready_at: pack ? new Date(pack).toISOString() : '',
-          origin_customs_cleared_at: originClr ? new Date(originClr).toISOString() : '',
-          departed_at: departed ? new Date(departed).toISOString() : '',
-          arrived_at: arrived ? new Date(arrived).toISOString() : '',
-          dest_customs_cleared_at: destClr ? new Date(destClr).toISOString() : '',
+          packing_list_ready_at: safeISO(pack),
+          origin_customs_cleared_at: safeISO(originClr),
+          departed_at: safeISO(departed),
+          arrived_at: safeISO(arrived),
+          dest_customs_cleared_at: safeISO(destClr),
           customs_hold: hold,
           note: String(note || ''),
-          containers,
         };
         saveIntlLaneManual(ws, key, obj);
         const msg = detail.querySelector('#flow-intl-save-msg');
