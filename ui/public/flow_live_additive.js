@@ -640,6 +640,10 @@ function computeCartonStatsFromRecords(records) {
     return s || '';
   }
 
+  function uniqNonEmpty(arr) {
+    return Array.from(new Set((arr || []).map(x => String(x || '').trim()).filter(Boolean)));
+  }
+
   function laneKey(supplier, ticket, freight) {
     return `${normalizeSupplier(supplier || 'Unknown')}||${String(ticket || 'NO_TICKET').trim() || 'NO_TICKET'}||${String(freight || 'Sea').trim() || 'Sea'}`;
   }
@@ -668,18 +672,29 @@ function computeCartonStatsFromRecords(records) {
       let prev = {};
       try { prev = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch { prev = {}; }
 
-      // Merge containers by container_id to preserve downstream fields (e.g., last-mile delivery tracking)
+      // Merge containers by stable container_uid (fallback: container_id) to preserve downstream fields
+      // (e.g., last-mile delivery tracking)
       const next = { ...(prev || {}), ...(obj || {}) };
       if (obj && Array.isArray(obj.containers)) {
+        const prevByUid = new Map();
         const prevById = new Map();
         (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
+          const uid = String(c.container_uid || c.uid || '').trim();
           const id = String(c.container_id || c.container || '').trim();
+          if (uid) prevByUid.set(uid, c);
           if (id) prevById.set(id, c);
         });
+
         next.containers = obj.containers.map(c => {
+          const uid = String(c.container_uid || c.uid || '').trim();
           const id = String(c.container_id || c.container || '').trim();
-          const prior = id ? (prevById.get(id) || {}) : {};
-          return { ...prior, ...c, container_id: id || (c.container_id || '') };
+          const prior = (uid && prevByUid.get(uid)) || (id && prevById.get(id)) || {};
+          return {
+            ...prior,
+            ...c,
+            container_uid: uid || prior.container_uid || prior.uid || '',
+            container_id: id || (c.container_id || ''),
+          };
         });
       }
 
@@ -691,12 +706,19 @@ function computeCartonStatsFromRecords(records) {
     // Build PO -> lane mapping from plan
     const poToLane = new Map();
     const lanes = new Map(); // laneKey -> {supplier,ticket,freight, plannedUnits, plannedPOs:Set}
+    const ticketsBySupMode = new Map(); // `${supplier}||${freight}` -> Set(ticket)
     for (const r of (planRows || [])) {
       const po = getPO(r);
       if (!po) continue;
       const supplier = getSupplier(r) || 'Unknown';
       const freight = getFreightType(r) || 'Sea';
       const ticket = getZendeskTicket(r) || 'NO_TICKET';
+
+      // Collect all tickets available from Upload Plan for this supplier+mode.
+      const smk = `${normalizeSupplier(supplier)}||${freight}`;
+      if (!ticketsBySupMode.has(smk)) ticketsBySupMode.set(smk, new Set());
+      if (ticket && ticket !== 'NO_TICKET') ticketsBySupMode.get(smk).add(String(ticket).trim());
+
       const key = laneKey(supplier, ticket, freight);
       poToLane.set(po, key);
       if (!lanes.has(key)) lanes.set(key, { key, supplier: normalizeSupplier(supplier), ticket, freight, plannedUnits: 0, plannedPOs: new Set() });
@@ -821,6 +843,8 @@ function computeCartonStatsFromRecords(records) {
         plannedUnits,
         appliedUnits,
         cartonsOut,
+        // For container assignment: list of Zendesk tickets available from Upload Plan for this supplier+mode.
+        availableTickets: uniqNonEmpty(Array.from((ticketsBySupMode.get(`${normalizeSupplier(lane.supplier)}||${lane.freight}`) || new Set()).values())),
         manual,
         level,
         originReadyAt,
@@ -1854,19 +1878,26 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const lanes = (intl && Array.isArray(intl.lanes)) ? intl.lanes : [];
       const contRows = [];
       for (const l of lanes) {
-        const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? l.ticket : '';
+        const laneTicket = l.ticket && l.ticket !== 'NO_TICKET' ? l.ticket : '';
         const list = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers : [];
         for (let i = 0; i < list.length; i++) {
           const c = list[i] || {};
           const cid = String(c.container_id || c.container || '').trim();
-          const key = `${l.key}::${cid || i}`;
+          const uid = String(c.container_uid || c.uid || '').trim();
+          const key = `${l.key}::${uid || cid || i}`;
           if (!cid && !c.vessel && !c.pos) continue;
+
+          const ticket_ids = Array.isArray(c.ticket_ids)
+            ? uniqNonEmpty(c.ticket_ids.map(x => String(x || '').trim()))
+            : (laneTicket ? [laneTicket] : []);
+          const ticketDisplay = ticket_ids.join(', ');
           contRows.push({
             key,
             laneKey: l.key,
             supplier: l.supplier,
-            ticket,
+            ticket: ticketDisplay,
             freight: l.freight,
+            container_uid: uid,
             container_id: cid || '—',
             size_ft: String(c.size_ft || '').trim(),
             vessel: String(c.vessel || '').trim(),
@@ -1970,15 +2001,41 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
 
+    const availableTickets = Array.isArray(lane.availableTickets) ? lane.availableTickets : [];
+
     const containers = Array.isArray(manual.containers) ? manual.containers : [];
-    const rows = (containers.length ? containers : [{ container_id: '', size_ft: '40', vessel: '', pos: '' }])
+    const rows = (containers.length ? containers : [{ container_uid: '', container_id: '', size_ft: '40', vessel: '', pos: '', ticket_ids: [] }])
       .map((c, idx) => {
+        const uid = String(c.container_uid || c.uid || '').trim();
         const id = String(c.container_id || c.container || '').trim();
         const size = String(c.size_ft || '40').trim();
         const vessel = String(c.vessel || '').trim();
         const pos = String(c.pos || c.po_list || '').trim();
+
+        // Zendesk tickets riding in this container (pick from Upload Plan for this week).
+        // Back-compat: if not present, default to the lane's ticket (if any).
+        const picked = Array.isArray(c.ticket_ids)
+          ? c.ticket_ids.map(x => String(x || '').trim()).filter(Boolean)
+          : (c.ticket ? [String(c.ticket).trim()] : []);
+        const fallback = (picked.length ? picked : (lane.ticket && lane.ticket !== 'NO_TICKET' ? [String(lane.ticket).trim()] : []));
+        const selectedTickets = uniqNonEmpty(fallback);
+
+        const ticketSelect = availableTickets.length
+          ? `<select class="flow-cont-tickets w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
+              ${availableTickets.map(t => {
+                const tt = String(t || '').trim();
+                const sel = selectedTickets.includes(tt) ? 'selected' : '';
+                return `<option value="${escapeAttr(tt)}" ${sel}>${escapeHtml(tt)}</option>`;
+              }).join('')}
+            </select>
+            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>`
+          : `<div class="text-xs text-gray-500">No Zendesk tickets found in Upload Plan for this supplier/mode.</div>`;
         return `
-          <div class="flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-idx="${idx}">
+          <div class="flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-idx="${idx}" data-uid="${escapeAttr(uid)}">
+            <label class="col-span-12 sm:col-span-4 text-xs">
+              <div class="text-[11px] text-gray-500 mb-1">Zendesk ticket(s)</div>
+              ${ticketSelect}
+            </label>
             <label class="col-span-12 sm:col-span-4 text-xs">
               <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
               <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(id)}" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
@@ -1989,7 +2046,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                 <option value="20" ${size === '20' ? 'selected' : ''}>20ft</option>
                 <option value="40" ${size === '40' ? 'selected' : ''}>40ft</option>
               </select>
-            </label>
             </label>
             <label class="col-span-6 sm:col-span-6 text-xs">
               <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
@@ -2067,7 +2123,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               </div>
               <button id="flow-cont-add" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Add container</button>
             </div>
-            <div id="flow-cont-list" class="mt-3 flex flex-col gap-2">
+            <div id="flow-cont-list" data-is-air="${isAir ? '1' : '0'}" data-tickets="${escapeAttr(JSON.stringify(availableTickets))}" class="mt-3 flex flex-col gap-2">
               ${rows}
             </div>
             <div class="text-[11px] text-gray-500 mt-2">Tip: for Air, use AWB / Shipment Ref. Vessel is free text. Add POs if helpful.</div>
@@ -2105,14 +2161,37 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       addBtn.addEventListener('click', () => {
         const list = detail.querySelector('#flow-cont-list');
         if (!list) return;
+        const isAir = String(list.dataset.isAir || '') === '1';
+        let tickets = [];
+        try { tickets = JSON.parse(list.dataset.tickets || '[]') || []; } catch { tickets = []; }
+
+        const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `c_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const wrap = document.createElement('div');
         wrap.className = 'flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
+        wrap.dataset.uid = uid;
+
+        const ticketSelect = (Array.isArray(tickets) && tickets.length)
+          ? `<select class="flow-cont-tickets w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
+              ${tickets.map(t => {
+                const tt = String(t || '').trim();
+                return `<option value="${escapeAttr(tt)}">${escapeHtml(tt)}</option>`;
+              }).join('')}
+            </select>
+            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>`
+          : `<div class="text-xs text-gray-500">No Zendesk tickets found in Upload Plan for this supplier/mode.</div>`;
+
         wrap.innerHTML = `
+          <label class="col-span-12 sm:col-span-4 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Zendesk ticket(s)</div>
+            ${ticketSelect}
+          </label>
           <label class="col-span-12 sm:col-span-4 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
             <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
           </label>
-          <label class="col-span-6 sm:col-span-2 text-xs">
+          <label class="col-span-6 sm:col-span-2 text-xs ${isAir ? 'hidden' : ''}">
             <div class="text-[11px] text-gray-500 mb-1">Size</div>
             <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
               <option value="20">20ft</option>
@@ -2167,14 +2246,27 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           const size_ft = row.querySelector('.flow-cont-size')?.value || '';
           const vessel = row.querySelector('.flow-cont-vessel')?.value || '';
           const pos = row.querySelector('.flow-cont-pos')?.value || '';
+          const uid = String(row.dataset.uid || '').trim() || (
+            (typeof crypto !== 'undefined' && crypto.randomUUID)
+              ? crypto.randomUUID()
+              : `c_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          );
+
+          const sel = row.querySelector('.flow-cont-tickets');
+          const ticket_ids = sel && sel.options
+            ? uniqNonEmpty(Array.from(sel.options).filter(o => o.selected).map(o => o.value))
+            : [];
+
           // Preserve last mile fields if present on existing objects (merged in saveIntlLaneManual)
           return {
+            container_uid: uid,
+            ticket_ids,
             container_id: String(container_id || '').trim(),
             size_ft: String(size_ft || '').trim(),
             vessel: String(vessel || '').trim(),
             pos: String(pos || '').trim(),
           };
-        }).filter(c => c.container_id || c.vessel || c.pos);
+        }).filter(c => c.container_id || c.vessel || c.pos || (c.ticket_ids && c.ticket_ids.length));
 
         const obj = {
           packing_list_ready_at: pack ? new Date(pack).toISOString() : '',
@@ -2270,11 +2362,15 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
         const note = detail.querySelector('#flow-lm-note')?.value || '';
 
-        // Load lane manual, patch container entry by id
+        // Load lane manual, patch container entry by stable uid (fallback: container_id)
         const prev = loadIntlLaneManual(ws, laneKey) || {};
         const containers = Array.isArray(prev.containers) ? prev.containers.slice() : [];
         const idPart = String(contKey).split('::')[1] || '';
-        const idx = containers.findIndex(c => String(c.container_id || c.container || '').trim() === idPart);
+        const idx = containers.findIndex(c => {
+          const uid = String(c.container_uid || c.uid || '').trim();
+          const cid = String(c.container_id || c.container || '').trim();
+          return (uid && uid === idPart) || (!uid && cid && cid === idPart) || (cid && cid === idPart);
+        });
         if (idx >= 0) {
           containers[idx] = {
             ...(containers[idx] || {}),
