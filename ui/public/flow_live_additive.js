@@ -6,7 +6,7 @@
   } catch (e) { /* ignore */ }
 })();
 
-/* flow_live_additive.js (v46)
+/* flow_live_additive.js (v47)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -3087,34 +3087,34 @@ async function refresh() {
 
     try {
       setSubheader(ws);
-    setDayProgress(ws, tz);
+      setDayProgress(ws, tz);
 
-    const resetBtn = document.getElementById('flow-reset');
-    if (resetBtn && !resetBtn.dataset.bound) {
-      resetBtn.dataset.bound = '1';
-      resetBtn.onclick = () => {
-        // Flow-only reset (do not broadcast global events that can break other pages)
-        UI.selection = { node: 'receiving', sub: null };
-        try {
-          // clear lightweight per-week manual inputs
-        try {
-          const ws0 = UI.currentWs || ws;
-          // legacy per-lane keys: flow:intl:<ws>:<laneKey>
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const k = localStorage.key(i);
-            if (!k) continue;
-            if (k.startsWith(`flow:intl:${ws0}:`)) localStorage.removeItem(k);
-          }
-          // week-level stores
-          localStorage.removeItem(`flow:intl_weekcontainers:${ws0}`);
-          localStorage.removeItem(`flow:lastmile_receipts:${ws0}`);
-          localStorage.removeItem(`vo_flow_v1:${(window.state?.facility || '').trim() || 'default'}:${ws0}`);
-        } catch {}
+      const resetBtn = document.getElementById('flow-reset');
+      if (resetBtn && !resetBtn.dataset.bound) {
+        resetBtn.dataset.bound = '1';
+        resetBtn.onclick = () => {
+          // Flow-only reset (do not broadcast global events that can break other pages)
+          UI.selection = { node: 'receiving', sub: null };
+          try {
+            // clear lightweight per-week manual inputs
+            const ws0 = UI.currentWs || ws;
+            // legacy per-lane keys: flow:intl:<ws>:<laneKey>
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const k = localStorage.key(i);
+              if (!k) continue;
+              if (k.startsWith(`flow:intl:${ws0}:`)) localStorage.removeItem(k);
+            }
+            // week-level stores
+            localStorage.removeItem(`flow:intl_weekcontainers:${ws0}`);
+            localStorage.removeItem(`flow:lastmile_receipts:${ws0}`);
+            localStorage.removeItem(`vo_flow_v1:${(window.state?.facility || '').trim() || 'default'}:${ws0}`);
+          } catch (e) { console.warn('[flow] reset failed', e); }
 
-        // Re-render just this page
-        refresh();
-      };
-    }
+          // Re-render just this page
+          refresh();
+        };
+      }
+    } catch (e) { console.warn('[flow] setWeek render failed', e); }
 
     // PDF report download (Flow-local). Opens print dialog for Save-as-PDF.
     const pdfBtn = document.getElementById('flow-download-pdf');
