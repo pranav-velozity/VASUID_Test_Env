@@ -2422,6 +2422,15 @@ function severityRank(level){
   return 0;
 }
 
+function colorToStatus(color){
+  const c = String(color||"").toLowerCase();
+  if(c==="red") return "At-Risk";
+  if(c==="yellow" || c==="amber") return "Watch";
+  if(c==="gray" || c==="grey") return "Future";
+  if(c==="green") return "Ahead-of-Plan";
+  return "";
+}
+
 function renderFooterTrends(el, nodes, weekKey) {
     // Backwards-compatible overload:
     // Some builds call renderFooterTrends(weekKey, tz, records, receiving, vas, intl, lm).
