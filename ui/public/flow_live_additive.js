@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v44)
+/* flow_live_additive.js (v45)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -1818,6 +1818,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const now = new Date();
     const sel = UI.selection;
 
+    // Last Mile receipt overlay store (delivery date/POD/note) keyed by container_uid.
+    const lmReceipts = loadLastMileReceipts(ws);
+
     // "upcoming" is optional and controls muted styling for phases that
     // haven't started yet. Must be passed explicitly.
     function header(title, level, subtitle, upcoming = false) {
@@ -1963,8 +1966,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
       const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
-      // Overlay Last Mile receipt fields (delivery date/POD/note) from separate store.
-      const lmReceipts = loadLastMileReceipts(ws);
 
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
       const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
