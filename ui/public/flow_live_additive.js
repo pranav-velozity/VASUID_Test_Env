@@ -2415,10 +2415,10 @@ function manualFormIntl(ws, tz, manual) {
   
 function severityRank(level){
   // Higher number = worse (red > yellow/gray > green)
-  const l = String(level||'').toLowerCase();
-  if (l === 'red') return 3;
-  if (l === 'yellow' || l === 'gray') return 2;
-  if (l === 'green') return 1;
+  const band = _bandFromColor(level);
+  if (band === 'red') return 3;
+  if (band === 'yellow' || band === 'gray') return 2;
+  if (band === 'green') return 1;
   return 0;
 }
 
@@ -2430,6 +2430,38 @@ function colorToStatus(color){
   if(c==="green") return "Ahead-of-Plan";
   return "";
 }
+
+function _bandFromColor(color){
+  const c = String(color||"").toLowerCase().trim();
+  // semantic words
+  if (c === "red") return "red";
+  if (c === "green") return "green";
+  if (c === "yellow" || c === "amber") return "yellow";
+  if (c === "gray" || c === "grey") return "gray";
+  // hex and rgb hints
+  if (c.includes("#ef4444") || c.includes("239,68,68")) return "red";          // red-500
+  if (c.includes("#f59e0b") || c.includes("#fbbf24") || c.includes("245,158,11") || c.includes("251,191,36")) return "yellow"; // amber-500/400
+  if (c.includes("#10b981") || c.includes("#22c55e") || c.includes("16,185,129") || c.includes("34,197,94")) return "green";   // emerald-500 / green-500
+  if (c.includes("#9ca3af") || c.includes("#d1d5db") || c.includes("156,163,175") || c.includes("209,213,219")) return "gray"; // gray-400/300
+  return "gray";
+}
+
+function statusBg(color){
+  const band = _bandFromColor(color);
+  if (band === "red") return "rgba(239,68,68,0.14)";
+  if (band === "yellow") return "rgba(245,158,11,0.18)";
+  if (band === "green") return "rgba(16,185,129,0.14)";
+  return "rgba(156,163,175,0.18)";
+}
+
+function statusStroke(color){
+  const band = _bandFromColor(color);
+  if (band === "red") return "#ef4444";
+  if (band === "yellow") return "#f59e0b";
+  if (band === "green") return "#10b981";
+  return "#9ca3af";
+}
+
 
 function renderFooterTrends(el, nodes, weekKey) {
     // Backwards-compatible overload:
