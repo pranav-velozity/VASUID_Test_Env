@@ -1236,7 +1236,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const b = parseInt(h.slice(4,6),16) || 175;
       return `rgba(${r},${g},${b},${alpha})`;
     };
-    const levelColor = (level) => ({ green:'#34d399', red:'#fb7185', yellow:'#facc15', gray:'#f2c94c' }[level] || '#9ca3af');
+    const levelColor = (level) => ({ green:'#34d399', red:'#fb7185', yellow:'#facc15', gray:'#f6d365' }[level] || '#9ca3af');
     const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.28) : matte(levelColor(level), 0.50);
     const statusText = (n) => {
       if (!n) return '—';
@@ -1295,9 +1295,9 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
   V ${road.C.y - rad}
   A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
   H ${road.D.x + rad}
-  A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
+  A ${rad} ${rad} 0 0 0 ${road.D.x} ${road.C.y + rad}
   V ${road.E.y - rad}
-  A ${rad} ${rad} 0 0 1 ${road.D.x + rad} ${road.E.y}
+  A ${rad} ${rad} 0 0 0 ${road.D.x + rad} ${road.E.y}
   H ${road.F.x}
 `;
 
@@ -1324,9 +1324,9 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         return `
           M ${pts.vas.x} ${road.C.y}
           L ${x1} ${road.C.y}
-          A ${rad} ${rad} 0 0 1 ${road.D.x} ${road.C.y + rad}
+          A ${rad} ${rad} 0 0 0 ${road.D.x} ${road.C.y + rad}
           L ${road.D.x} ${road.E.y - rad}
-          A ${rad} ${rad} 0 0 1 ${x1} ${road.E.y}
+          A ${rad} ${rad} 0 0 0 ${x1} ${road.E.y}
           L ${pts.intl.x} ${pts.intl.y}
         `;
       }
@@ -1346,11 +1346,15 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     for (let i = 0; i < order.length - 1; i++) {
       const fromId = order[i];
       const toId = order[i+1];
-      const nb = nodes[i+1] || { level:'gray', upcoming:true };
+      // Segment color follows the destination node status, except Milk Run → Receiving which is always "future" (gray road).
+      const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
       const d = segPathBetween(fromId, toId);
       if (!d) continue;
       segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />`;
     }
+
+    // Ghost/base road behind colored segments (thicker, subtle)
+    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Center dashed line
     const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
@@ -1443,6 +1447,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           <!-- road base -->
           <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
           <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+          ${baseRoad}
           ${segs}
           ${dashed}
           ${milestones}
@@ -2407,7 +2412,17 @@ function manualFormIntl(ws, tz, manual) {
 
   // ------------------------- Mount / Refresh -------------------------
   
-  function renderFooterTrends(el, nodes, weekKey) {
+  
+function severityRank(level){
+  // Higher number = worse (red > yellow/gray > green)
+  const l = String(level||'').toLowerCase();
+  if (l === 'red') return 3;
+  if (l === 'yellow' || l === 'gray') return 2;
+  if (l === 'green') return 1;
+  return 0;
+}
+
+function renderFooterTrends(el, nodes, weekKey) {
     // Backwards-compatible overload:
     // Some builds call renderFooterTrends(weekKey, tz, records, receiving, vas, intl, lm).
     if (typeof el === 'string') {
