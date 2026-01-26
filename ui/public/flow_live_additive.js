@@ -1908,6 +1908,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     if (sel.node === 'intl') {
       const lanes = (intl.lanes || []).slice();
       const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
+      const wcState = loadIntlWeekContainers(ws);
+      const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
       const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
@@ -1948,7 +1950,14 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const rows = lanes.map(l => {
         const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
         const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '<span class="text-gray-400">—</span>';
-        const containers = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers.filter(c => (c && String(c.container_id||c.container||'').trim())).length : 0;
+        const containers = weekContainers
+          .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(l.key))
+          .filter(c => {
+            const cid = String(c?.container_id || c?.container || '').trim();
+            const ves = String(c?.vessel || '').trim();
+            const pos = String(c?.pos || '').trim();
+            return !!(cid || ves || pos);
+          }).length;
         return [
           `<button class="text-left hover:underline" data-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>`,
           ticket,
@@ -1986,41 +1995,51 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const { baselines } = manual;
       const subtitle = `Delivery window ${fmtInTZ(baselines.lastMileMin, tz)} – ${fmtInTZ(baselines.lastMileMax, tz)}`;
 
-      // Build container rows from Intl lanes (Supplier × Zendesk × Freight), using the same lane manual store.
+      // Build container rows from week-level Intl containers.
       const lanes = (intl && Array.isArray(intl.lanes)) ? intl.lanes : [];
-      const contRows = [];
-      for (const l of lanes) {
-        const laneTicket = l.ticket && l.ticket !== 'NO_TICKET' ? l.ticket : '';
-        const list = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers : [];
-        for (let i = 0; i < list.length; i++) {
-          const c = list[i] || {};
-          const cid = String(c.container_id || c.container || '').trim();
-          const uid = String(c.container_uid || c.uid || '').trim();
-          const key = `${l.key}::${uid || cid || i}`;
-          if (!cid && !c.vessel && !c.pos) continue;
+      const laneByKey = {};
+      for (const l of lanes) laneByKey[l.key] = l;
 
-          const ticket_ids = Array.isArray(c.ticket_ids)
-            ? uniqNonEmpty(c.ticket_ids.map(x => String(x || '').trim()))
-            : (laneTicket ? [laneTicket] : []);
-          const ticketDisplay = ticket_ids.join(', ');
-          contRows.push({
-            key,
-            laneKey: l.key,
-            supplier: l.supplier,
-            ticket: ticketDisplay,
-            freight: l.freight,
-            container_uid: uid,
-            container_id: cid || '—',
-            size_ft: String(c.size_ft || '').trim(),
-            vessel: String(c.vessel || '').trim(),
-            delivery_at: c.delivery_at ? String(c.delivery_at).slice(0, 16) : '',
-            pod_received: !!c.pod_received,
-            note: String(c.last_mile_note || ''),
-          });
-        }
+      const wcState = loadIntlWeekContainers(ws);
+      const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
+
+      const contRows = [];
+      for (let i = 0; i < weekContainers.length; i++) {
+        const c = weekContainers[i] || {};
+        const uid = String(c.container_uid || c.uid || '').trim() || `idx${i}`;
+        const cid = String(c.container_id || c.container || '').trim();
+        const vessel = String(c.vessel || '').trim();
+        const pos = String(c.pos || '').trim();
+        const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : [];
+
+        if (!cid && !vessel && !pos && !lane_keys.length) continue;
+
+        const laneInfos = lane_keys.map(k => laneByKey[k]).filter(Boolean);
+        const suppliers = uniqNonEmpty(laneInfos.map(x => x.supplier));
+        const freights = uniqNonEmpty(laneInfos.map(x => x.freight));
+        const tickets = uniqNonEmpty(laneInfos.map(x => (x.ticket && x.ticket !== 'NO_TICKET') ? x.ticket : ''));
+
+        const supplierDisplay = suppliers.length ? (suppliers[0] + (suppliers.length > 1 ? ` (+${suppliers.length - 1})` : '')) : '—';
+        const freightDisplay = freights.length ? freights.join(', ') : (laneInfos[0]?.freight || '');
+        const ticketDisplay = tickets.join(', ');
+
+        contRows.push({
+          key: `wc::${uid}`,
+          uid,
+          supplier: supplierDisplay,
+          ticket: ticketDisplay,
+          freight: freightDisplay,
+          container_id: cid || '—',
+          size_ft: String(c.size_ft || '').trim(),
+          vessel,
+          delivery_at: c.delivery_at ? String(c.delivery_at).slice(0, 16) : '',
+          pod_received: !!c.pod_received,
+          note: String(c.last_mile_note || ''),
+          laneCount: lane_keys.length,
+        });
       }
 
-      // Status
+// Status
       const level = contRows.some(r => !r.delivery_at) ? 'yellow' : 'green';
 
       const insights = [
@@ -2114,7 +2133,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
     // Week-level containers (independent of selected lane)
     const weekState = loadIntlWeekContainers(ws);
-    const weekContainers = Array.isArray(intl?.weekContainers) ? intl.weekContainers : (weekState.containers || []);
+    const weekContainers = (weekState && Array.isArray(weekState.containers)) ? weekState.containers : [];
     const lanes = Array.isArray(intl?.lanes) ? intl.lanes : [];
     const laneOptions = lanes.map(l => ({
       key: l.key,
@@ -2368,7 +2387,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           };
         }).filter(c => c.container_id || c.vessel || (c.lane_keys && c.lane_keys.length) || c.pos);
 
-        saveIntlWeekContainers(ws, { ...state, containers });
+        saveIntlWeekContainers(ws, containers);
         const msg = detail.querySelector('#flow-wc-save-msg');
         if (msg) msg.textContent = 'Saved';
         setTimeout(() => refresh(), 10);
@@ -2450,7 +2469,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         <div class="flex items-center justify-between mt-3">
           <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
-          <button id="flow-lm-save" data-cont="${escapeAttr(r.key)}" data-lane="${escapeAttr(r.laneKey)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+          <button id="flow-lm-save" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
         </div>
       </div>
     `;
@@ -2476,32 +2495,26 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       saveBtn.dataset.bound = '1';
       saveBtn.addEventListener('click', () => {
         const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
-        const laneKey = saveBtn.getAttribute('data-lane') || '';
-        if (!contKey || !laneKey) return;
+        const uid = saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '');
+        if (!uid) return;
 
         const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
         const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
         const note = detail.querySelector('#flow-lm-note')?.value || '';
 
-        // Load lane manual, patch container entry by stable uid (fallback: container_id)
-        const prev = loadIntlLaneManual(ws, laneKey) || {};
-        const containers = Array.isArray(prev.containers) ? prev.containers.slice() : [];
-        const idPart = String(contKey).split('::')[1] || '';
-        const idx = containers.findIndex(c => {
-          const uid = String(c.container_uid || c.uid || '').trim();
-          const cid = String(c.container_id || c.container || '').trim();
-          return (uid && uid === idPart) || (!uid && cid && cid === idPart) || (cid && cid === idPart);
-        });
+        const wcState = loadIntlWeekContainers(ws);
+        const containers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers.slice() : [];
+
+        const idx = containers.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid);
         if (idx >= 0) {
           containers[idx] = {
             ...(containers[idx] || {}),
-            delivery_at: delivery ? new Date(delivery).toISOString() : '',
+            delivery_at: delivery ? safeISO(delivery) : '',
             pod_received: pod,
             last_mile_note: String(note || ''),
           };
+          saveIntlWeekContainers(ws, containers);
         }
-
-        saveIntlLaneManual(ws, laneKey, { ...prev, containers });
 
         const msg = detail.querySelector('#flow-lm-save-msg');
         if (msg) msg.textContent = 'Saved';
