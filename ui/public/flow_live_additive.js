@@ -3204,3 +3204,7 @@ async function refresh() {
     document.head.appendChild(style);
   }catch(e){}
 })();
+
+// PATCH: swallow setFooterHealth errors (null DOM) so setWeek() continues.
+;(function(){var _sfh=window.setFooterHealth;if(typeof _sfh!=='function')return;window.setFooterHealth=function(){try{return _sfh.apply(this,arguments);}catch(e){console.warn('setFooterHealth suppressed',e);}};})();
+
