@@ -1236,7 +1236,20 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const b = parseInt(h.slice(4,6),16) || 175;
       return `rgba(${r},${g},${b},${alpha})`;
     };
-    const levelColor = (level) => ({ green:'#34d399', red:'#fb7185', yellow:'#facc15', gray:'#f6d365' }[level] || '#9ca3af');
+    // Journey/status color palette
+    // - green: on track
+    // - red: delayed
+    // - gray: At-Risk (yellow-ish tone per spec)
+    // - upcoming: distinct from At-Risk (cool neutral)
+    // - future: capability not yet live
+    const levelColor = (level) => ({
+      green: '#34d399',
+      red: '#fb7185',
+      upcoming: '#cbd5e1',
+      yellow: '#facc15',
+      gray: '#f6d365',
+      future: '#e5e7eb',
+    }[level] || '#9ca3af');
     const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.28) : matte(levelColor(level), 0.50);
     const statusText = (n) => {
       if (!n) return '—';
@@ -1244,12 +1257,12 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       if (n.upcoming) return 'Upcoming';
       if (n.level === 'green') return 'On Track';
       if (n.level === 'red') return 'Delayed';
-      return 'GRAY';
+      return 'At-Risk';
     };
     const statusLevel = (n) => {
       if (!n) return 'gray';
-      if (n.disabled) return 'gray';
-      if (n.upcoming) return 'yellow';
+      if (n.disabled) return 'future';
+      if (n.upcoming) return 'upcoming';
       return n.level || 'gray';
     };
 
