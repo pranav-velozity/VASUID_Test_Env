@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v41)
+/* flow_live_additive.js (v43)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -796,6 +796,30 @@ function computeCartonStatsFromRecords(records) {
     const state = { ...(prev || {}), containers: next, _v: 1, _migratedFromLaneContainers: true };
     try { localStorage.setItem(k, JSON.stringify(state)); } catch { /* ignore */ }
     return state;
+  }
+
+  // ------------------------- Last Mile receipts (week-scoped) -------------------------
+  // We store Last Mile "receiving" fields separately from Intl week-containers.
+  // This avoids any accidental overwrite/derivation issues and keeps Last Mile updates
+  // deterministic.
+  function lastMileReceiptsKey(ws) {
+    return `flow:lastmile_receipts:${ws}`;
+  }
+
+  function loadLastMileReceipts(ws) {
+    const k = lastMileReceiptsKey(ws);
+    try {
+      const raw = localStorage.getItem(k);
+      const obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLastMileReceipts(ws, receipts) {
+    const k = lastMileReceiptsKey(ws);
+    try { localStorage.setItem(k, JSON.stringify(receipts || {})); } catch { /* ignore */ }
   }
 
   function loadIntlLaneManual(ws, key) {
@@ -1939,6 +1963,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
       const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
+      const lmReceipts = loadLastMileReceipts(ws);
+      // Overlay Last Mile receipt fields (delivery date/POD/note) from separate store.
+      const lmReceipts = loadLastMileReceipts(ws);
 
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
       const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
@@ -2052,6 +2079,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const freightDisplay = freights.length ? freights.join(', ') : (laneInfos[0]?.freight || '');
         const ticketDisplay = tickets.join(', ');
 
+        const rcp = (uid && lmReceipts && lmReceipts[uid]) ? lmReceipts[uid] : null;
         contRows.push({
           key: `wc::${uid}`,
           uid,
@@ -2063,19 +2091,19 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           container_id_display: cid || '—',
           size_ft: String(c.size_ft || '').trim(),
           vessel,
-          delivery_at: String(c.delivery_at || '').trim(),
-          pod_received: !!c.pod_received,
-          note: String(c.last_mile_note || ''),
+          delivery_local: String((rcp && rcp.delivery_local) || '').trim(),
+          pod_received: !!((rcp && rcp.pod_received) || false),
+          note: String((rcp && rcp.last_mile_note) || ''),
           laneCount: lane_keys.length,
         });
       }
 
 // Status
-      const level = contRows.some(r => !r.delivery_at) ? 'yellow' : 'green';
+      const level = contRows.some(r => !r.delivery_local) ? 'yellow' : 'green';
 
       const insights = [
         'Track delivery per container / AWB (derived from Intl lanes).',
-        contRows.length ? `${contRows.filter(r => r.delivery_at).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
+        contRows.length ? `${contRows.filter(r => r.delivery_local).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
       ];
 
       const kpis = `
@@ -2086,7 +2114,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Delivered dates set</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_at).length}</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_local).length}</div>
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">POD received</div>
@@ -2094,13 +2122,13 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Open</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_at).length}</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_local).length}</div>
           </div>
         </div>
       `;
 
       const rows = contRows.map(r => {
-        const st = r.delivery_at ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
+        const st = r.delivery_local ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
                                  : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
         return [
           `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
@@ -2109,7 +2137,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           escapeHtml(r.container_id_display || ''),
           escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
           escapeHtml(r.vessel || '—'),
-          r.delivery_at ? escapeHtml(toLocalDT(r.delivery_at).replace('T',' ')) : '<span class="text-gray-400">—</span>',
+          r.delivery_local ? escapeHtml(String(r.delivery_local).replace('T',' ')) : '<span class="text-gray-400">—</span>',
           r.pod_received ? 'Yes' : 'No',
           st,
         ];
@@ -2493,8 +2521,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
 
   function lastMileEditor(ws, tz, r) {
-    const v = (iso) => toLocalDT(iso);
-    const delivery = v(r.delivery_at);
+    const delivery = String(r.delivery_local || '').trim();
     const pod = !!r.pod_received;
     const note = String(r.note || '');
 
@@ -2567,74 +2594,29 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const wsNow = String(saveBtn.getAttribute('data-ws') || ws || '').trim() || ws;
         const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
         const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
-        // Fallback identifiers (for resilience if uid mapping drifts)
-        const cidHint = String(saveBtn.getAttribute('data-cid') || '').trim();
-        const vesselHint = String(saveBtn.getAttribute('data-vessel') || '').trim();
-        const idxHint = (() => { const s = String(saveBtn.getAttribute('data-idx') || '').trim(); const n = Number(s); return (s && !Number.isNaN(n)) ? n : null; })();
 
         const msg = detail.querySelector('#flow-lm-save-msg');
-        const delivery = detail.querySelector('#flow-lm-delivery')?.value || '';
+        const delivery = String(detail.querySelector('#flow-lm-delivery')?.value || '').trim();
         const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
-        const note = detail.querySelector('#flow-lm-note')?.value || '';
+        const note = String(detail.querySelector('#flow-lm-note')?.value || '');
 
-        const wcState = loadIntlWeekContainers(wsNow);
-        const containers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers.slice() : [];
-
-        // ---- Deterministic resolution of which container to update ----
-        let idx = uid ? containers.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid) : -1;
-        if (idx < 0 && idxHint !== null && idxHint >= 0 && idxHint < containers.length) idx = idxHint;
-        if (idx < 0 && /^idx\d+$/.test(uid)) {
-          const n = Number(uid.replace('idx', ''));
-          if (!Number.isNaN(n) && n >= 0 && n < containers.length) idx = n;
-        }
-        if (idx < 0 && cidHint) {
-          idx = containers.findIndex(c => {
-            const id = String(c.container_id || c.container || '').trim();
-            if (!id || id !== cidHint) return false;
-            const v = String(c.vessel || '').trim();
-            return vesselHint ? (v === vesselHint) : true;
-          });
-        }
-
-        if (idx < 0) {
-          if (msg) {
-            msg.textContent = 'Save failed: container not found (see console)';
-            msg.className = 'text-xs text-red-600';
-          }
-          try {
-            console.warn('[LastMile Save] container not found', { ws: wsNow, contKey, uid, idxHint, cidHint, vesselHint, containers: containers.map((c,i)=>({i, uid:String(c.container_uid||c.uid||'').trim(), id:String(c.container_id||'').trim(), vessel:String(c.vessel||'').trim()})) });
-          } catch { /* ignore */ }
+        if (!uid) {
+          if (msg) { msg.textContent = 'Save failed: missing container id'; msg.className = 'text-xs text-red-600'; }
           return;
         }
 
-        const before = containers[idx] || {};
-        const patch = {
-          delivery_at: delivery ? safeISO(delivery) : '',
+        const receipts = loadLastMileReceipts(wsNow);
+        receipts[uid] = {
+          ...(receipts[uid] || {}),
+          delivery_local: delivery,
           pod_received: pod,
-          last_mile_note: String(note || ''),
+          last_mile_note: note,
+          _updatedAt: new Date().toISOString(),
         };
-        containers[idx] = { ...before, ...patch };
-        saveIntlWeekContainers(wsNow, containers);
+        saveLastMileReceipts(wsNow, receipts);
 
-        // Verify write and show a deterministic status
-        const post = loadIntlWeekContainers(wsNow);
-        const postArr = (post && Array.isArray(post.containers)) ? post.containers : [];
-        const postUid = String(containers[idx].container_uid || containers[idx].uid || '').trim();
-        const postIdx = postUid ? postArr.findIndex(c => String(c.container_uid || c.uid || '').trim() === postUid) : -1;
-        const ok = (postIdx >= 0) && (String(postArr[postIdx].delivery_at || '') === String(patch.delivery_at || '')) && (Boolean(postArr[postIdx].pod_received) == Boolean(patch.pod_received));
-
-        if (msg) {
-          msg.textContent = ok ? 'Saved ✓' : 'Saved (but not reflected) — see console';
-          msg.className = ok ? 'text-xs text-emerald-700' : 'text-xs text-amber-700';
-        }
-        if (!ok) {
-          try {
-            console.warn('[LastMile Save] write verify failed', { ws, idx, before, patch, postSample: (postIdx>=0 ? postArr[postIdx] : null) });
-          } catch { /* ignore */ }
-        }
-
+        if (msg) { msg.textContent = 'Saved ✓'; msg.className = 'text-xs text-emerald-700'; }
         setTimeout(() => refresh(), 10);
-
       });
     }
   }
