@@ -2047,7 +2047,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           container_id: cid || '—',
           size_ft: String(c.size_ft || '').trim(),
           vessel,
-          delivery_at: toLocalDT(c.delivery_at),
+          delivery_at: String(c.delivery_at || '').trim(),
           pod_received: !!c.pod_received,
           note: String(c.last_mile_note || ''),
           laneCount: lane_keys.length,
@@ -2093,7 +2093,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           escapeHtml(r.container_id || ''),
           escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
           escapeHtml(r.vessel || '—'),
-          r.delivery_at ? escapeHtml(r.delivery_at.replace('T',' ')) : '<span class="text-gray-400">—</span>',
+          r.delivery_at ? escapeHtml(toLocalDT(r.delivery_at).replace('T',' ')) : '<span class="text-gray-400">—</span>',
           r.pod_received ? 'Yes' : 'No',
           st,
         ];
