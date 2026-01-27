@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v52)
+/* flow_live_additive.js (v53)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -608,6 +608,7 @@ function computeCartonStatsFromRecords(records) {
 
   // Records: count applied units and attribute to supplier via plan join (fallback to record fields).
   let appliedUnits = 0;
+  let lastAppliedAt = null;
   const appliedBySup = new Map();
   const appliedByPO = new Map();
 
@@ -615,6 +616,13 @@ function computeCartonStatsFromRecords(records) {
     const qty = num(r.qty ?? r.quantity ?? r.units ?? r.target_qty ?? r.applied_qty ?? 1);
     const q = qty > 0 ? qty : 1;
     appliedUnits += q;
+
+    // Try to infer an "actual" timestamp from records (best-effort, optional).
+    const tsRaw = r.applied_at_utc || r.applied_at || r.completed_at_utc || r.completed_at || r.updated_at_utc || r.updated_at || r.created_at_utc || r.created_at || r.timestamp || r.ts;
+    if (tsRaw) {
+      const td = new Date(tsRaw);
+      if (!isNaN(td) && (!lastAppliedAt || td > lastAppliedAt)) lastAppliedAt = td;
+    }
 
     const po = getPO(r);
     if (po) appliedByPO.set(po, (appliedByPO.get(po) || 0) + q);
@@ -998,6 +1006,7 @@ function computeCartonStatsFromRecords(records) {
     // Lane status determination
     const now = new Date();
     const laneRows = [];
+    let lastMilestoneAt = null;
     let holds = 0;
     let seaCount = 0, airCount = 0;
     let missingDocs = 0, missingOriginClear = 0, missingDepart = 0, missingArrive = 0, missingDestClear = 0;
@@ -1015,6 +1024,12 @@ function computeCartonStatsFromRecords(records) {
       if ((!originClearedAt || isNaN(originClearedAt)) && manual.origin_ready_at) originClearedAt = new Date(manual.origin_ready_at);
 
       const customsHold = !!manual.customs_hold;
+
+      // Track latest known milestone across lanes (best-effort for "actual" display).
+      for (const d of [packingListReadyAt, originClearedAt, departedAt, arrivedAt, destClearedAt, originReadyAt]) {
+        if (d && !isNaN(d) && (!lastMilestoneAt || d > lastMilestoneAt)) lastMilestoneAt = d;
+      }
+
 
       // "Origin Ready" is effectively when docs are ready AND origin is cleared.
       // For baseline comparisons we treat it as the latest of the two, when present.
@@ -1095,6 +1110,8 @@ function computeCartonStatsFromRecords(records) {
       level: agg,
       originMin,
       originMax,
+      lastMilestoneAt,
+
       seaCount,
       airCount,
       holds,
@@ -1226,7 +1243,7 @@ function computeManualNodeStatuses(ws, tz) {
         <!-- Top row: Journey map (2/3) + Insights (1/3) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <!-- Journey map tile -->
-          <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-2">
+          <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-3">
             <div class="flex items-center justify-between mb-2">
               <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
               <div id="flow-day" class="text-xs text-gray-500"></div>
@@ -1234,7 +1251,7 @@ function computeManualNodeStatuses(ws, tz) {
             <div id="flow-journey" class="w-full"></div>
           </div>
           <!-- Insights tile moved to right 1/3 -->
-          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px] lg:col-span-1">
+          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[220px] lg:col-span-3">
             <div id="flow-footer"></div>
           </div>
         </div>
@@ -1259,8 +1276,8 @@ function computeManualNodeStatuses(ws, tz) {
         st.id = 'flow-journey-style';
         st.textContent = `
           /* Journey map sizing + crispness */
-          #flow-journey svg { width: 100%; height: 240px; display: block; }
-          @media (min-width: 1024px) { #flow-journey svg { height: 260px; } }
+          #flow-journey svg { width: 100%; height: 420px; display: block; }
+          @media (min-width: 1024px) { #flow-journey svg { height: 460px; } }
           .flow-journey-hit { cursor: pointer; }
           .flow-journey-hit:focus { outline: none; }
         `;
@@ -1488,6 +1505,28 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: false },
     ];
 
+    // Planned vs Actual (display only; never persisted)
+    const plannedActual = (() => {
+      const planned = {
+        receiving: receiving.due,
+        vas: vas.due,
+        intl: intl.originMax,
+        lastmile: manual?.baselines?.lastMileMax,
+      };
+      const actual = {
+        receiving: receiving.lastReceived,
+        vas: vas.lastAppliedAt || null,
+        intl: intl.lastMilestoneAt || null,
+        lastmile: (manual?.dates?.deliveredAt || manual?.dates?.delivered_at || manual?.manual?.delivered_at) || null,
+      };
+
+      const fmt = (d) => (d ? fmtInTZ((d instanceof Date) ? d : new Date(d), tz) : '—');
+      return (id) => {
+        if (!planned[id] && !actual[id]) return '';
+        return `Planned ${fmt(planned[id])} • Actual ${fmt(actual[id])}`;
+      };
+    })();
+
     const matte = (hex, alpha) => {
       const h = (hex || '#9ca3af').replace('#','');
       const r = parseInt(h.slice(0,2),16) || 156;
@@ -1549,11 +1588,14 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     // Node placement on the road (per your reference layout)
     const pts = {
-      milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
-      receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
-      vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
-      intl:      { x: Math.round((road.D.x + rad + road.F.x) / 2), y: road.E.y }, // middle of third straight
-      lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
+      milk:      { x: road.A.x, y: road.A.y }, // start
+      // Receiving: shift ~30% left on the top line
+      receiving: { x: Math.round(road.A.x + 0.35 * (road.B.x - road.A.x)), y: road.A.y },
+      // VAS: shift ~30% right on the middle line
+      vas:       { x: Math.round(road.D.x + 0.65 * (road.C.x - road.D.x)), y: road.C.y },
+      // Transit & Clearing: shift ~25% left on the bottom line
+      intl:      { x: Math.round((road.D.x + rad) + 0.375 * (road.F.x - (road.D.x + rad))), y: road.E.y },
+      lastmile:  { x: road.F.x, y: road.F.y }, // end
     };
 
     const order = ['milk','receiving','vas','intl','lastmile'];
@@ -1622,14 +1664,14 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
       const d = segPathBetween(fromId, toId);
       if (!d) continue;
-      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />`;
+      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />`;
     }
 
     // Ghost/base road behind colored segments (thicker, subtle)
-    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />`;
+    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Center dashed line
-    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Milestones (icons in white circles)
     let milestones = '';
@@ -1658,6 +1700,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const pillX = p.x - (pillW / 2);
       const pillTextX = p.x;
 
+      const pa = plannedActual(id);
+      const paText = pa ? `<text x="${labelX + 90}" y="${nameY}" text-anchor="start" font-size="10" font-weight="600" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
@@ -1665,6 +1709,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
           <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
+          ${paText}
+          ${paText}
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
             <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
@@ -1712,25 +1758,19 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     root.innerHTML = `
       <div class="w-full overflow-hidden">
-        <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:320px; width:100%;">
+        <svg viewBox="0 0 1100 460" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:440px; width:100%;">
 
           <!-- road shadow (subtle) -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" />
           ${baseRoad}
           ${segs}
           ${dashed}
           ${milestones}
           ${ongoing}
         </svg>
-      </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-        ${stat('Receiving', recA, recB, nodes[1])}
-        ${stat('VAS applied', vasA, vasB, nodes[2])}
-        ${stat('Transit & Clearing', intlA, intlB, nodes[3])}
-        ${stat('Last Mile', lmA, lmB, nodes[4])}
       </div>
     `;
 
@@ -1973,7 +2013,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 }
 
 if (sel.node === 'vas') {
-      const subtitle = `Due ${fmtInTZ(vas.due, tz)} • Planned ${vas.plannedUnits} units • Applied ${vas.appliedUnits} units`;
+      const subtitle = `Planned ${fmtInTZ(vas.due, tz)} • Actual ${vas.lastAppliedAt ? fmtInTZ(vas.lastAppliedAt, tz) : '—'} • Planned ${vas.plannedUnits} units • Applied ${vas.appliedUnits} units`;
       const insights = [
         `Completion: <b>${Math.round(vas.completion * 100)}%</b>`,
         vas.plannedPOs ? `${vas.plannedPOs} planned POs this week` : null,
@@ -2033,7 +2073,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     
     if (sel.node === 'intl') {
       const lanes = (intl.lanes || []).slice();
-      const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
+      const subtitle = `Planned ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)} • Actual ${intl.lastMilestoneAt ? fmtInTZ(intl.lastMilestoneAt, tz) : '—'}`;
       const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
