@@ -261,6 +261,17 @@ function statusLabel(level) {
   return 'Future';
 }
 
+// Shared status color palette used across Flow renderers
+const levelColor = (level) => ({
+  green: '#34d399',
+  red: '#fb7185',
+  upcoming: '#cbd5e1',
+  yellow: '#e6b800',
+  gray: '#f6d365',
+  future: '#e5e7eb',
+}[level] || '#9ca3af');
+
+
 function strokeForLevel(level, upcoming=false) {
     // Matte palette (less saturated)
     if (level === 'green') return upcoming ? '#d1fae5' : '#a7f3d0';
@@ -1666,14 +1677,14 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
       const d = segPathBetween(fromId, toId);
       if (!d) continue;
-      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />`;
+      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />`;
     }
 
     // Ghost/base road behind colored segments (thicker, subtle)
-    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />`;
+    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Center dashed line
-    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="4" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Milestones (icons in white circles)
     let milestones = '';
@@ -1698,7 +1709,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       // Status pill below icon
       const pillW = Math.max(58, 14 + (String(st).length * 7));
       const pillH = 18;
-      const pillY = p.y + 36;
+      const pillY = p.y + 42;
       const pillX = p.x - (pillW / 2);
       const pillTextX = p.x;
 
@@ -1762,10 +1773,10 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         <svg viewBox="-180 0 1250 560" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:520px; width:100%;">
 
           <!-- road shadow (subtle) -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="74" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="62" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" />
           ${baseRoad}
           ${segs}
           ${dashed}
