@@ -415,6 +415,17 @@ function computeCartonStatsFromRecords(records) {
   return { cartonsOutByPO, cartonsOutTotal };
 }
 
+// Back-compat for receiving_live_additive.js (expects this global helper)
+function computeCartonsOutByPOFromState(state) {
+  try {
+    const records = (state && (state.records || state.opsRecords || state.completedRecords)) || [];
+    const cs = computeCartonStatsFromRecords(records);
+    return cs.cartonsOutByPO || new Map();
+  } catch (e) {
+    return new Map();
+  }
+}
+
 
     function computeReceivingStatus(ws, tz, planRows, receivingRows, records) {
     const now = new Date();
@@ -2164,7 +2175,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           deliveredCell,
           st,
         ];
-      });});
+      });
 
       const selectedKey = sel.sub ? String(sel.sub) : (contRows[0]?.key || null);
       const selected = selectedKey ? contRows.find(x => x.key === selectedKey) : null;
