@@ -1249,8 +1249,11 @@ function computeManualNodeStatuses(ws, tz) {
             </div>
             <div id="flow-journey" class="w-full"></div>
           </div>
-          <!-- Insights tile moved to right 1/3 -->
+          <!-- Summary tile (right 1/3) -->
           <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[220px] lg:col-span-1">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-sm font-semibold text-gray-700">Week totals</div>
+            </div>
             <div id="flow-footer"></div>
           </div>
         </div>
@@ -1275,8 +1278,8 @@ function computeManualNodeStatuses(ws, tz) {
         st.id = 'flow-journey-style';
         st.textContent = `
           /* Journey map sizing + crispness */
-          #flow-journey svg { width: 100%; height: 420px; display: block; }
-          @media (min-width: 1024px) { #flow-journey svg { height: 460px; } }
+          #flow-journey svg { width: 100%; height: 500px; display: block; }
+          @media (min-width: 1024px) { #flow-journey svg { height: 540px; } }
           .flow-journey-hit { cursor: pointer; }
           .flow-journey-hit:focus { outline: none; }
         `;
@@ -1578,10 +1581,10 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const road = {
       A: { x: 80,  y: 70 },   // start
       B: { x: 920, y: 70 },   // top-right corner
-      C: { x: 920, y: 185 },  // mid-right corner
-      D: { x: 120, y: 185 },  // mid-left corner
-      E: { x: 120, y: 315 },  // bottom-left corner
-      F: { x: 920, y: 315 },  // end
+      C: { x: 920, y: 235 },  // mid-right corner  // mid-right corner
+      D: { x: 120, y: 235 },  // mid-left corner  // mid-left corner
+      E: { x: 120, y: 400 },  // bottom-left corner  // bottom-left corner
+      F: { x: 920, y: 400 },  // end  // end
     };
     const rad = 40;
 
@@ -1663,14 +1666,14 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
       const d = segPathBetween(fromId, toId);
       if (!d) continue;
-      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />`;
+      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />`;
     }
 
     // Ghost/base road behind colored segments (thicker, subtle)
-    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />`;
+    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Center dashed line
-    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="4" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Milestones (icons in white circles)
     let milestones = '';
@@ -1685,7 +1688,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const labelX = p.x;
       const labelAnchor = 'middle';
       // Node name above icon
-      const nameY = p.y - 34;
+      const nameY = p.y - 46;
 
       const st = statusText(n);
       const stLevel = statusLevel(n);
@@ -1695,19 +1698,19 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       // Status pill below icon
       const pillW = Math.max(58, 14 + (String(st).length * 7));
       const pillH = 18;
-      const pillY = p.y + 22;
+      const pillY = p.y + 36;
       const pillX = p.x - (pillW / 2);
       const pillTextX = p.x;
 
       const pa = plannedActual(id);
-      const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
+      const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
           <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
-          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
+          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${n.label}</text>
           ${paText}
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
@@ -1756,13 +1759,13 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     root.innerHTML = `
       <div class="w-full overflow-hidden">
-        <svg viewBox="-90 0 1250 460" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:440px; width:100%;">
+        <svg viewBox="-180 0 1250 560" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:520px; width:100%;">
 
           <!-- road shadow (subtle) -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="74" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="62" stroke-linecap="round" stroke-linejoin="round" />
           ${baseRoad}
           ${segs}
           ${dashed}
@@ -3045,47 +3048,120 @@ function statusStroke(color){
 }
 
 
+
 function renderFooterTrends(el, nodes, weekKey) {
-    // Backwards-compatible overload:
-    // Some builds call renderFooterTrends(weekKey, tz, records, receiving, vas, intl, lm).
-    if (typeof el === 'string') {
-      const wk = el;
-      const receiving = arguments[3] || null;
-      const vas = arguments[4] || null;
-      const intl = arguments[5] || null;
-      const lm = arguments[6] || null;
+  // Backwards-compatible overload:
+  // Called as renderFooterTrends(weekKey, tz, records, receiving, vas, intl, manual)
+  if (typeof el === 'string') {
+    const wk = el;
+    const receiving = arguments[3] || {};
+    const vas = arguments[4] || {};
+    const intl = arguments[5] || {};
+    const manual = arguments[6] || {};
 
-      const footerEl = document.getElementById('vo-footer');
-      const n = [
-        { id: 'receiving', label: 'Receiving', color: (receiving && receiving.color) || '#10b981' },
-        { id: 'vas', label: 'VAS', color: (vas && vas.color) || '#10b981' },
-        { id: 'intl', label: 'Transit', color: (intl && intl.color) || '#10b981' },
-        { id: 'lm', label: 'Last Mile', color: (lm && lm.color) || '#10b981' },
-      ];
-      return renderFooterTrends(footerEl, n, wk);
-    }
-
-    // Normal signature: (el: HTMLElement, nodes: [{label,color}], weekKey: string)
-    if (!el || typeof el !== 'object' || typeof el.innerHTML === 'undefined') return;
-
-    const applied = (typeof getAppliedThisWeek === 'function') ? getAppliedThisWeek(weekKey) : 0;
-    const worst = (Array.isArray(nodes) && nodes.length)
-      ? nodes.reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc, nodes[0])
-      : { label: 'Health', color: '#10b981' };
-
-    const pill = (colorToStatus(worst.color) || 'On Track');
-    el.innerHTML = `
-      <div class="flex items-center gap-2">
-        <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
-              style="background:${statusBg(worst.color)}; border-color:${statusStroke(worst.color)};">
-          <span class="inline-block h-2 w-2 rounded-full" style="background:${worst.color};"></span>
-          <span class="font-semibold">Health:</span>
-          <span>${pill}</span>
-        </span>
-        <span class="text-xs text-gray-700">Applied this week: <span class="font-semibold">${fmtInt(applied)}</span></span>
-      </div>
-    `;
+    const footerEl = document.getElementById('flow-footer') || document.getElementById('vo-footer');
+    return renderFooterTrends(footerEl, { receiving, vas, intl, manual }, wk);
   }
+
+  // Normal signature: (el: HTMLElement, data: {receiving,vas,intl,manual}, weekKey: string)
+  if (!el || typeof el !== 'object' || typeof el.innerHTML === 'undefined') return;
+
+  const data = nodes || {};
+  const receiving = data.receiving || {};
+  const vas = data.vas || {};
+  const intl = data.intl || {};
+  const manual = data.manual || {};
+
+  // Week-level Intl containers (for vessels/containers totals)
+  let wc = { containers: [] };
+  try { wc = loadIntlWeekContainers(weekKey) || wc; } catch {}
+  const weekContainers = (wc && Array.isArray(wc.containers)) ? wc.containers : [];
+
+  const containersTotal = weekContainers.length;
+  const vesselsTotal = (() => {
+    const s = new Set();
+    for (const c of weekContainers) {
+      const v = String(c?.vessel || '').trim();
+      if (v) s.add(v);
+    }
+    return s.size;
+  })();
+
+  const lanesTotal = Array.isArray(intl.lanes) ? intl.lanes.length : (intl.lanesTotal || 0);
+
+  const rows = [
+    { label: 'Total POs planned – received', value: `${fmtInt(receiving.plannedPOs || 0)} – ${fmtInt(receiving.receivedPOs || 0)}`, icon: iconDoc },
+    { label: 'Total Units planned – applied', value: `${fmtInt(vas.plannedUnits || 0)} – ${fmtInt(vas.appliedUnits || 0)}`, icon: iconSpark },
+    { label: 'Total Cartons in – cartons out', value: `${fmtInt(receiving.cartonsInTotal || 0)} – ${fmtInt(receiving.cartonsOutTotal || 0)}`, icon: iconBox },
+    { label: 'Total Lanes', value: `${fmtInt(lanesTotal)}`, icon: iconLane },
+    { label: 'Total Vessels', value: `${fmtInt(vesselsTotal)}`, icon: iconShip },
+    { label: 'Total Containers', value: `${fmtInt(containersTotal)}`, icon: iconContainerSmall },
+  ];
+
+  // Health pill (kept, small)
+  const nodeColors = [
+    { id: 'receiving', color: (receiving && receiving.color) || levelColor(receiving.level || 'green') },
+    { id: 'vas', color: (vas && vas.color) || levelColor(vas.level || 'green') },
+    { id: 'intl', color: (intl && intl.color) || levelColor(intl.level || 'green') },
+    { id: 'lm', color: levelColor((manual.levels && manual.levels.lastMile) || manual.levels?.lastmile || 'green') },
+  ];
+  const worst = nodeColors.reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc, nodeColors[0] || { color: '#10b981' });
+  const pillText = (colorToStatus(worst.color) || 'On Track');
+
+  el.innerHTML = `
+    <div class="grid grid-cols-1 gap-2">
+      ${rows.map(r => `
+        <div class="flex items-center gap-2 rounded-xl border bg-white px-2.5 py-2">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg border bg-gray-50 text-gray-700">
+            ${r.icon()}
+          </span>
+          <div class="min-w-0">
+            <div class="text-[11px] font-semibold text-gray-600 leading-tight">${escapeHtml(r.label)}</div>
+            <div class="text-sm font-bold text-gray-900 leading-tight">${escapeHtml(r.value)}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="mt-3 flex items-center gap-2">
+      <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+            style="background:${statusBg(worst.color)}; border-color:${statusStroke(worst.color)};">
+        <span class="inline-block h-2 w-2 rounded-full" style="background:${worst.color};"></span>
+        <span class="font-semibold">Health:</span>
+        <span>${escapeHtml(pillText)}</span>
+      </span>
+    </div>
+  `;
+
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  // Tiny inline icons (no external deps)
+  function iconDoc() {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>`;
+  }
+  function iconSpark() {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.2 5.2L18 9l-4.8 1.8L12 16l-1.2-5.2L6 9l4.8-1.8L12 2z"/><path d="M5 14l.7 3L9 18l-3.3 1-.7 3-.7-3L1.9 18l3.4-1 .7-3z"/></svg>`;
+  }
+  function iconBox() {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9 5-9-5"/><path d="M3 8l9-5 9 5"/><path d="M12 13v9"/></svg>`;
+  }
+  function iconLane() {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18"/><path d="M18 3v18"/><path d="M12 3v4"/><path d="M12 11v4"/><path d="M12 19v2"/></svg>`;
+  }
+  function iconShip() {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l9 4 9-4"/><path d="M3 17V9l9-4 9 4v8"/><path d="M12 5v16"/></svg>`;
+  }
+  function iconContainerSmall() {
+    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>`;
+  }
+}
+
 
 
 
