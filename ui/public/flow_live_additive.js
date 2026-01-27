@@ -8,43 +8,60 @@
 (function () {
   'use strict';
 
-  // ------------------------------------------------------------
-  // Compatibility shim (used by Receiving module)
-  // Some versions of receiving_live_additive.js expect a global
-  // computeCartonsOutByPOFromState(ws) helper. If it is missing,
-  // Receiving throws and can prevent Flow/Last Mile handlers from
-  // wiring correctly. This implementation is intentionally
-  // lightweight (no API calls) and uses whatever is already in
-  // window.state.records for the selected week.
-  // ------------------------------------------------------------
+
+  // ------------------------- PATCH (v51.1) -------------------------
+  // Guardrails to keep other modules from breaking Flow.
+  // NOTE: Scripts load order is exec -> receiving -> flow (defer). Some helpers are expected globally.
+  window.__FLOW_BUILD__ = 'v51.1-flow-patch-' + new Date().toISOString();
+
+  // Receiving module expects this helper; if missing it throws and can interrupt week load flows.
   if (typeof window.computeCartonsOutByPOFromState !== 'function') {
     window.computeCartonsOutByPOFromState = function computeCartonsOutByPOFromState(ws) {
-      try {
-        const s = window.state || {};
-        // Prefer week-matched records; otherwise use any available records array.
-        const records = (s.weekStart === ws && Array.isArray(s.records)) ? s.records
-          : (Array.isArray(s.records) ? s.records : []);
-        const sets = new Map(); // po -> Set(mobile_bin)
-        for (const r of records || []) {
+      const m = new Map();
+      if (!ws) return m;
+
+      // Accept several possible shapes (Map, object, array).
+      const src =
+        ws.cartonsOutByPO ||
+        ws.cartons_out_by_po ||
+        ws.receiving?.cartonsOutByPO ||
+        ws.receiving?.cartons_out_by_po ||
+        ws.receiving?.cartonsOut ||
+        ws.receiving?.cartons_out;
+
+      if (src instanceof Map) return src;
+
+      if (Array.isArray(src)) {
+        for (const r of src) {
           if (!r) continue;
-          if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
-          const po = String(r.po_number || r.po || r.PO || '').trim();
-          if (!po) continue;
-          const mb = String(r.mobile_bin || r.bin || r.mobileBin || '').trim();
-          if (!mb) continue;
-          if (!sets.has(po)) sets.set(po, new Set());
-          sets.get(po).add(mb);
+          const po = r.po ?? r.PO ?? r.po_number ?? r.PO_Number;
+          const v = r.cartonsOut ?? r.cartons_out ?? r.value ?? r.count ?? r.qty ?? 0;
+          if (po != null) m.set(String(po), Number(v) || 0);
         }
-        const byPO = new Map();
-        for (const [po, set] of sets.entries()) byPO.set(po, set.size);
-        return byPO;
-      } catch (e) {
-        console.warn('[flow] computeCartonsOutByPOFromState failed', e);
-        return new Map();
+        return m;
       }
+
+      if (src && typeof src === 'object') {
+        for (const [k, v] of Object.entries(src)) m.set(String(k), Number(v) || 0);
+      }
+      return m;
     };
   }
 
+  // Footer health pill can run before the footer exists on some navigations.
+  if (typeof window.setFooterHealth === 'function' && !window.__FLOW_WRAPPED_FOOTER_HEALTH__) {
+    window.__FLOW_WRAPPED_FOOTER_HEALTH__ = true;
+    const __origSetFooterHealth = window.setFooterHealth;
+    window.setFooterHealth = function (...args) {
+      try {
+        return __origSetFooterHealth.apply(this, args);
+      } catch (e) {
+        // Keep going; this is non-critical UI.
+        console.warn('setFooterHealth suppressed', e);
+        return null;
+      }
+    };
+  }
 
   // ------------------------- Config (editable) -------------------------
   // Baseline is relative to the business week (Asia/Shanghai by default).
