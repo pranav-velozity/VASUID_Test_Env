@@ -1,4 +1,12 @@
-/* flow_live_additive.js (v51)
+// LOAD GUARD: prevent double-injection from re-running this additive module
+;(function(){
+  try {
+    if (window.__vo_flow_live_additive_loaded) { return; }
+    window.__vo_flow_live_additive_loaded = true;
+  } catch (e) { /* ignore */ }
+})();
+
+/* flow_live_additive.js (v45)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -640,6 +648,10 @@ function computeCartonStatsFromRecords(records) {
     return s || '';
   }
 
+  function uniqNonEmpty(arr) {
+    return Array.from(new Set((arr || []).map(x => String(x || '').trim()).filter(Boolean)));
+  }
+
   function laneKey(supplier, ticket, freight) {
     return `${normalizeSupplier(supplier || 'Unknown')}||${String(ticket || 'NO_TICKET').trim() || 'NO_TICKET'}||${String(freight || 'Sea').trim() || 'Sea'}`;
   }
@@ -651,6 +663,171 @@ function computeCartonStatsFromRecords(records) {
 
   function intlStorageKey(ws, key) {
     return `flow:intl:${ws}:${key}`;
+  }
+
+  // Week-level containers store (independent of selected lane)
+  function intlWeekContainersKey(ws) {
+    return `flow:intl_weekcontainers:${ws}`;
+  }
+
+  // Safe conversion for <input type="datetime-local"> values.
+  // Returns '' if blank or invalid instead of throwing.
+  function safeISO(v) {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    if (!d || Number.isNaN(d.getTime())) return '';
+    try { return d.toISOString(); } catch { return ''; }
+  }
+
+  // Convert an ISO timestamp into a value suitable for <input type="datetime-local">.
+  // We render in the browser's local timezone to match datetime-local semantics.
+  function toLocalDT(iso) {
+    const s = String(iso || '').trim();
+    if (!s) return '';
+    const d = new Date(s);
+    if (!d || Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth() + 1);
+    const da = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mi = pad2(d.getMinutes());
+    return `${y}-${m}-${da}T${hh}:${mi}`;
+  }
+
+  function _uid(prefix) {
+    const pfx = prefix ? String(prefix) : 'id';
+    return `${pfx}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+  }
+
+  function loadIntlWeekContainers(ws) {
+    const k = intlWeekContainersKey(ws);
+    let state = { containers: [], _v: 1 };
+    try {
+      const raw = localStorage.getItem(k);
+      if (raw) state = JSON.parse(raw) || state;
+    } catch { /* ignore */ }
+
+    // One-time migration from legacy lane-level containers:
+    // flow:intl:<ws>:<laneKey> { containers: [...] }
+    // We merge into week store and preserve last-mile fields.
+    try {
+      const alreadyMigrated = !!state._migratedFromLaneContainers;
+      if (!alreadyMigrated) {
+        const merged = [];
+        const seen = new Map(); // uid -> container
+        for (let i = 0; i < localStorage.length; i++) {
+          const lk = localStorage.key(i);
+          if (!lk || !lk.startsWith(`flow:intl:${ws}:`)) continue;
+          let laneKeyStr = lk.slice(`flow:intl:${ws}:`.length);
+          let laneObj = {};
+          try { laneObj = JSON.parse(localStorage.getItem(lk) || '{}') || {}; } catch { laneObj = {}; }
+          const arr = Array.isArray(laneObj.containers) ? laneObj.containers : [];
+          for (const c of arr) {
+            const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+            const prior = seen.get(uid) || {};
+            const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : (prior.lane_keys || []);
+            const nextLaneKeys = Array.from(new Set([...(lane_keys || []), laneKeyStr].filter(Boolean)));
+            const mergedC = {
+              ...prior,
+              ...c,
+              container_uid: uid,
+              container_id: String(c.container_id || c.container || prior.container_id || '').trim(),
+              vessel: String(c.vessel || prior.vessel || '').trim(),
+              size_ft: String(c.size_ft || prior.size_ft || '40').trim(),
+              pos: String(c.pos || prior.pos || '').trim(),
+              lane_keys: nextLaneKeys,
+            };
+            seen.set(uid, mergedC);
+          }
+        }
+        merged.push(...seen.values());
+        state = {
+          ...state,
+          containers: merged.length ? merged : (Array.isArray(state.containers) ? state.containers : []),
+          _migratedFromLaneContainers: true,
+          _v: 1,
+        };
+        localStorage.setItem(k, JSON.stringify(state));
+      }
+    } catch { /* ignore */ }
+
+
+    // Ensure every container has a stable uid (repair older records)
+    try {
+      let changed = false;
+      state.containers = (Array.isArray(state.containers) ? state.containers : []).map(c => {
+        const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+        if (!String(c.container_uid || '').trim()) changed = true;
+        return { ...c, container_uid: uid, container_id: String(c.container_id || c.container || '').trim() };
+      });
+      if (changed) {
+        localStorage.setItem(k, JSON.stringify({ ...state, _v: 1 }));
+      }
+    } catch { /* ignore */ }
+
+    if (!Array.isArray(state.containers)) state.containers = [];
+    return state;
+  }
+
+  function saveIntlWeekContainers(ws, containers) {
+    const k = intlWeekContainersKey(ws);
+    let prev = { containers: [] };
+    try { prev = JSON.parse(localStorage.getItem(k) || '{}') || prev; } catch { prev = { containers: [] }; }
+
+    const prevByUid = new Map();
+    const prevById = new Map();
+    (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
+      const uid = String(c.container_uid || c.uid || '').trim();
+      const id = String(c.container_id || c.container || '').trim();
+      if (uid) prevByUid.set(uid, c);
+      if (id) prevById.set(id, c);
+    });
+
+    const next = (Array.isArray(containers) ? containers : []).map(c => {
+      const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+      const id = String(c.container_id || c.container || '').trim();
+      const prior = prevByUid.get(uid) || (id && prevById.get(id)) || {};
+      return {
+        ...prior,
+        ...c,
+        container_uid: uid,
+        container_id: id,
+        size_ft: String(c.size_ft || prior.size_ft || '40').trim(),
+        vessel: String(c.vessel || prior.vessel || '').trim(),
+        pos: String(c.pos || prior.pos || '').trim(),
+        lane_keys: Array.from(new Set((Array.isArray(c.lane_keys) ? c.lane_keys : (prior.lane_keys || [])).filter(Boolean))),
+        _updatedAt: new Date().toISOString(),
+      };
+    });
+
+    const state = { ...(prev || {}), containers: next, _v: 1, _migratedFromLaneContainers: true };
+    try { localStorage.setItem(k, JSON.stringify(state)); } catch { /* ignore */ }
+    return state;
+  }
+
+  // ------------------------- Last Mile receipts (week-scoped) -------------------------
+  // We store Last Mile "receiving" fields separately from Intl week-containers.
+  // This avoids any accidental overwrite/derivation issues and keeps Last Mile updates
+  // deterministic.
+  function lastMileReceiptsKey(ws) {
+    return `flow:lastmile_receipts:${ws}`;
+  }
+
+  function loadLastMileReceipts(ws) {
+    const k = lastMileReceiptsKey(ws);
+    try {
+      const raw = localStorage.getItem(k);
+      const obj = raw ? JSON.parse(raw) : {};
+      return (obj && typeof obj === 'object') ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLastMileReceipts(ws, receipts) {
+    const k = lastMileReceiptsKey(ws);
+    try { localStorage.setItem(k, JSON.stringify(receipts || {})); } catch { /* ignore */ }
   }
 
   function loadIntlLaneManual(ws, key) {
@@ -668,18 +845,29 @@ function computeCartonStatsFromRecords(records) {
       let prev = {};
       try { prev = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch { prev = {}; }
 
-      // Merge containers by container_id to preserve downstream fields (e.g., last-mile delivery tracking)
+      // Merge containers by stable container_uid (fallback: container_id) to preserve downstream fields
+      // (e.g., last-mile delivery tracking)
       const next = { ...(prev || {}), ...(obj || {}) };
       if (obj && Array.isArray(obj.containers)) {
+        const prevByUid = new Map();
         const prevById = new Map();
         (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
+          const uid = String(c.container_uid || c.uid || '').trim();
           const id = String(c.container_id || c.container || '').trim();
+          if (uid) prevByUid.set(uid, c);
           if (id) prevById.set(id, c);
         });
+
         next.containers = obj.containers.map(c => {
+          const uid = String(c.container_uid || c.uid || '').trim();
           const id = String(c.container_id || c.container || '').trim();
-          const prior = id ? (prevById.get(id) || {}) : {};
-          return { ...prior, ...c, container_id: id || (c.container_id || '') };
+          const prior = (uid && prevByUid.get(uid)) || (id && prevById.get(id)) || {};
+          return {
+            ...prior,
+            ...c,
+            container_uid: uid || prior.container_uid || prior.uid || '',
+            container_id: id || (c.container_id || ''),
+          };
         });
       }
 
@@ -691,12 +879,19 @@ function computeCartonStatsFromRecords(records) {
     // Build PO -> lane mapping from plan
     const poToLane = new Map();
     const lanes = new Map(); // laneKey -> {supplier,ticket,freight, plannedUnits, plannedPOs:Set}
+    const ticketsBySupMode = new Map(); // `${supplier}||${freight}` -> Set(ticket)
     for (const r of (planRows || [])) {
       const po = getPO(r);
       if (!po) continue;
       const supplier = getSupplier(r) || 'Unknown';
       const freight = getFreightType(r) || 'Sea';
       const ticket = getZendeskTicket(r) || 'NO_TICKET';
+
+      // Collect all tickets available from Upload Plan for this supplier+mode.
+      const smk = `${normalizeSupplier(supplier)}||${freight}`;
+      if (!ticketsBySupMode.has(smk)) ticketsBySupMode.set(smk, new Set());
+      if (ticket && ticket !== 'NO_TICKET') ticketsBySupMode.get(smk).add(String(ticket).trim());
+
       const key = laneKey(supplier, ticket, freight);
       poToLane.set(po, key);
       if (!lanes.has(key)) lanes.set(key, { key, supplier: normalizeSupplier(supplier), ticket, freight, plannedUnits: 0, plannedPOs: new Set() });
@@ -821,6 +1016,8 @@ function computeCartonStatsFromRecords(records) {
         plannedUnits,
         appliedUnits,
         cartonsOut,
+        // For container assignment: list of Zendesk tickets available from Upload Plan for this supplier+mode.
+        availableTickets: uniqNonEmpty(Array.from((ticketsBySupMode.get(`${normalizeSupplier(lane.supplier)}||${lane.freight}`) || new Set()).values())),
         manual,
         level,
         originReadyAt,
@@ -1629,6 +1826,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const now = new Date();
     const sel = UI.selection;
 
+    // Last Mile receipt overlay store (delivery date/POD/note) keyed by container_uid.
+    const lmReceipts = loadLastMileReceipts(ws);
+
     // "upcoming" is optional and controls muted styling for phases that
     // haven't started yet. Must be passed explicitly.
     function header(title, level, subtitle, upcoming = false) {
@@ -1772,6 +1972,11 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     if (sel.node === 'intl') {
       const lanes = (intl.lanes || []).slice();
       const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
+      const wcState = loadIntlWeekContainers(ws);
+      const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
+
+
+
 
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
       const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
@@ -1812,7 +2017,14 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const rows = lanes.map(l => {
         const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
         const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '<span class="text-gray-400">—</span>';
-        const containers = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers.filter(c => (c && String(c.container_id||c.container||'').trim())).length : 0;
+        const containers = weekContainers
+          .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(l.key))
+          .filter(c => {
+            const cid = String(c?.container_id || c?.container || '').trim();
+            const ves = String(c?.vessel || '').trim();
+            const pos = String(c?.pos || '').trim();
+            return !!(cid || ves || pos);
+          }).length;
         return [
           `<button class="text-left hover:underline" data-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>`,
           ticket,
@@ -1850,39 +2062,59 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const { baselines } = manual;
       const subtitle = `Delivery window ${fmtInTZ(baselines.lastMileMin, tz)} – ${fmtInTZ(baselines.lastMileMax, tz)}`;
 
-      // Build container rows from Intl lanes (Supplier × Zendesk × Freight), using the same lane manual store.
+      // Build container rows from week-level Intl containers.
       const lanes = (intl && Array.isArray(intl.lanes)) ? intl.lanes : [];
+      const laneByKey = {};
+      for (const l of lanes) laneByKey[l.key] = l;
+
+      const wcState = loadIntlWeekContainers(ws);
+      const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
+
       const contRows = [];
-      for (const l of lanes) {
-        const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? l.ticket : '';
-        const list = (l.manual && Array.isArray(l.manual.containers)) ? l.manual.containers : [];
-        for (let i = 0; i < list.length; i++) {
-          const c = list[i] || {};
-          const cid = String(c.container_id || c.container || '').trim();
-          const key = `${l.key}::${cid || i}`;
-          if (!cid && !c.vessel && !c.pos) continue;
-          contRows.push({
-            key,
-            laneKey: l.key,
-            supplier: l.supplier,
-            ticket,
-            freight: l.freight,
-            container_id: cid || '—',
-            size_ft: String(c.size_ft || '').trim(),
-            vessel: String(c.vessel || '').trim(),
-            delivery_at: c.delivery_at ? String(c.delivery_at).slice(0, 16) : '',
-            pod_received: !!c.pod_received,
-            note: String(c.last_mile_note || ''),
-          });
-        }
+      for (let i = 0; i < weekContainers.length; i++) {
+        const c = weekContainers[i] || {};
+        const uid = String(c.container_uid || c.uid || '').trim() || `idx${i}`;
+        const cid = String(c.container_id || c.container || '').trim();
+        const vessel = String(c.vessel || '').trim();
+        const pos = String(c.pos || '').trim();
+        const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : [];
+
+        if (!cid && !vessel && !pos && !lane_keys.length) continue;
+
+        const laneInfos = lane_keys.map(k => laneByKey[k]).filter(Boolean);
+        const suppliers = uniqNonEmpty(laneInfos.map(x => x.supplier));
+        const freights = uniqNonEmpty(laneInfos.map(x => x.freight));
+        const tickets = uniqNonEmpty(laneInfos.map(x => (x.ticket && x.ticket !== 'NO_TICKET') ? x.ticket : ''));
+
+        const supplierDisplay = suppliers.length ? (suppliers[0] + (suppliers.length > 1 ? ` (+${suppliers.length - 1})` : '')) : '—';
+        const freightDisplay = freights.length ? freights.join(', ') : (laneInfos[0]?.freight || '');
+        const ticketDisplay = tickets.join(', ');
+
+        const rcp = (uid && lmReceipts && lmReceipts[uid]) ? lmReceipts[uid] : null;
+        contRows.push({
+          key: `wc::${uid}`,
+          uid,
+          src_idx: i,
+          supplier: supplierDisplay,
+          ticket: ticketDisplay,
+          freight: freightDisplay,
+          container_id: cid,
+          container_id_display: cid || '—',
+          size_ft: String(c.size_ft || '').trim(),
+          vessel,
+          delivery_local: String((rcp && rcp.delivery_local) || '').trim(),
+          pod_received: !!((rcp && rcp.pod_received) || false),
+          note: String((rcp && rcp.last_mile_note) || ''),
+          laneCount: lane_keys.length,
+        });
       }
 
-      // Status
-      const level = contRows.some(r => !r.delivery_at) ? 'yellow' : 'green';
+// Status
+      const level = contRows.some(r => !r.delivery_local) ? 'yellow' : 'green';
 
       const insights = [
         'Track delivery per container / AWB (derived from Intl lanes).',
-        contRows.length ? `${contRows.filter(r => r.delivery_at).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
+        contRows.length ? `${contRows.filter(r => r.delivery_local).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
       ];
 
       const kpis = `
@@ -1893,7 +2125,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Delivered dates set</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_at).length}</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_local).length}</div>
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">POD received</div>
@@ -1901,33 +2133,33 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Open</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_at).length}</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_local).length}</div>
           </div>
         </div>
       `;
 
       const rows = contRows.map(r => {
-        const delivered = !!r.delivery_at;
-        const deliveredText = delivered ? escapeHtml(r.delivery_at.replace('T',' ')) : '<span class="text-gray-400">—</span>';
-        const deliveredBtn = delivered
-          ? deliveredText
-          : `<button class="flow-lm-deliver-now text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50" data-lane="${escapeAttr(r.laneKey)}" data-cid="${escapeAttr(r.container_id)}" data-cont="${escapeAttr(r.key)}">Delivered now</button>`;
-
-        const st = delivered
-          ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Complete</span>`
-          : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
-
+        const st = r.delivery_local ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
+                                 : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
         return [
-          escapeHtml(r.supplier),
+          `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
           r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
           escapeHtml(r.freight || ''),
-          escapeHtml(r.container_id || ''),
+          escapeHtml(r.container_id_display || ''),
           escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
           escapeHtml(r.vessel || '—'),
-          deliveredBtn,
+          r.delivery_local ? escapeHtml(String(r.delivery_local).replace('T',' ')) : '<span class="text-gray-400">—</span>',
+          r.pod_received ? 'Yes' : 'No',
           st,
         ];
       });
+
+      const selectedKey = sel.sub ? String(sel.sub) : (contRows[0]?.key || null);
+      const selected = selectedKey ? contRows.find(x => x.key === selectedKey) : null;
+
+      const editor = selected ? lastMileEditor(ws, tz, selected) : `
+        <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No containers found. Add containers under Transit & Clearing.</div>
+      `;
 
       detail.innerHTML = [
         header('Last Mile', level, subtitle),
@@ -1935,11 +2167,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
           <div class="text-sm font-semibold text-gray-700">Containers</div>
-          ${table(['Supplier', 'Zendesk', 'Freight', 'Container / AWB', 'Size', 'Vessel', 'Delivered', 'Status'], rows)}
+          ${table(['Supplier', 'Zendesk', 'Freight', 'Container / AWB', 'Size', 'Vessel', 'Delivery date', 'POD', 'Status'], rows)}
         </div>`,
+        editor,
       ].join('');
 
-      wireLastMileDetail(ws);
+      wireLastMileDetail(ws, selectedKey);
       return;
     }
 
@@ -1956,9 +2189,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
   function intlLaneEditor(ws, tz, intl, lane) {
     const manual = lane.manual || {};
     const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? lane.ticket : '';
-    const isAir = /air/i.test(String(lane.freight || ''));
 
-    const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
+    const v = (iso) => toLocalDT(iso);
 
     const pack = v(manual.packing_list_ready_at);
     const originClr = v(manual.origin_customs_cleared_at);
@@ -1969,41 +2201,72 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
 
-    const containers = Array.isArray(manual.containers) ? manual.containers : [];
-    const rows = (containers.length ? containers : [{ container_id: '', size_ft: '40', vessel: '', pos: '' }])
-      .map((c, idx) => {
-        const id = String(c.container_id || c.container || '').trim();
-        const size = String(c.size_ft || '40').trim();
-        const vessel = String(c.vessel || '').trim();
-        const pos = String(c.pos || c.po_list || '').trim();
-        return `
-          <div class="flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-idx="${idx}">
-            <label class="col-span-12 sm:col-span-4 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
-              <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(id)}" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
-            </label>
-            <label class="col-span-6 sm:col-span-2 text-xs ${isAir ? 'hidden' : ''}">
-              <div class="text-[11px] text-gray-500 mb-1">Size</div>
-              <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
-                <option value="20" ${size === '20' ? 'selected' : ''}>20ft</option>
-                <option value="40" ${size === '40' ? 'selected' : ''}>40ft</option>
-              </select>
-            </label>
-            </label>
-            <label class="col-span-6 sm:col-span-6 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
-              <input class="flow-cont-vessel w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(vessel)}" placeholder="e.g. MAERSK XYZ"/>
-            </label>
-            <label class="col-span-12 text-xs">
-              <div class="text-[11px] text-gray-500 mb-1">POs in this container (comma-separated)</div>
-              <input class="flow-cont-pos w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(pos)}" placeholder="WADA002089, WAAE002227"/>
-            </label>
-            <div class="col-span-12 flex justify-end">
-              <button class="flow-cont-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
-            </div>
+    // Week-level containers (independent of selected lane)
+    const weekState = loadIntlWeekContainers(ws);
+    const weekContainers = (weekState && Array.isArray(weekState.containers)) ? weekState.containers : [];
+    const lanes = Array.isArray(intl?.lanes) ? intl.lanes : [];
+    const laneOptions = lanes.map(l => ({
+      key: l.key,
+      label: `${l.supplier} • ${(l.ticket && l.ticket !== 'NO_TICKET') ? l.ticket : '—'} • ${l.freight}`
+    }));
+
+    const contRows = (weekContainers.length ? weekContainers : [{
+      container_uid: _uid('c'),
+      container_id: '',
+      size_ft: '40',
+      vessel: '',
+      pos: '',
+      lane_keys: [lane.key],
+    }]).map((c) => {
+      const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
+      const cid = String(c.container_id || '').trim();
+      const size_ft = String(c.size_ft || '').trim() || '40';
+      const vessel = String(c.vessel || '').trim();
+      const pos = String(c.pos || '').trim();
+      const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : [];
+
+      return `
+        <div class="flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-uid="${escapeAttr(uid)}">
+          <label class="col-span-12 sm:col-span-5 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Lanes on this container</div>
+            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
+              ${laneOptions.map(o => {
+                const sel = lane_keys.includes(o.key) ? 'selected' : '';
+                return `<option value="${escapeAttr(o.key)}" ${sel}>${escapeHtml(o.label)}</option>`;
+              }).join('')}
+            </select>
+            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>
+          </label>
+
+          <label class="col-span-12 sm:col-span-4 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Container / AWB (free text)</div>
+            <input class="flow-wc-id w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(cid)}" placeholder="e.g. TGHU1234567 / 176-12345678"/>
+          </label>
+
+          <label class="col-span-6 sm:col-span-1 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Size</div>
+            <select class="flow-wc-size w-full px-2 py-1.5 border rounded-lg bg-white">
+              <option value="20" ${size_ft === '20' ? 'selected' : ''}>20</option>
+              <option value="40" ${size_ft === '40' ? 'selected' : ''}>40</option>
+            </select>
+          </label>
+
+          <label class="col-span-6 sm:col-span-2 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
+            <input class="flow-wc-vessel w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(vessel)}" placeholder="e.g. MAERSK XYZ"/>
+          </label>
+
+          <label class="col-span-12 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">POs (optional, comma-separated)</div>
+            <input class="flow-wc-pos w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(pos)}" placeholder="WADA002089, WAAE002227"/>
+          </label>
+
+          <div class="col-span-12 flex justify-end">
+            <button class="flow-wc-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
           </div>
-        `;
-      }).join('');
+        </div>
+      `;
+    }).join('');
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -2022,10 +2285,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
           <div class="rounded-xl border p-3">
-            <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              ${iconDoc()} <span>Milestones</span>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
                 <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
@@ -2046,8 +2307,10 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
               </label>
+            </div>
 
-              <label class="text-sm flex items-center gap-2 mt-6">
+            <div class="flex items-center gap-3 mt-3">
+              <label class="text-sm flex items-center gap-2">
                 <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
                 <span>Customs hold</span>
               </label>
@@ -2057,25 +2320,31 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
               <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
             </label>
+
+            <div class="flex items-center justify-between mt-3">
+              <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
+              <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+            </div>
           </div>
 
           <div class="rounded-xl border p-3">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                ${iconContainer()} <span>Containers & Vessel</span>
+                ${iconContainer()} <span>Containers (week-level)</span>
               </div>
-              <button id="flow-cont-add" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Add container</button>
+              <div class="flex items-center gap-2">
+                <button id="flow-wc-add" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Add</button>
+                <button id="flow-wc-save" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Save containers</button>
+              </div>
             </div>
-            <div id="flow-cont-list" class="mt-3 flex flex-col gap-2">
-              ${rows}
+            <div id="flow-wc-list" class="mt-3 flex flex-col gap-2">
+              ${contRows}
             </div>
-            <div class="text-[11px] text-gray-500 mt-2">Tip: for Air, use AWB / Shipment Ref. Vessel is free text. Add POs if helpful.</div>
+            <div id="flow-wc-save-msg" class="text-xs text-gray-500 mt-2"></div>
+            <div class="text-[11px] text-gray-500 mt-2">
+              One container can map to multiple lanes. These containers feed Last Mile immediately.
+            </div>
           </div>
-        </div>
-
-        <div class="flex items-center justify-between mt-3">
-          <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
-          <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
         </div>
       </div>
     `;
@@ -2097,58 +2366,141 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     });
 
 
-    // Containers UI (add/remove)
-    const addBtn = detail.querySelector('#flow-cont-add');
-    if (addBtn && !addBtn.dataset.bound) {
-      addBtn.dataset.bound = '1';
-      addBtn.addEventListener('click', () => {
-        const list = detail.querySelector('#flow-cont-list');
+    // Week-level Containers UI (add/remove/save)
+    const wcAdd = detail.querySelector('#flow-wc-add');
+    if (wcAdd && !wcAdd.dataset.bound) {
+      wcAdd.dataset.bound = '1';
+      wcAdd.addEventListener('click', () => {
+        const list = detail.querySelector('#flow-wc-list');
         if (!list) return;
+
+        // Clone lane options from the first existing multi-select (rendered from data) to keep UX stable.
+        const protoSelect = detail.querySelector('.flow-wc-lanes');
+        const optionsHtml = protoSelect ? protoSelect.innerHTML : '';
+
+        const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : _uid('c');
+
         const wrap = document.createElement('div');
-        wrap.className = 'flow-cont-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
+        wrap.className = 'flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
+        wrap.dataset.uid = uid;
+
         wrap.innerHTML = `
-          <label class="col-span-12 sm:col-span-4 text-xs">
-            <div class="text-[11px] text-gray-500 mb-1">${isAir ? 'AWB / Shipment Ref (free text)' : 'Container (free text)'}</div>
-            <input class="flow-cont-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="${isAir ? 'e.g. 176-12345678' : 'e.g. TGHU1234567'}"/>
+          <label class="col-span-12 sm:col-span-5 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Lanes on this container</div>
+            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white" multiple></select>
+            <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>
           </label>
-          <label class="col-span-6 sm:col-span-2 text-xs">
+          <label class="col-span-12 sm:col-span-4 text-xs">
+            <div class="text-[11px] text-gray-500 mb-1">Container / AWB (free text)</div>
+            <input class="flow-wc-id w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. TGHU1234567 / 176-12345678"/>
+          </label>
+          <label class="col-span-6 sm:col-span-1 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Size</div>
-            <select class="flow-cont-size w-full px-2 py-1.5 border rounded-lg bg-white">
-              <option value="20">20ft</option>
-              <option value="40" selected>40ft</option>
+            <select class="flow-wc-size w-full px-2 py-1.5 border rounded-lg bg-white">
+              <option value="20">20</option>
+              <option value="40" selected>40</option>
             </select>
           </label>
-          <label class="col-span-6 sm:col-span-6 text-xs">
+          <label class="col-span-6 sm:col-span-2 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Vessel</div>
-            <input class="flow-cont-vessel w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. MAERSK XYZ"/>
+            <input class="flow-wc-vessel w-full px-2 py-1.5 border rounded-lg" value="" placeholder="e.g. MAERSK XYZ"/>
           </label>
           <label class="col-span-12 text-xs">
-            <div class="text-[11px] text-gray-500 mb-1">POs in this container (comma-separated)</div>
-            <input class="flow-cont-pos w-full px-2 py-1.5 border rounded-lg" value="" placeholder="WADA002089, WAAE002227"/>
+            <div class="text-[11px] text-gray-500 mb-1">POs (optional, comma-separated)</div>
+            <input class="flow-wc-pos w-full px-2 py-1.5 border rounded-lg" value="" placeholder="WADA002089, WAAE002227"/>
           </label>
           <div class="col-span-12 flex justify-end">
-            <button class="flow-cont-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
+            <button class="flow-wc-remove text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Remove</button>
           </div>
         `;
         list.appendChild(wrap);
+        const sel = wrap.querySelector('.flow-wc-lanes');
+        if (sel && optionsHtml) sel.innerHTML = optionsHtml;
       });
     }
 
-    detail.querySelectorAll('.flow-cont-remove').forEach(btn => {
+    detail.querySelectorAll('.flow-wc-remove').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        const row = btn.closest('.flow-cont-row');
-        if (row) row.remove();
+        const row = btn.closest('.flow-wc-row');
+	      if (row) {
+	        // Track explicit removals so Save containers can delete them from the week store.
+	        try {
+	          const uid = String(row.dataset.uid || '').trim();
+	          if (uid) {
+	            window.__flowWcRemovedUids = window.__flowWcRemovedUids || new Set();
+	            window.__flowWcRemovedUids.add(uid);
+	          }
+	        } catch { /* ignore */ }
+	        row.remove();
+	      }
       });
     });
+
+    const wcSave = detail.querySelector('#flow-wc-save');
+    if (wcSave && !wcSave.dataset.bound) {
+      wcSave.dataset.bound = '1';
+      wcSave.addEventListener('click', () => {
+	        const state = loadIntlWeekContainers(ws);
+	        const updates = Array.from(detail.querySelectorAll('.flow-wc-row')).map(row => {
+          const uid = String(row.dataset.uid || '').trim() || _uid('c');
+          const container_id = String(row.querySelector('.flow-wc-id')?.value || '').trim();
+          const size_ft = String(row.querySelector('.flow-wc-size')?.value || '').trim();
+          const vessel = String(row.querySelector('.flow-wc-vessel')?.value || '').trim();
+          const pos = String(row.querySelector('.flow-wc-pos')?.value || '').trim();
+          const sel = row.querySelector('.flow-wc-lanes');
+          const lane_keys = sel && sel.options
+            ? uniqNonEmpty(Array.from(sel.options).filter(o => o.selected).map(o => o.value))
+            : [];
+          return {
+	            ...(state.containers || []).find(c => String(c.container_uid || c.uid || '').trim() === uid) || {},
+            container_uid: uid,
+            container_id,
+            size_ft,
+            vessel,
+            pos,
+            lane_keys,
+          };
+	        }).filter(c => c.container_id || c.vessel || (c.lane_keys && c.lane_keys.length) || c.pos);
+
+	        // Merge updates into prior week containers to avoid accidental overwrites.
+	        const prior = (state && Array.isArray(state.containers)) ? state.containers.slice() : [];
+	        const priorByUid = new Map(prior.map(c => [String(c.container_uid || c.uid || '').trim(), c]));
+	        const removed = (window.__flowWcRemovedUids instanceof Set) ? window.__flowWcRemovedUids : new Set();
+	        const next = [];
+	        // Keep existing containers unless explicitly removed.
+	        for (const c of prior) {
+	          const uid = String(c.container_uid || c.uid || '').trim();
+	          if (uid && removed.has(uid)) continue;
+	          next.push(c);
+	        }
+	        // Apply updates (replace existing by uid, else append)
+	        for (const u of updates) {
+	          const uid = String(u.container_uid || u.uid || '').trim();
+	          if (!uid) continue;
+	          const idx = next.findIndex(c => String(c.container_uid || c.uid || '').trim() === uid);
+	          if (idx >= 0) next[idx] = { ...(next[idx] || {}), ...u, container_uid: uid };
+	          else next.push(u);
+	        }
+
+	        saveIntlWeekContainers(ws, next);
+	        try { if (window.__flowWcRemovedUids instanceof Set) window.__flowWcRemovedUids.clear(); } catch { /* ignore */ }
+        const msg = detail.querySelector('#flow-wc-save-msg');
+        if (msg) msg.textContent = 'Saved';
+        setTimeout(() => refresh(), 10);
+      });
+    }
 
 
     const saveBtn = detail.querySelector('#flow-intl-save');
     if (saveBtn && !saveBtn.dataset.bound) {
       saveBtn.dataset.bound = '1';
       saveBtn.addEventListener('click', () => {
+        const wsNow = String(saveBtn.getAttribute('data-ws') || ws || '').trim() || ws;
         const key = saveBtn.getAttribute('data-lane') || selectedKey;
         if (!key) return;
         const pack = detail.querySelector('#flow-intl-pack')?.value || '';
@@ -2159,31 +2511,14 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
         const note = detail.querySelector('#flow-intl-note')?.value || '';
-
-        // Containers & vessel (free text)
-        const containers = Array.from(detail.querySelectorAll('.flow-cont-row')).map(row => {
-          const container_id = row.querySelector('.flow-cont-id')?.value || '';
-          const size_ft = row.querySelector('.flow-cont-size')?.value || '';
-          const vessel = row.querySelector('.flow-cont-vessel')?.value || '';
-          const pos = row.querySelector('.flow-cont-pos')?.value || '';
-          // Preserve last mile fields if present on existing objects (merged in saveIntlLaneManual)
-          return {
-            container_id: String(container_id || '').trim(),
-            size_ft: String(size_ft || '').trim(),
-            vessel: String(vessel || '').trim(),
-            pos: String(pos || '').trim(),
-          };
-        }).filter(c => c.container_id || c.vessel || c.pos);
-
         const obj = {
-          packing_list_ready_at: pack ? new Date(pack).toISOString() : '',
-          origin_customs_cleared_at: originClr ? new Date(originClr).toISOString() : '',
-          departed_at: departed ? new Date(departed).toISOString() : '',
-          arrived_at: arrived ? new Date(arrived).toISOString() : '',
-          dest_customs_cleared_at: destClr ? new Date(destClr).toISOString() : '',
+          packing_list_ready_at: safeISO(pack),
+          origin_customs_cleared_at: safeISO(originClr),
+          departed_at: safeISO(departed),
+          arrived_at: safeISO(arrived),
+          dest_customs_cleared_at: safeISO(destClr),
           customs_hold: hold,
           note: String(note || ''),
-          containers,
         };
         saveIntlLaneManual(ws, key, obj);
         const msg = detail.querySelector('#flow-intl-save-msg');
@@ -2197,8 +2532,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
 
   function lastMileEditor(ws, tz, r) {
-    const v = (iso) => (iso ? String(iso).slice(0, 16) : '');
-    const delivery = v(r.delivery_at);
+    const delivery = String(r.delivery_local || '').trim();
     const pod = !!r.pod_received;
     const note = String(r.note || '');
 
@@ -2209,7 +2543,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div class="text-sm font-semibold text-gray-700">Delivery</div>
             <div class="text-xs text-gray-500 mt-0.5">
               <b>${escapeHtml(r.supplier)}</b> • ${r.ticket ? `Zendesk <b>${escapeHtml(r.ticket)}</b> • ` : ''}${escapeHtml(r.freight)} •
-              <b>${escapeHtml(r.container_id)}</b>${r.vessel ? ` • ${escapeHtml(r.vessel)}` : ''}
+              <b>${escapeHtml(r.container_id_display || r.container_id)}</b>${r.vessel ? ` • ${escapeHtml(r.vessel)}` : ''}
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -2234,55 +2568,68 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           <textarea id="flow-lm-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
         </label>
 
-        <div class="flex items-center justify-between mt-3">
-          <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
-          <button id="flow-lm-save" data-cont="${escapeAttr(r.key)}" data-lane="${escapeAttr(r.laneKey)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
-        </div>
+	        <div class="flex items-center justify-between mt-3">
+	          <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
+	          <button id="flow-lm-save"
+	            data-ws="${escapeAttr(ws)}"
+	            data-cont="${escapeAttr(r.key)}"
+	            data-uid="${escapeAttr(r.uid)}"
+			    data-idx="${escapeAttr(String(r.src_idx))}"
+			    data-cid="${escapeAttr(r.container_id || '')}"
+	            data-vessel="${escapeAttr(r.vessel || '')}"
+	            class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+	        </div>
       </div>
     `;
   }
 
-  function wireLastMileDetail(ws) {
+  function wireLastMileDetail(ws, selectedKey) {
     const detail = document.getElementById('flow-detail');
     if (!detail) return;
 
-    // Row-level "Delivered now" button.
-    detail.querySelectorAll('.flow-lm-deliver-now').forEach(btn => {
+    // container row clicks
+    detail.querySelectorAll('[data-cont]').forEach(btn => {
       if (btn.dataset.bound) return;
       btn.dataset.bound = '1';
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-
-        const contKey = btn.getAttribute('data-cont') || '';
-        const laneKey = btn.getAttribute('data-lane') || '';
-        if (!contKey || !laneKey) return;
-
-        const nowIso = new Date().toISOString();
-
-        const prev = loadIntlLaneManual(ws, laneKey) || {};
-        const containers = Array.isArray(prev.containers) ? prev.containers.slice() : [];
-        const idPart = String(contKey).split('::')[1] || '';
-
-        // Prefer container_id match; fall back to numeric index when key used row index.
-        let idx = containers.findIndex(c => String(c.container_id || c.container || '').trim() === idPart);
-        if (idx < 0 && /^\d+$/.test(idPart)) {
-          const n = Number(idPart);
-          if (!Number.isNaN(n) && n >= 0 && n < containers.length) idx = n;
-        }
-
-        if (idx >= 0) {
-          containers[idx] = {
-            ...(containers[idx] || {}),
-            delivery_at: nowIso,
-            pod_received: true,
-          };
-          saveIntlLaneManual(ws, laneKey, { ...prev, containers });
-        }
-
-        // Refresh to show the timestamp + status.
-        setTimeout(() => refresh(), 10);
+      btn.addEventListener('click', () => {
+        const k = btn.getAttribute('data-cont');
+        UI.selection = { node: 'lastmile', sub: k };
+        refresh();
       });
     });
+
+    const saveBtn = detail.querySelector('#flow-lm-save');
+    if (saveBtn && !saveBtn.dataset.bound) {
+      saveBtn.dataset.bound = '1';
+      saveBtn.addEventListener('click', () => {
+        const wsNow = String(saveBtn.getAttribute('data-ws') || ws || '').trim() || ws;
+        const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
+        const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
+
+        const msg = detail.querySelector('#flow-lm-save-msg');
+        const delivery = String(detail.querySelector('#flow-lm-delivery')?.value || '').trim();
+        const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
+        const note = String(detail.querySelector('#flow-lm-note')?.value || '');
+
+        if (!uid) {
+          if (msg) { msg.textContent = 'Save failed: missing container id'; msg.className = 'text-xs text-red-600'; }
+          return;
+        }
+
+        const receipts = loadLastMileReceipts(wsNow);
+        receipts[uid] = {
+          ...(receipts[uid] || {}),
+          delivery_local: delivery,
+          pod_received: pod,
+          last_mile_note: note,
+          _updatedAt: new Date().toISOString(),
+        };
+        saveLastMileReceipts(wsNow, receipts);
+
+        if (msg) { msg.textContent = 'Saved ✓'; msg.className = 'text-xs text-emerald-700'; }
+        setTimeout(() => refresh(), 10);
+      });
+    }
   }
 
 function manualFormIntl(ws, tz, manual) {
@@ -2740,23 +3087,34 @@ async function refresh() {
 
     try {
       setSubheader(ws);
-    setDayProgress(ws, tz);
+      setDayProgress(ws, tz);
 
-    const resetBtn = document.getElementById('flow-reset');
-    if (resetBtn && !resetBtn.dataset.bound) {
-      resetBtn.dataset.bound = '1';
-      resetBtn.onclick = () => {
-        // Flow-only reset (do not broadcast global events that can break other pages)
-        UI.selection = { node: 'receiving', sub: null };
-        try {
-          // clear lightweight per-week manual inputs
-          localStorage.removeItem(`flow:intl:${UI.currentWs}`);
-          localStorage.removeItem(`flow:lastmile:${UI.currentWs}`);
-        } catch {}
-        // Re-render just this page
-        refresh();
-      };
-    }
+      const resetBtn = document.getElementById('flow-reset');
+      if (resetBtn && !resetBtn.dataset.bound) {
+        resetBtn.dataset.bound = '1';
+        resetBtn.onclick = () => {
+          // Flow-only reset (do not broadcast global events that can break other pages)
+          UI.selection = { node: 'receiving', sub: null };
+          try {
+            // clear lightweight per-week manual inputs
+            const ws0 = UI.currentWs || ws;
+            // legacy per-lane keys: flow:intl:<ws>:<laneKey>
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const k = localStorage.key(i);
+              if (!k) continue;
+              if (k.startsWith(`flow:intl:${ws0}:`)) localStorage.removeItem(k);
+            }
+            // week-level stores
+            localStorage.removeItem(`flow:intl_weekcontainers:${ws0}`);
+            localStorage.removeItem(`flow:lastmile_receipts:${ws0}`);
+            localStorage.removeItem(`vo_flow_v1:${(window.state?.facility || '').trim() || 'default'}:${ws0}`);
+          } catch (e) { console.warn('[flow] reset failed', e); }
+
+          // Re-render just this page
+          refresh();
+        };
+      }
+    } catch (e) { console.warn('[flow] setWeek render failed', e); }
 
     // PDF report download (Flow-local). Opens print dialog for Save-as-PDF.
     const pdfBtn = document.getElementById('flow-download-pdf');
@@ -2920,3 +3278,6 @@ async function refresh() {
     document.head.appendChild(style);
   }catch(e){}
 })();
+
+// PATCH: swallow setFooterHealth errors (null DOM) so setWeek() continues.
+;(function(){var _sfh=window.setFooterHealth;if(typeof _sfh!=='function')return;window.setFooterHealth=function(){try{return _sfh.apply(this,arguments);}catch(e){console.warn('setFooterHealth suppressed',e);}};})();
