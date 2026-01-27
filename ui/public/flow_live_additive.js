@@ -2159,7 +2159,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           container_id_display: cid || '—',
           size_ft: String(c.size_ft || '').trim(),
           vessel,
-          delivery_local: String((rcp && rcp.delivery_local) || '').trim(),
+          scheduled_local: String((rcp && (rcp.scheduled_local || rcp.delivery_local)) || '').trim(),
+          delivered_local: String((rcp && (rcp.delivered_local)) || '').trim(),
           pod_received: !!((rcp && rcp.pod_received) || false),
           note: String((rcp && rcp.last_mile_note) || ''),
           laneCount: lane_keys.length,
@@ -2167,37 +2168,58 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       }
 
 // Status
-      const level = contRows.some(r => !r.delivery_local) ? 'yellow' : 'green';
+      const level = contRows.some(r => !r.delivered_local) ? 'yellow' : 'green';
 
       const insights = [
         'Track delivery per container / AWB (derived from Intl lanes).',
-        contRows.length ? `${contRows.filter(r => r.delivery_local).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
+        contRows.length ? `${contRows.filter(r => r.delivered_local).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
       ];
 
+      
+      const deliveredCount = contRows.filter(r => r.delivered_local).length;
+      const scheduledCount = contRows.filter(r => !r.delivered_local && r.scheduled_local).length;
+      const openCount = contRows.filter(r => !r.delivered_local && !r.scheduled_local).length;
+      const pctDelivered = contRows.length ? Math.round((deliveredCount / contRows.length) * 100) : 0;
+
       const kpis = `
-        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div class="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Containers</div>
             <div class="text-sm font-semibold">${contRows.length}</div>
           </div>
           <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">Delivered dates set</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_local).length}</div>
-          </div>
-          <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">POD received</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => r.pod_received).length}</div>
-          </div>
-          <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Open</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_local).length}</div>
+            <div class="text-sm font-semibold">${openCount}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Scheduled</div>
+            <div class="text-sm font-semibold">${scheduledCount}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Delivered</div>
+            <div class="text-sm font-semibold">${deliveredCount}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">% Delivered</div>
+            <div class="text-sm font-semibold">${pctDelivered}%</div>
           </div>
         </div>
       `;
 
       const rows = contRows.map(r => {
-        const st = r.delivery_local ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
-                                 : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
+        const isDelivered = !!r.delivered_local;
+        const isScheduled = !isDelivered && !!r.scheduled_local;
+
+        const st = isDelivered
+          ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Delivered</span>`
+          : isScheduled
+            ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Scheduled</span>`
+            : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('gray')} whitespace-nowrap">Open</span>`;
+
+        const action = isDelivered
+          ? '<span class="text-gray-400">—</span>'
+          : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">${isScheduled ? 'Deliver' : 'Schedule'}</button>`;
+
         return [
           `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
           r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
@@ -2205,11 +2227,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           escapeHtml(r.container_id_display || ''),
           escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
           escapeHtml(r.vessel || '—'),
-          r.delivery_local ? escapeHtml(String(r.delivery_local).replace('T',' ')) : '<span class="text-gray-400">—</span>',
+          isDelivered ? escapeHtml(String(r.delivered_local).replace('T',' ')) : '<span class="text-gray-400">—</span>',
           st,
-          r.delivery_local
-            ? '<span class="text-gray-400">—</span>'
-            : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`,
+          action,
         ];
       });
 
@@ -2592,9 +2612,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
   
   function lastMileEditor(ws, tz, r) {
-    const deliveredAt = r.delivery_local ? String(r.delivery_local).replace('T',' ') : '';
+    const scheduledAt = r.scheduled_local ? String(r.scheduled_local).replace('T',' ') : '';
+    const deliveredAt = r.delivered_local ? String(r.delivered_local).replace('T',' ') : '';
     const note = String(r.note || '');
-    const canReceive = !r.delivery_local;
+
+    const isDelivered = !!r.delivered_local;
+    const isScheduled = !isDelivered && !!r.scheduled_local;
+
+    const statusText = isDelivered ? 'Delivered' : (isScheduled ? 'Scheduled' : 'Open');
+    const statusCls = isDelivered ? 'text-emerald-700' : (isScheduled ? 'text-amber-700' : 'text-gray-600');
+
+    const actionLabel = isDelivered ? 'Delivered' : (isScheduled ? 'Deliver (now)' : 'Schedule (now)');
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -2603,17 +2631,25 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div class="text-sm font-semibold text-gray-700">Selected container</div>
             <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(r.container_id || '—')} • ${escapeHtml(r.vessel || '—')}</div>
           </div>
-          <div class="text-xs ${canReceive ? 'text-amber-700' : 'text-emerald-700'}">${canReceive ? 'Open' : 'Complete'}</div>
+          <div class="text-xs ${statusCls}">${statusText}</div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Scheduled at</div>
+            <div class="font-medium">${scheduledAt ? escapeHtml(scheduledAt) : '<span class="text-gray-400">—</span>'}</div>
+          </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Delivered at</div>
             <div class="font-medium">${deliveredAt ? escapeHtml(deliveredAt) : '<span class="text-gray-400">—</span>'}</div>
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">POD</div>
-            <div class="font-medium">${r.pod_received ? 'Yes' : (canReceive ? '<span class="text-gray-400">—</span>' : 'No')}</div>
+            <div class="font-medium">${r.pod_received ? 'Yes' : (isDelivered ? 'No' : '<span class="text-gray-400">—</span>')}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Next action</div>
+            <div class="font-medium">${isDelivered ? '<span class="text-gray-400">—</span>' : escapeHtml(isScheduled ? 'Click to mark Delivered' : 'Click to mark Scheduled')}</div>
           </div>
         </div>
 
@@ -2625,13 +2661,13 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="flex items-center justify-between mt-3">
           <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
           <div class="flex items-center gap-2">
-            ${canReceive ? `
+            ${isDelivered ? `
+              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Delivered</button>
+            ` : `
               <button data-lm-deliver="1"
                 data-ws="${escapeAttr(ws)}"
                 data-uid="${escapeAttr(r.uid)}"
-                class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">Receive (now)</button>
-            ` : `
-              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Received</button>
+                class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">${actionLabel}</button>
             `}
             <button data-lm-note-save="1"
               data-ws="${escapeAttr(ws)}"
@@ -2642,8 +2678,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       </div>
     `;
   }
-
-  function wireLastMileDetail(ws, selectedKey) {
+function wireLastMileDetail(ws, selectedKey) {
     const detail = document.getElementById('flow-detail');
     if (!detail) return;
 
@@ -2688,14 +2723,45 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const now = nowLocalDT();
         const note = String(detail.querySelector('#flow-lm-note')?.value || '');
 
-        receipts[uid] = {
-          ...(receipts[uid] || {}),
-          delivery_local: now,
-          pod_received: true,
-          last_mile_note: note,
-          _updatedAt: new Date().toISOString(),
-        };
-        saveLastMileReceipts(wsNow, receipts);
+        const prior = receipts[uid] || {};
+
+        // Back-compat: if older builds stored delivery_local, treat it as delivered_local.
+        const deliveredExisting = String(prior.delivered_local || prior.delivered_local || '').trim();
+        const scheduledExisting = String(prior.scheduled_local || '').trim();
+
+        if (deliveredExisting) {
+          // Already delivered; no-op.
+          receipts[uid] = {
+            ...prior,
+            delivered_local: deliveredExisting,
+            // Keep legacy field if it exists; don't depend on it going forward.
+            _updatedAt: new Date().toISOString(),
+          };
+          saveLastMileReceipts(wsNow, receipts);
+          if (msg) { msg.textContent = 'Already delivered'; msg.className = 'text-xs text-gray-500'; }
+        } else if (scheduledExisting) {
+          // Second click: Scheduled -> Delivered
+          receipts[uid] = {
+            ...prior,
+            scheduled_local: scheduledExisting,
+            delivered_local: now,
+            pod_received: true,
+            last_mile_note: note,
+            _updatedAt: new Date().toISOString(),
+          };
+          saveLastMileReceipts(wsNow, receipts);
+          if (msg) { msg.textContent = 'Delivered ✓'; msg.className = 'text-xs text-emerald-700'; }
+        } else {
+          // First click: Open -> Scheduled
+          receipts[uid] = {
+            ...prior,
+            scheduled_local: now,
+            last_mile_note: note,
+            _updatedAt: new Date().toISOString(),
+          };
+          saveLastMileReceipts(wsNow, receipts);
+          if (msg) { msg.textContent = 'Scheduled ✓'; msg.className = 'text-xs text-amber-700'; }
+        }
 
         if (msg) { msg.textContent = 'Received ✓'; msg.className = 'text-xs text-emerald-700'; }
 
