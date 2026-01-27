@@ -2209,7 +2209,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           st,
           r.delivery_local
             ? '<span class="text-gray-400">—</span>'
-            : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`,
+            : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`,
         ];
       });
 
@@ -2628,7 +2628,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             ${canReceive ? `
               <button data-lm-deliver="1"
                 data-ws="${escapeAttr(ws)}"
-                data-cont="${escapeAttr(r.key)}"
                 data-uid="${escapeAttr(r.uid)}"
                 class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">Receive (now)</button>
             ` : `
@@ -2636,7 +2635,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             `}
             <button data-lm-note-save="1"
               data-ws="${escapeAttr(ws)}"
-              data-cont="${escapeAttr(r.key)}"
               data-uid="${escapeAttr(r.uid)}"
               class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save note</button>
           </div>
@@ -2650,10 +2648,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     if (!detail) return;
 
     // container row clicks (selection)
+// NOTE: do NOT bind selection behavior to action buttons inside the row (Receive / Save note).
     detail.querySelectorAll('[data-cont]').forEach(btn => {
       if (btn.dataset.bound) return;
+      // Skip action buttons that may also carry data-cont in older builds.
+      if (btn.hasAttribute('data-lm-deliver') || btn.hasAttribute('data-lm-note-save')) return;
+
       btn.dataset.bound = '1';
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        // If the click originated from an action button nested inside, ignore it.
+        if (e && e.target && e.target.closest && e.target.closest('[data-lm-deliver], [data-lm-note-save]')) return;
+
         const k = btn.getAttribute('data-cont');
         UI.selection = { node: 'lastmile', sub: k };
         refresh();
@@ -2665,6 +2670,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       btn.dataset.bound = '1';
       btn.addEventListener('click', (e) => {
         e.preventDefault();
+        e.stopImmediatePropagation();
         e.stopPropagation();
 
         const wsNow = String(btn.getAttribute('data-ws') || ws || '').trim() || ws;
@@ -2704,6 +2710,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       btn.dataset.bound = '1';
       btn.addEventListener('click', (e) => {
         e.preventDefault();
+        e.stopImmediatePropagation();
         e.stopPropagation();
 
         const wsNow = String(btn.getAttribute('data-ws') || ws || '').trim() || ws;
