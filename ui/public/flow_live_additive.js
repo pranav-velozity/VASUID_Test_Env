@@ -1242,7 +1242,7 @@ function computeManualNodeStatuses(ws, tz) {
         <!-- Top row: Journey map (2/3) + Insights (1/3) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <!-- Journey map tile -->
-          <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-3">
+          <div id="flow-top-tile" class="rounded-2xl border bg-white shadow-sm p-3 flow-tile--nodes lg:col-span-2">
             <div class="flex items-center justify-between mb-2">
               <div class="text-sm font-semibold text-gray-700">End-to-end nodes</div>
               <div id="flow-day" class="text-xs text-gray-500"></div>
@@ -1250,7 +1250,7 @@ function computeManualNodeStatuses(ws, tz) {
             <div id="flow-journey" class="w-full"></div>
           </div>
           <!-- Insights tile moved to right 1/3 -->
-          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[220px] lg:col-span-3">
+          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[220px] lg:col-span-1">
             <div id="flow-footer"></div>
           </div>
         </div>
@@ -1593,7 +1593,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       // VAS: shift ~30% right on the middle line
       vas:       { x: Math.round(road.D.x + 0.65 * (road.C.x - road.D.x)), y: road.C.y },
       // Transit & Clearing: shift ~25% left on the bottom line
-      intl:      { x: Math.round((road.D.x + rad) + 0.375 * (road.F.x - (road.D.x + rad))), y: road.E.y },
+      intl:      { x: Math.round((road.D.x + rad) + 0.20 * (road.F.x - (road.D.x + rad))), y: road.E.y },
       lastmile:  { x: road.F.x, y: road.F.y }, // end
     };
 
@@ -1700,7 +1700,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const pillTextX = p.x;
 
       const pa = plannedActual(id);
-      const paText = pa ? `<text x="${labelX + 90}" y="${nameY}" text-anchor="start" font-size="10" font-weight="600" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
+      const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="10" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
@@ -1708,7 +1708,6 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
           <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
-          ${paText}
           ${paText}
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
@@ -1757,7 +1756,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     root.innerHTML = `
       <div class="w-full overflow-hidden">
-        <svg viewBox="0 0 1100 460" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:440px; width:100%;">
+        <svg viewBox="-90 0 1250 460" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:440px; width:100%;">
 
           <!-- road shadow (subtle) -->
           <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
