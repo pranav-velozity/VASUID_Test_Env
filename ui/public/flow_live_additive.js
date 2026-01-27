@@ -1025,12 +1025,6 @@ function computeCartonStatsFromRecords(records) {
 
       const customsHold = !!manual.customs_hold;
 
-      // Track latest known milestone across lanes (best-effort for "actual" display).
-      for (const d of [packingListReadyAt, originClearedAt, departedAt, arrivedAt, destClearedAt, originReadyAt]) {
-        if (d && !isNaN(d) && (!lastMilestoneAt || d > lastMilestoneAt)) lastMilestoneAt = d;
-      }
-
-
       // "Origin Ready" is effectively when docs are ready AND origin is cleared.
       // For baseline comparisons we treat it as the latest of the two, when present.
       const originReadyAt = (packingListReadyAt || originClearedAt)
@@ -1039,6 +1033,11 @@ function computeCartonStatsFromRecords(records) {
             originClearedAt && !isNaN(originClearedAt) ? originClearedAt.getTime() : 0
           ))
         : null;
+
+      // Track latest known milestone across lanes (best-effort for "actual" display).
+      for (const d of [packingListReadyAt, originClearedAt, departedAt, arrivedAt, destClearedAt, originReadyAt]) {
+        if (d && !isNaN(d) && (!lastMilestoneAt || d > lastMilestoneAt)) lastMilestoneAt = d;
+      }
 
       let level = 'green';
 
