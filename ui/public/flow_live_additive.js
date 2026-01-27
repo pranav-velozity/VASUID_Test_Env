@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v49)
+/* flow_live_additive.js (v50)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -678,6 +678,18 @@ function computeCartonStatsFromRecords(records) {
     const s = String(iso || '').trim();
     if (!s) return '';
     const d = new Date(s);
+    if (!d || Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth() + 1);
+    const da = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mi = pad2(d.getMinutes());
+    return `${y}-${m}-${da}T${hh}:${mi}`;
+  }
+
+  // Current time formatted for <input type="datetime-local"> (browser local timezone).
+  function nowLocalDT() {
+    const d = new Date();
     if (!d || Number.isNaN(d.getTime())) return '';
     const y = d.getFullYear();
     const m = pad2(d.getMonth() + 1);
@@ -2559,14 +2571,21 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
 	        <div class="flex items-center justify-between mt-3">
 	          <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
-	          <button id="flow-lm-save"
-	            data-ws="${escapeAttr(ws)}"
-	            data-cont="${escapeAttr(r.key)}"
-	            data-uid="${escapeAttr(r.uid)}"
-			    data-idx="${escapeAttr(String(r.src_idx))}"
-			    data-cid="${escapeAttr(r.container_id || '')}"
-	            data-vessel="${escapeAttr(r.vessel || '')}"
-	            class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+	          <div class="flex items-center gap-2">
+	            <button id="flow-lm-delivered"
+	              data-ws="${escapeAttr(ws)}"
+	              data-cont="${escapeAttr(r.key)}"
+	              data-uid="${escapeAttr(r.uid)}"
+	              class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">Delivered (now)</button>
+	            <button id="flow-lm-save"
+	              data-ws="${escapeAttr(ws)}"
+	              data-cont="${escapeAttr(r.key)}"
+	              data-uid="${escapeAttr(r.uid)}"
+			      data-idx="${escapeAttr(String(r.src_idx))}"
+			      data-cid="${escapeAttr(r.container_id || '')}"
+	              data-vessel="${escapeAttr(r.vessel || '')}"
+	              class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save</button>
+	          </div>
 	        </div>
       </div>
     `;
@@ -2588,16 +2607,29 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     });
 
     const saveBtn = detail.querySelector('#flow-lm-save');
-    if (saveBtn && !saveBtn.dataset.bound) {
-      saveBtn.dataset.bound = '1';
-      saveBtn.addEventListener('click', () => {
-        const wsNow = String(saveBtn.getAttribute('data-ws') || ws || '').trim() || ws;
-        const contKey = saveBtn.getAttribute('data-cont') || selectedKey;
-        const uid = String(saveBtn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
+    const deliveredBtn = detail.querySelector('#flow-lm-delivered');
+
+    const bind = (btn, mode) => {
+      if (!btn || btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', () => {
+        const wsNow = String(btn.getAttribute('data-ws') || ws || '').trim() || ws;
+        const contKey = btn.getAttribute('data-cont') || selectedKey;
+        const uid = String(btn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
 
         const msg = detail.querySelector('#flow-lm-save-msg');
-        const delivery = String(detail.querySelector('#flow-lm-delivery')?.value || '').trim();
-        const pod = !!detail.querySelector('#flow-lm-pod')?.checked;
+        const deliveryEl = detail.querySelector('#flow-lm-delivery');
+        const podEl = detail.querySelector('#flow-lm-pod');
+
+        // Option A: one-click delivered. We stamp now and mark POD.
+        if (mode === 'delivered') {
+          const now = nowLocalDT();
+          if (deliveryEl) deliveryEl.value = now;
+          if (podEl) podEl.checked = true;
+        }
+
+        const delivery = String(deliveryEl?.value || '').trim();
+        const pod = !!podEl?.checked;
         const note = String(detail.querySelector('#flow-lm-note')?.value || '');
 
         if (!uid) {
@@ -2630,8 +2662,11 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         Promise.resolve(setWeek(wsNow)).catch(() => {}).finally(() => {
           try { renderDetail(wsNow, false); } catch {}
         });
-});
-    }
+      });
+    };
+
+    bind(saveBtn, 'save');
+    bind(deliveredBtn, 'delivered');
   }
 
 function manualFormIntl(ws, tz, manual) {
