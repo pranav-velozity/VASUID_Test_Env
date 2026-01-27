@@ -1,12 +1,4 @@
-// LOAD GUARD: prevent double-injection from re-running this additive module
-;(function(){
-  try {
-    if (window.__vo_flow_live_additive_loaded) { return; }
-    window.__vo_flow_live_additive_loaded = true;
-  } catch (e) { /* ignore */ }
-})();
-
-/* flow_live_additive.js (v47)
+/* flow_live_additive.js (v41)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -1975,9 +1967,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
-
-
-
       const totalPlanned = lanes.reduce((a, r) => a + (r.plannedUnits || 0), 0);
       const totalApplied = lanes.reduce((a, r) => a + (r.appliedUnits || 0), 0);
       const totalOut = lanes.reduce((a, r) => a + (r.cartonsOut || 0), 0);
@@ -2626,9 +2615,22 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         };
         saveLastMileReceipts(wsNow, receipts);
 
-        if (msg) { msg.textContent = 'Saved ✓'; msg.className = 'text-xs text-emerald-700'; }
-        setTimeout(() => refresh(), 10);
-      });
+        // Verify write and re-render deterministically for the same week.
+        const verify = loadLastMileReceipts(wsNow);
+        const v = (verify && typeof verify === 'object') ? (verify[uid] || null) : null;
+        const ok = !!(v && String(v.delivery_local || '') === delivery && (!!v.pod_received) === pod);
+
+        if (msg) {
+          msg.textContent = ok ? 'Saved ✓' : 'Saved (not applied)';
+          msg.className = ok ? 'text-xs text-emerald-700' : 'text-xs text-amber-700';
+        }
+
+        // Keep selection on the same container and force a week re-render.
+        UI.selection = { node: 'lastmile', sub: contKey };
+        Promise.resolve(setWeek(wsNow)).catch(() => {}).finally(() => {
+          try { renderDetail(wsNow, false); } catch {}
+        });
+});
     }
   }
 
@@ -3087,34 +3089,23 @@ async function refresh() {
 
     try {
       setSubheader(ws);
-      setDayProgress(ws, tz);
+    setDayProgress(ws, tz);
 
-      const resetBtn = document.getElementById('flow-reset');
-      if (resetBtn && !resetBtn.dataset.bound) {
-        resetBtn.dataset.bound = '1';
-        resetBtn.onclick = () => {
-          // Flow-only reset (do not broadcast global events that can break other pages)
-          UI.selection = { node: 'receiving', sub: null };
-          try {
-            // clear lightweight per-week manual inputs
-            const ws0 = UI.currentWs || ws;
-            // legacy per-lane keys: flow:intl:<ws>:<laneKey>
-            for (let i = localStorage.length - 1; i >= 0; i--) {
-              const k = localStorage.key(i);
-              if (!k) continue;
-              if (k.startsWith(`flow:intl:${ws0}:`)) localStorage.removeItem(k);
-            }
-            // week-level stores
-            localStorage.removeItem(`flow:intl_weekcontainers:${ws0}`);
-            localStorage.removeItem(`flow:lastmile_receipts:${ws0}`);
-            localStorage.removeItem(`vo_flow_v1:${(window.state?.facility || '').trim() || 'default'}:${ws0}`);
-          } catch (e) { console.warn('[flow] reset failed', e); }
-
-          // Re-render just this page
-          refresh();
-        };
-      }
-    } catch (e) { console.warn('[flow] setWeek render failed', e); }
+    const resetBtn = document.getElementById('flow-reset');
+    if (resetBtn && !resetBtn.dataset.bound) {
+      resetBtn.dataset.bound = '1';
+      resetBtn.onclick = () => {
+        // Flow-only reset (do not broadcast global events that can break other pages)
+        UI.selection = { node: 'receiving', sub: null };
+        try {
+          // clear lightweight per-week manual inputs
+          localStorage.removeItem(`flow:intl:${UI.currentWs}`);
+          localStorage.removeItem(`flow:lastmile:${UI.currentWs}`);
+        } catch {}
+        // Re-render just this page
+        refresh();
+      };
+    }
 
     // PDF report download (Flow-local). Opens print dialog for Save-as-PDF.
     const pdfBtn = document.getElementById('flow-download-pdf');
