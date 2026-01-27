@@ -2159,8 +2159,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           container_id_display: cid || '—',
           size_ft: String(c.size_ft || '').trim(),
           vessel,
-          scheduled_local: String((rcp && (rcp.scheduled_local || rcp.delivery_local)) || '').trim(),
-          delivered_local: String((rcp && (rcp.delivered_local)) || '').trim(),
+          delivery_local: String((rcp && rcp.delivery_local) || '').trim(),
           pod_received: !!((rcp && rcp.pod_received) || false),
           note: String((rcp && rcp.last_mile_note) || ''),
           laneCount: lane_keys.length,
@@ -2168,58 +2167,37 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       }
 
 // Status
-      const level = contRows.some(r => !r.delivered_local) ? 'yellow' : 'green';
+      const level = contRows.some(r => !r.delivery_local) ? 'yellow' : 'green';
 
       const insights = [
         'Track delivery per container / AWB (derived from Intl lanes).',
-        contRows.length ? `${contRows.filter(r => r.delivered_local).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
+        contRows.length ? `${contRows.filter(r => r.delivery_local).length}/${contRows.length} containers have a delivery date.` : 'Add containers under Transit & Clearing to start tracking Last Mile.',
       ];
 
-      
-      const deliveredCount = contRows.filter(r => r.delivered_local).length;
-      const scheduledCount = contRows.filter(r => !r.delivered_local && r.scheduled_local).length;
-      const openCount = contRows.filter(r => !r.delivered_local && !r.scheduled_local).length;
-      const pctDelivered = contRows.length ? Math.round((deliveredCount / contRows.length) * 100) : 0;
-
       const kpis = `
-        <div class="mt-3 grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Containers</div>
             <div class="text-sm font-semibold">${contRows.length}</div>
           </div>
           <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Delivered dates set</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => r.delivery_local).length}</div>
+          </div>
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">POD received</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => r.pod_received).length}</div>
+          </div>
+          <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Open</div>
-            <div class="text-sm font-semibold">${openCount}</div>
-          </div>
-          <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">Scheduled</div>
-            <div class="text-sm font-semibold">${scheduledCount}</div>
-          </div>
-          <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">Delivered</div>
-            <div class="text-sm font-semibold">${deliveredCount}</div>
-          </div>
-          <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">% Delivered</div>
-            <div class="text-sm font-semibold">${pctDelivered}%</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_local).length}</div>
           </div>
         </div>
       `;
 
       const rows = contRows.map(r => {
-        const isDelivered = !!r.delivered_local;
-        const isScheduled = !isDelivered && !!r.scheduled_local;
-
-        const st = isDelivered
-          ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Delivered</span>`
-          : isScheduled
-            ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Scheduled</span>`
-            : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('gray')} whitespace-nowrap">Open</span>`;
-
-        const action = isDelivered
-          ? '<span class="text-gray-400">—</span>'
-          : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">${isScheduled ? 'Deliver' : 'Schedule'}</button>`;
-
+        const st = r.delivery_local ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
+                                 : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
         return [
           `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
           r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
@@ -2227,9 +2205,11 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           escapeHtml(r.container_id_display || ''),
           escapeHtml(r.size_ft ? (r.size_ft + 'ft') : '—'),
           escapeHtml(r.vessel || '—'),
-          isDelivered ? escapeHtml(String(r.delivered_local).replace('T',' ')) : '<span class="text-gray-400">—</span>',
+          r.delivery_local ? escapeHtml(String(r.delivery_local).replace('T',' ')) : '<span class="text-gray-400">—</span>',
           st,
-          action,
+          r.delivery_local
+            ? '<span class="text-gray-400">—</span>'
+            : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`,
         ];
       });
 
@@ -2276,6 +2256,28 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const departed = v(manual.departed_at);
     const arrived = v(manual.arrived_at);
     const destClr = v(manual.dest_customs_cleared_at);
+
+    // Baseline (schedule) values to help users quickly populate dates without manual typing.
+    const ws0 = new Date(`${ws}T00:00:00Z`);
+    const fallbackVas = makeBizLocalDate(
+      isoDate(addDays(ws0, BASELINE.vas_complete_due.dayOffset)),
+      BASELINE.vas_complete_due.time,
+      tz
+    );
+    const originMaxDate = (intl && intl.originMax instanceof Date) ? intl.originMax : addDays(fallbackVas, BASELINE.origin_ready_days_max);
+
+    const transitDays = (lane.freight === 'Ocean') ? BASELINE.ocean_transit_days : BASELINE.air_transit_days;
+    const basePack = originMaxDate;
+    const baseOriginClr = originMaxDate;
+    const baseDepart = addDays(originMaxDate, 1);
+    const baseArrive = addDays(baseDepart, transitDays);
+    const baseDestClr = addDays(baseArrive, 2);
+
+    const bPack = toLocalDT(basePack.toISOString());
+    const bOriginClr = toLocalDT(baseOriginClr.toISOString());
+    const bDepart = toLocalDT(baseDepart.toISOString());
+    const bArrive = toLocalDT(baseArrive.toISOString());
+    const bDestClr = toLocalDT(baseDestClr.toISOString());
 
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
@@ -2369,22 +2371,42 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
                 <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
+              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
+                <span>Baseline: <span class="font-mono">${bPack}</span></span>
+                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-pack" data-baseline="${bPack}">Copy</button>
+              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
+              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
+                <span>Baseline: <span class="font-mono">${bOriginClr}</span></span>
+                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-originclr" data-baseline="${bOriginClr}">Copy</button>
+              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
+              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
+                <span>Baseline: <span class="font-mono">${bDepart}</span></span>
+                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-departed" data-baseline="${bDepart}">Copy</button>
+              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
+              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
+                <span>Baseline: <span class="font-mono">${bArrive}</span></span>
+                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-arrived" data-baseline="${bArrive}">Copy</button>
+              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
+              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
+                <span>Baseline: <span class="font-mono">${bDestClr}</span></span>
+                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-destclr" data-baseline="${bDestClr}">Copy</button>
+              </div>
               </label>
             </div>
 
@@ -2402,7 +2424,10 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
             <div class="flex items-center justify-between mt-3">
               <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
-              <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+              <div class="flex items-center gap-2">
+                <button id="flow-intl-copy-all" type="button" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50" data-pack="${bPack}" data-originclr="${bOriginClr}" data-departed="${bDepart}" data-arrived="${bArrive}" data-destclr="${bDestClr}">Copy baselines</button>
+                <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+              </div>
             </div>
           </div>
 
@@ -2612,17 +2637,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
   
   function lastMileEditor(ws, tz, r) {
-    const scheduledAt = r.scheduled_local ? String(r.scheduled_local).replace('T',' ') : '';
-    const deliveredAt = r.delivered_local ? String(r.delivered_local).replace('T',' ') : '';
+    const deliveredAt = r.delivery_local ? String(r.delivery_local).replace('T',' ') : '';
     const note = String(r.note || '');
-
-    const isDelivered = !!r.delivered_local;
-    const isScheduled = !isDelivered && !!r.scheduled_local;
-
-    const statusText = isDelivered ? 'Delivered' : (isScheduled ? 'Scheduled' : 'Open');
-    const statusCls = isDelivered ? 'text-emerald-700' : (isScheduled ? 'text-amber-700' : 'text-gray-600');
-
-    const actionLabel = isDelivered ? 'Delivered' : (isScheduled ? 'Deliver (now)' : 'Schedule (now)');
+    const canReceive = !r.delivery_local;
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -2631,25 +2648,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div class="text-sm font-semibold text-gray-700">Selected container</div>
             <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(r.container_id || '—')} • ${escapeHtml(r.vessel || '—')}</div>
           </div>
-          <div class="text-xs ${statusCls}">${statusText}</div>
+          <div class="text-xs ${canReceive ? 'text-amber-700' : 'text-emerald-700'}">${canReceive ? 'Open' : 'Complete'}</div>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
-          <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">Scheduled at</div>
-            <div class="font-medium">${scheduledAt ? escapeHtml(scheduledAt) : '<span class="text-gray-400">—</span>'}</div>
-          </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Delivered at</div>
             <div class="font-medium">${deliveredAt ? escapeHtml(deliveredAt) : '<span class="text-gray-400">—</span>'}</div>
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">POD</div>
-            <div class="font-medium">${r.pod_received ? 'Yes' : (isDelivered ? 'No' : '<span class="text-gray-400">—</span>')}</div>
-          </div>
-          <div class="rounded-lg border p-2">
-            <div class="text-[11px] text-gray-500">Next action</div>
-            <div class="font-medium">${isDelivered ? '<span class="text-gray-400">—</span>' : escapeHtml(isScheduled ? 'Click to mark Delivered' : 'Click to mark Scheduled')}</div>
+            <div class="font-medium">${r.pod_received ? 'Yes' : (canReceive ? '<span class="text-gray-400">—</span>' : 'No')}</div>
           </div>
         </div>
 
@@ -2661,16 +2670,18 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="flex items-center justify-between mt-3">
           <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
           <div class="flex items-center gap-2">
-            ${isDelivered ? `
-              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Delivered</button>
-            ` : `
+            ${canReceive ? `
               <button data-lm-deliver="1"
                 data-ws="${escapeAttr(ws)}"
+                data-cont="${escapeAttr(r.key)}"
                 data-uid="${escapeAttr(r.uid)}"
-                class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">${actionLabel}</button>
+                class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">Receive (now)</button>
+            ` : `
+              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Received</button>
             `}
             <button data-lm-note-save="1"
               data-ws="${escapeAttr(ws)}"
+              data-cont="${escapeAttr(r.key)}"
               data-uid="${escapeAttr(r.uid)}"
               class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save note</button>
           </div>
@@ -2678,34 +2689,70 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       </div>
     `;
   }
-function wireLastMileDetail(ws, selectedKey) {
+
+  function wireLastMileDetail(ws, selectedKey) {
     const detail = document.getElementById('flow-detail');
     if (!detail) return;
 
     // container row clicks (selection)
-// NOTE: do NOT bind selection behavior to action buttons inside the row (Receive / Save note).
     detail.querySelectorAll('[data-cont]').forEach(btn => {
       if (btn.dataset.bound) return;
-      // Skip action buttons that may also carry data-cont in older builds.
-      if (btn.hasAttribute('data-lm-deliver') || btn.hasAttribute('data-lm-note-save')) return;
-
       btn.dataset.bound = '1';
-      btn.addEventListener('click', (e) => {
-        // If the click originated from an action button nested inside, ignore it.
-        if (e && e.target && e.target.closest && e.target.closest('[data-lm-deliver], [data-lm-note-save]')) return;
-
+      btn.addEventListener('click', () => {
         const k = btn.getAttribute('data-cont');
         UI.selection = { node: 'lastmile', sub: k };
         refresh();
       });
     });
+    // Baseline helpers: copy suggested schedule timestamps into inputs (no save until user clicks Save lane).
+    const setVal = (id, val) => {
+      const el = detail.querySelector('#' + id);
+      if (el && typeof val === 'string') el.value = val;
+    };
+
+    detail.querySelectorAll('[data-intl-copy]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const targetId = btn.getAttribute('data-intl-copy');
+        const baseline = btn.getAttribute('data-baseline') || '';
+        if (targetId) setVal(targetId, baseline);
+        const msg = detail.querySelector('#flow-intl-save-msg');
+        if (msg) {
+          msg.textContent = 'Baseline copied (not saved)';
+          setTimeout(() => { if (msg.textContent === 'Baseline copied (not saved)') msg.textContent = ''; }, 1500);
+        }
+      });
+    });
+
+    const copyAll = detail.querySelector('#flow-intl-copy-all');
+    if (copyAll && !copyAll.dataset.bound) {
+      copyAll.dataset.bound = '1';
+      copyAll.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setVal('flow-intl-pack', copyAll.getAttribute('data-pack') || '');
+        setVal('flow-intl-originclr', copyAll.getAttribute('data-originclr') || '');
+        setVal('flow-intl-departed', copyAll.getAttribute('data-departed') || '');
+        setVal('flow-intl-arrived', copyAll.getAttribute('data-arrived') || '');
+        setVal('flow-intl-destclr', copyAll.getAttribute('data-destclr') || '');
+        const msg = detail.querySelector('#flow-intl-save-msg');
+        if (msg) {
+          msg.textContent = 'Baselines copied (not saved)';
+          setTimeout(() => { if (msg.textContent === 'Baselines copied (not saved)') msg.textContent = ''; }, 1500);
+        }
+      });
+    }
+
+
 
     const bindDeliver = (btn) => {
       if (!btn || btn.dataset.bound) return;
       btn.dataset.bound = '1';
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        e.stopImmediatePropagation();
         e.stopPropagation();
 
         const wsNow = String(btn.getAttribute('data-ws') || ws || '').trim() || ws;
@@ -2723,45 +2770,14 @@ function wireLastMileDetail(ws, selectedKey) {
         const now = nowLocalDT();
         const note = String(detail.querySelector('#flow-lm-note')?.value || '');
 
-        const prior = receipts[uid] || {};
-
-        // Back-compat: if older builds stored delivery_local, treat it as delivered_local.
-        const deliveredExisting = String(prior.delivered_local || prior.delivered_local || '').trim();
-        const scheduledExisting = String(prior.scheduled_local || '').trim();
-
-        if (deliveredExisting) {
-          // Already delivered; no-op.
-          receipts[uid] = {
-            ...prior,
-            delivered_local: deliveredExisting,
-            // Keep legacy field if it exists; don't depend on it going forward.
-            _updatedAt: new Date().toISOString(),
-          };
-          saveLastMileReceipts(wsNow, receipts);
-          if (msg) { msg.textContent = 'Already delivered'; msg.className = 'text-xs text-gray-500'; }
-        } else if (scheduledExisting) {
-          // Second click: Scheduled -> Delivered
-          receipts[uid] = {
-            ...prior,
-            scheduled_local: scheduledExisting,
-            delivered_local: now,
-            pod_received: true,
-            last_mile_note: note,
-            _updatedAt: new Date().toISOString(),
-          };
-          saveLastMileReceipts(wsNow, receipts);
-          if (msg) { msg.textContent = 'Delivered ✓'; msg.className = 'text-xs text-emerald-700'; }
-        } else {
-          // First click: Open -> Scheduled
-          receipts[uid] = {
-            ...prior,
-            scheduled_local: now,
-            last_mile_note: note,
-            _updatedAt: new Date().toISOString(),
-          };
-          saveLastMileReceipts(wsNow, receipts);
-          if (msg) { msg.textContent = 'Scheduled ✓'; msg.className = 'text-xs text-amber-700'; }
-        }
+        receipts[uid] = {
+          ...(receipts[uid] || {}),
+          delivery_local: now,
+          pod_received: true,
+          last_mile_note: note,
+          _updatedAt: new Date().toISOString(),
+        };
+        saveLastMileReceipts(wsNow, receipts);
 
         if (msg) { msg.textContent = 'Received ✓'; msg.className = 'text-xs text-emerald-700'; }
 
@@ -2776,7 +2792,6 @@ function wireLastMileDetail(ws, selectedKey) {
       btn.dataset.bound = '1';
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        e.stopImmediatePropagation();
         e.stopPropagation();
 
         const wsNow = String(btn.getAttribute('data-ws') || ws || '').trim() || ws;
