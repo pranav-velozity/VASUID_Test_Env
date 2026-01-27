@@ -125,6 +125,8 @@
 
   // Format in business TZ with Intl (avoid heavy libs)
   function fmtInTZ(date, tz) {
+    // Guard against invalid dates (avoids RangeError: Invalid time value).
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
     try {
       return new Intl.DateTimeFormat('en-US', {
         timeZone: tz,
@@ -135,7 +137,7 @@
         hour12: true,
       }).format(date);
     } catch {
-      return date.toISOString();
+      try { return date.toISOString(); } catch { return ''; }
     }
   }
 
@@ -2257,28 +2259,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const arrived = v(manual.arrived_at);
     const destClr = v(manual.dest_customs_cleared_at);
 
-    // Baseline (schedule) values to help users quickly populate dates without manual typing.
-    const ws0 = new Date(`${ws}T00:00:00Z`);
-    const fallbackVas = makeBizLocalDate(
-      isoDate(addDays(ws0, BASELINE.vas_complete_due.dayOffset)),
-      BASELINE.vas_complete_due.time,
-      tz
-    );
-    const originMaxDate = (intl && intl.originMax instanceof Date) ? intl.originMax : addDays(fallbackVas, BASELINE.origin_ready_days_max);
-
-    const transitDays = (lane.freight === 'Ocean') ? BASELINE.ocean_transit_days : BASELINE.air_transit_days;
-    const basePack = originMaxDate;
-    const baseOriginClr = originMaxDate;
-    const baseDepart = addDays(originMaxDate, 1);
-    const baseArrive = addDays(baseDepart, transitDays);
-    const baseDestClr = addDays(baseArrive, 2);
-
-    const bPack = toLocalDT(basePack.toISOString());
-    const bOriginClr = toLocalDT(baseOriginClr.toISOString());
-    const bDepart = toLocalDT(baseDepart.toISOString());
-    const bArrive = toLocalDT(baseArrive.toISOString());
-    const bDestClr = toLocalDT(baseDestClr.toISOString());
-
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
 
@@ -2371,42 +2351,22 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
                 <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
-              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
-                <span>Baseline: <span class="font-mono">${bPack}</span></span>
-                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-pack" data-baseline="${bPack}">Copy</button>
-              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
-              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
-                <span>Baseline: <span class="font-mono">${bOriginClr}</span></span>
-                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-originclr" data-baseline="${bOriginClr}">Copy</button>
-              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
-              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
-                <span>Baseline: <span class="font-mono">${bDepart}</span></span>
-                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-departed" data-baseline="${bDepart}">Copy</button>
-              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
-              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
-                <span>Baseline: <span class="font-mono">${bArrive}</span></span>
-                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-arrived" data-baseline="${bArrive}">Copy</button>
-              </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
-              <div class="flex items-center justify-between text-[11px] text-gray-500 mt-1">
-                <span>Baseline: <span class="font-mono">${bDestClr}</span></span>
-                <button type="button" class="underline hover:no-underline" data-intl-copy="flow-intl-destclr" data-baseline="${bDestClr}">Copy</button>
-              </div>
               </label>
             </div>
 
@@ -2424,10 +2384,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
             <div class="flex items-center justify-between mt-3">
               <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
-              <div class="flex items-center gap-2">
-                <button id="flow-intl-copy-all" type="button" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50" data-pack="${bPack}" data-originclr="${bOriginClr}" data-departed="${bDepart}" data-arrived="${bArrive}" data-destclr="${bDestClr}">Copy baselines</button>
-                <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
-              </div>
+              <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
             </div>
           </div>
 
@@ -2704,49 +2661,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         refresh();
       });
     });
-    // Baseline helpers: copy suggested schedule timestamps into inputs (no save until user clicks Save lane).
-    const setVal = (id, val) => {
-      const el = detail.querySelector('#' + id);
-      if (el && typeof val === 'string') el.value = val;
-    };
-
-    detail.querySelectorAll('[data-intl-copy]').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const targetId = btn.getAttribute('data-intl-copy');
-        const baseline = btn.getAttribute('data-baseline') || '';
-        if (targetId) setVal(targetId, baseline);
-        const msg = detail.querySelector('#flow-intl-save-msg');
-        if (msg) {
-          msg.textContent = 'Baseline copied (not saved)';
-          setTimeout(() => { if (msg.textContent === 'Baseline copied (not saved)') msg.textContent = ''; }, 1500);
-        }
-      });
-    });
-
-    const copyAll = detail.querySelector('#flow-intl-copy-all');
-    if (copyAll && !copyAll.dataset.bound) {
-      copyAll.dataset.bound = '1';
-      copyAll.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setVal('flow-intl-pack', copyAll.getAttribute('data-pack') || '');
-        setVal('flow-intl-originclr', copyAll.getAttribute('data-originclr') || '');
-        setVal('flow-intl-departed', copyAll.getAttribute('data-departed') || '');
-        setVal('flow-intl-arrived', copyAll.getAttribute('data-arrived') || '');
-        setVal('flow-intl-destclr', copyAll.getAttribute('data-destclr') || '');
-        const msg = detail.querySelector('#flow-intl-save-msg');
-        if (msg) {
-          msg.textContent = 'Baselines copied (not saved)';
-          setTimeout(() => { if (msg.textContent === 'Baselines copied (not saved)') msg.textContent = ''; }, 1500);
-        }
-      });
-    }
-
-
 
     const bindDeliver = (btn) => {
       if (!btn || btn.dataset.bound) return;
@@ -2913,8 +2827,8 @@ function manualFormIntl(ws, tz, manual) {
     btn.onclick = () => {
       const prev = loadFlowManual(ws) || {};
       const mode = ($('#flow-intl-mode')?.value || 'Sea').trim();
-      const origin = $('#flow-origin-ready')?.value ? new Date($('#flow-origin-ready').value).toISOString() : '';
-      const departed = $('#flow-departed')?.value ? new Date($('#flow-departed').value).toISOString() : '';
+      const origin = safeISO($('#flow-origin-ready')?.value || '');
+      const departed = safeISO($('#flow-departed')?.value || '');
       const note = $('#flow-intl-note')?.value || '';
       const hold = !!$('#flow-customs-hold')?.checked;
 
@@ -2939,7 +2853,7 @@ function manualFormIntl(ws, tz, manual) {
     if (!btn) return;
     btn.onclick = () => {
       const prev = loadFlowManual(ws) || {};
-      const delivered = $('#flow-delivered')?.value ? new Date($('#flow-delivered').value).toISOString() : '';
+      const delivered = safeISO($('#flow-delivered')?.value || '');
       const note = $('#flow-lastmile-note')?.value || '';
       const issue = !!$('#flow-lastmile-issue')?.checked;
       const next = {
