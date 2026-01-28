@@ -12,7 +12,7 @@
   // ------------------------- PATCH (v51.1) -------------------------
   // Guardrails to keep other modules from breaking Flow.
   // NOTE: Scripts load order is exec -> receiving -> flow (defer). Some helpers are expected globally.
-  window.__FLOW_BUILD__ = 'v51.1-flow-patch-' + new Date().toISOString();
+  window.__FLOW_BUILD__ = 'v60-week-signoff-' + new Date().toISOString();
 
   // Receiving module expects this helper; if missing it throws and can interrupt week load flows.
   if (typeof window.computeCartonsOutByPOFromState !== 'function') {
@@ -912,6 +912,40 @@ function computeCartonStatsFromRecords(records) {
   }
 
 
+
+// ------------------------- Week sign-off (Receiving / VAS) -------------------------
+// UI-only "master tick" per week. This is a deliberate sign-off signal and must NEVER
+// auto-write actual timestamps. It can influence node status only when checked.
+function weekSignoffKey(ws) { return `flow:weekSignoff:${ws}`; }
+
+function loadWeekSignoff(ws) {
+  const k = weekSignoffKey(ws);
+  try {
+    const raw = localStorage.getItem(k);
+    if (!raw) return { receivingComplete: false, vasComplete: false, updatedAt: null };
+    const o = JSON.parse(raw) || {};
+    return {
+      receivingComplete: !!o.receivingComplete,
+      vasComplete: !!o.vasComplete,
+      updatedAt: o.updatedAt || null,
+    };
+  } catch {
+    return { receivingComplete: false, vasComplete: false, updatedAt: null };
+  }
+}
+
+function saveWeekSignoff(ws, next) {
+  const k = weekSignoffKey(ws);
+  const o = {
+    receivingComplete: !!next?.receivingComplete,
+    vasComplete: !!next?.vasComplete,
+    updatedAt: new Date().toISOString(),
+  };
+  try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+  return o;
+}
+
+
   // ------------------------- Last Mile receipts (week-scoped) -------------------------
   // We store Last Mile "receiving" fields separately from Intl week-containers.
   // This avoids any accidental overwrite/derivation issues and keeps Last Mile updates
@@ -1741,13 +1775,20 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
       const pa = plannedActual(id);
       const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
+const done = (id === 'receiving')
+  ? !!(receiving?.signoff?.receivingComplete)
+  : (id === 'vas')
+    ? !!(vas?.signoff?.vasComplete)
+    : false;
+const nameLabel = done ? `${n.label} ✓` : n.label;
+
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
           <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
-          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${n.label}</text>
+          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${nameLabel}</text>
           ${paText}
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
@@ -1856,6 +1897,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const cartonsOut = num(receiving?.cartonsOutTotal || 0);
 
     const prebook = loadPrebook(ws);
+    const signoff = loadWeekSignoff(ws);
 
     const icon = {
       po: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h6"/></svg>',
@@ -1915,6 +1957,46 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       return { color: worst.color, label };
     })();
 
+
+const signoffSection = (context) => {
+  const recMet = receiving.planMet ?? ((receiving.plannedPOs || 0) > 0 ? (receiving.receivedPOs || 0) >= (receiving.plannedPOs || 0) : true);
+  const vasMet = vas.planMet ?? ((vas.plannedUnits || 0) > 0 ? (vas.appliedUnits || 0) >= ((vas.plannedUnits || 0) * 0.98) : true);
+
+  const hintRec = signoff.receivingComplete
+    ? (recMet ? '<span class="text-green-700 font-semibold">Plan met</span>' : '<span class="text-amber-700 font-semibold">Signed off but incomplete</span>')
+    : (recMet ? '<span class="text-gray-600">Plan met</span>' : '<span class="text-gray-600">Not yet complete</span>');
+
+  const hintVas = signoff.vasComplete
+    ? (vasMet ? '<span class="text-green-700 font-semibold">Plan met</span>' : '<span class="text-amber-700 font-semibold">Signed off but incomplete</span>')
+    : (vasMet ? '<span class="text-gray-600">Plan met</span>' : '<span class="text-gray-600">Not yet complete</span>');
+
+  const title = (context === 'node') ? 'Week sign-off' : 'Week sign-off (master ticks)';
+  return `
+    <div class="rounded-2xl border bg-white p-3">
+      <div class="text-xs font-semibold text-gray-700">${title}</div>
+      <div class="text-[11px] text-gray-500 mt-0.5">Use these only when the week is operationally complete. Does not create fake timestamps.</div>
+
+      <div class="mt-3 space-y-3">
+        <label class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-800">Receiving complete</div>
+            <div class="text-[11px] mt-0.5">${hintRec}</div>
+          </div>
+          <input id="signoff-receiving" type="checkbox" class="h-5 w-5 rounded border-gray-300" ${signoff.receivingComplete ? 'checked' : ''} />
+        </label>
+
+        <label class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-800">VAS complete</div>
+            <div class="text-[11px] mt-0.5">${hintVas}</div>
+          </div>
+          <input id="signoff-vas" type="checkbox" class="h-5 w-5 rounded border-gray-300" ${signoff.vasComplete ? 'checked' : ''} />
+        </label>
+      </div>
+    </div>
+  `;
+};
+
     const weekTotalsView = () => {
       return `
         ${header('Week plan vs actual', `Week of ${ws}`)}
@@ -1950,6 +2032,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
             </div>
           </div>
 
+          ${signoffSection('week')}
+
           <div class="flex items-center justify-between">
             <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
                   style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
@@ -1959,6 +2043,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
             </span>
             <span class="text-xs text-gray-600">Deadlines & exceptions on node click</span>
           </div>
+          ${signoffSection('node')}
         </div>
       `;
     };
@@ -1999,6 +2084,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
             </div>
           </div>
 
+          ${signoffSection('week')}
+
           <div class="flex items-center justify-between">
             <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
                   style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
@@ -2008,6 +2095,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
             </span>
             <span class="text-xs text-gray-600">Click nodes for exceptions</span>
           </div>
+          ${signoffSection('node')}
         </div>
       `;
     };
@@ -2174,6 +2262,27 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     };
     bindPre(i20, 'c20');
     bindPre(i40, 'c40');
+
+// Bind week sign-off ticks (available in week + node views)
+const sRec = document.getElementById('signoff-receiving');
+const sVas = document.getElementById('signoff-vas');
+const bindSign = (inp, key) => {
+  if (!inp || inp.dataset.bound) return;
+  inp.dataset.bound = '1';
+  inp.addEventListener('change', () => {
+    const next = loadWeekSignoff(ws);
+    next[key] = !!inp.checked;
+    saveWeekSignoff(ws, next);
+
+    // Recompute local node levels immediately (no backend changes).
+    // Refresh will reload data but this ensures instant UI feedback.
+    try { refresh(); } catch {}
+  });
+};
+bindSign(sRec, 'receivingComplete');
+bindSign(sVas, 'vasComplete');
+
+
   }
 
 
@@ -2200,6 +2309,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
       { label: `${receiving.cartonsOutTotal || 0} out`, sub: 'cartonsOut' },
       receiving.latePOs ? { label: `${receiving.latePOs} late`, level: 'yellow', sub: 'late' } : null,
       receiving.missingPOs ? { label: `${receiving.missingPOs} missing`, level: 'red', sub: 'missing' } : null,
+      receiving.signoff?.receivingComplete ? { label: 'Signed off', level: receiving.planMet ? 'green' : 'yellow', sub: 'signoff' } : null,
     ].filter(Boolean);
 
     const rec = nodeCard({
@@ -2214,7 +2324,8 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     const vasBadges = [
       { label: `${Math.round(vas.completion * 100)}% complete`, sub: 'summary' },
       { label: `${vas.appliedUnits}/${vas.plannedUnits || 0} units`, sub: 'units' },
-    ];
+      vas.signoff?.vasComplete ? { label: 'Signed off', level: vas.planMet ? 'green' : 'yellow', sub: 'signoff' } : null,
+    ].filter(Boolean);
     const vasCard = nodeCard({
       id: 'vas',
       upcoming: now < vas.due,
@@ -3868,6 +3979,29 @@ async function refresh() {
     const vas = computeVASStatus(ws, tz, planRows, records);
     const intl = computeInternationalTransit(ws, tz, planRows, records, vas.due);
     const manual = computeManualNodeStatuses(ws, tz);
+
+
+// Week sign-off (master ticks) — affects Receiving/VAS status only when checked.
+const signoff = loadWeekSignoff(ws);
+
+// Attach sign-off flags and "plan met" helpers for UI.
+receiving.signoff = signoff;
+vas.signoff = signoff;
+
+receiving.planMet = (receiving.plannedPOs || 0) > 0 ? (receiving.receivedPOs || 0) >= (receiving.plannedPOs || 0) : true;
+// Treat >=98% as effectively complete to avoid rounding/noise.
+vas.planMet = (vas.plannedUnits || 0) > 0 ? (vas.appliedUnits || 0) >= ((vas.plannedUnits || 0) * 0.98) : true;
+
+// If signed off, nudge the level to reflect completeness without faking actuals.
+// - If plan met: green
+// - If plan not met: at least yellow (unless already red)
+if (signoff.receivingComplete) {
+  receiving.level = receiving.planMet ? 'green' : (receiving.level === 'red' ? 'red' : 'yellow');
+}
+if (signoff.vasComplete) {
+  vas.level = vas.planMet ? 'green' : (vas.level === 'red' ? 'red' : 'yellow');
+}
+
 
     // Cache for PDF reporting (best-effort; never required for UI rendering)
     try {
