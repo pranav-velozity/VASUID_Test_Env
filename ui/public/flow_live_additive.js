@@ -887,6 +887,31 @@ function computeCartonStatsFromRecords(records) {
     return state;
   }
 
+
+  // ------------------------- Pre-booked containers (week-scoped) -------------------------
+  // UI-only plan inputs for each week (do NOT affect status logic).
+  function prebookKey(ws) { return `flow:prebook:${ws}`; }
+
+  function loadPrebook(ws) {
+    const k = prebookKey(ws);
+    try {
+      const raw = localStorage.getItem(k);
+      if (!raw) return { c20: 0, c40: 0 };
+      const o = JSON.parse(raw) || {};
+      return { c20: num(o.c20 || 0), c40: num(o.c40 || 0) };
+    } catch {
+      return { c20: 0, c40: 0 };
+    }
+  }
+
+  function savePrebook(ws, next) {
+    const k = prebookKey(ws);
+    const o = { c20: num(next?.c20 || 0), c40: num(next?.c40 || 0) };
+    try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+    return o;
+  }
+
+
   // ------------------------- Last Mile receipts (week-scoped) -------------------------
   // We store Last Mile "receiving" fields separately from Intl week-containers.
   // This avoids any accidental overwrite/derivation issues and keeps Last Mile updates
@@ -1322,7 +1347,7 @@ function computeManualNodeStatuses(ws, tz) {
       <div data-node="${id}" data-flow-node="${id}" class="rounded-xl border p-3 hover:bg-gray-50 cursor-pointer ${dis}">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-9 h-9 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
+            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-8 h-8 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
             <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
           </div>
           <div class="flex items-center gap-2">
@@ -1750,7 +1775,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         <div class="rounded-xl border bg-white p-2">
           <div class="flex items-center justify-between gap-2">
             <div class="text-xs font-semibold text-gray-700">${title}</div>
-            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-xs font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
+            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-[11px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
           </div>
           <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
           ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
@@ -1793,11 +1818,274 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           const node = el.getAttribute('data-node');
           UI.selection = { node, sub: null };
           renderDetail(ws, tz, receiving, vas, intl, manual);
+          renderRightTile(ws, tz, receiving, vas, intl, manual);
           highlightSelection();
         });
       });
     } catch {}
   }
+
+  // ------------------------- Right tile (context panel) -------------------------
+  // Default shows week plan vs actual totals; clicking a node switches to exceptions/deadlines for that node.
+  function renderRightTile(ws, tz, receiving, vas, intl, manual) {
+    const el = document.getElementById('flow-footer');
+    if (!el) return;
+
+    const selNode = (UI.selection && UI.selection.node) ? UI.selection.node : null;
+
+    const weekContainers = loadIntlWeekContainers(ws);
+    const containers = Array.isArray(weekContainers?.containers) ? weekContainers.containers : [];
+    const totalContainers = containers.length;
+    const vesselsSet = new Set(containers.map(c => String(c?.vessel || '').trim()).filter(Boolean));
+    const totalVessels = vesselsSet.size;
+
+    const lanesTotal = Array.isArray(intl?.lanes) ? intl.lanes.length : 0;
+
+    const appliedUnits = num(vas?.appliedUnits || 0);
+    const plannedUnits = num(vas?.plannedUnits || 0);
+    const cbm = appliedUnits * 0.00375;
+
+    const recPlannedPOs = num(receiving?.plannedPOs || 0);
+    const recReceivedPOs = num(receiving?.receivedPOs || 0);
+
+    const cartonsIn = num(receiving?.cartonsInTotal || 0);
+    const cartonsOut = num(receiving?.cartonsOutTotal || 0);
+
+    const prebook = loadPrebook(ws);
+
+    const icon = {
+      po: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h6"/></svg>',
+      units: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 17l9 4 9-4"/><path d="M3 12l9 4 9-4"/></svg>',
+      cartons: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
+      lane: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v16"/><path d="M20 4v16"/><path d="M4 12h16"/></svg>',
+      ship: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18"/><path d="M5 18l2-6h10l2 6"/><path d="M7 12V6l5-2 5 2v6"/></svg>',
+      cont: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7v13M11 7v13M15 7v13M19 7v13"/></svg>',
+      box: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M12 13v8"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
+      warn: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 4.3l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3l-8-14a2 2 0 0 0-3.4 0z"/></svg>',
+      time: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>',
+    };
+
+    const hRow = (ic, label, value) => `
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="flex items-center gap-2 text-gray-700">
+          <span class="text-gray-500">${ic}</span>
+          <span class="text-sm font-semibold">${label}</span>
+        </div>
+        <div class="text-sm font-semibold text-gray-900">${value}</div>
+      </div>
+    `;
+
+    const pairRow = (leftHtml, rightHtml) => `
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl border bg-white px-3 py-2">${leftHtml}</div>
+        <div class="rounded-xl border bg-white px-3 py-2">${rightHtml}</div>
+      </div>
+    `;
+
+    const header = (title, subtitle) => `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="text-sm font-semibold text-gray-800">${title}</div>
+          ${subtitle ? `<div class="text-xs text-gray-500 mt-0.5">${subtitle}</div>` : ''}
+        </div>
+        ${selNode ? `<button id="rt-back" class="text-xs px-2 py-1 rounded-md border bg-white hover:bg-gray-50">Week totals</button>` : ''}
+      </div>
+    `;
+
+    const fmt2 = (n) => {
+      const v = Number(n) || 0;
+      return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    };
+
+    const lvlColor = (lvl) => (lvl === 'red' ? '#ef4444' : (lvl === 'yellow' ? '#f59e0b' : (lvl === 'green' ? '#10b981' : '#9ca3af')));
+
+    const health = (() => {
+      const worst = [
+        { label: 'Receiving', color: receiving?.color || lvlColor(receiving?.level) || '#10b981' },
+        { label: 'VAS', color: vas?.color || lvlColor(vas?.level) || '#10b981' },
+        { label: 'Transit', color: intl?.color || lvlColor(intl?.level) || '#10b981' },
+        { label: 'Last Mile', color: lvlColor(manual?.levels?.lastMile) || '#10b981' },
+      ].reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc);
+      const band = _bandFromColor(worst.color);
+      const label = (band === 'green') ? 'On Track' : (band === 'yellow') ? 'At Risk' : (band === 'red') ? 'Delayed' : 'Upcoming';
+      return { color: worst.color, label };
+    })();
+
+    const weekTotalsView = () => {
+      return `
+        ${header('Week plan vs actual', `Week of ${ws}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.po, 'POs planned – received', `${fmtInt(recPlannedPOs)} – ${fmtInt(recReceivedPOs)}`)}
+            ${hRow(icon.units, 'Units planned – applied', `${fmtInt(plannedUnits)} – ${fmtInt(appliedUnits)}`)}
+            ${hRow(icon.cartons, 'Cartons in – cartons out', `${fmtInt(cartonsIn)} – ${fmtInt(cartonsOut)}`)}
+          </div>
+
+          ${pairRow(
+            hRow(icon.lane, 'Total lanes', fmtInt(lanesTotal)),
+            hRow(icon.ship, 'Total vessels', fmtInt(totalVessels))
+          )}
+
+          ${pairRow(
+            hRow(icon.cont, 'Total containers', fmtInt(totalContainers)),
+            hRow(icon.box, 'Total CBM', fmt2(cbm))
+          )}
+
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Pre-booked containers</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">Plan inputs for this week (local only)</div>
+            <div class="grid grid-cols-2 gap-3 mt-3">
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">20 ft</div>
+                <input id="prebook-20" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c20)}" />
+              </label>
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">40 ft</div>
+                <input id="prebook-40" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c40)}" />
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                  style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
+              <span class="inline-block h-2 w-2 rounded-full" style="background:${health.color};"></span>
+              <span class="font-semibold">Health</span>
+              <span>${health.label}</span>
+            </span>
+            <span class="text-xs text-gray-600">Deadlines & exceptions on node click</span>
+          </div>
+        </div>
+      `;
+    };
+
+    const receivingView = () => {
+      const due = receiving?.due ? fmtInTZ(receiving.due, tz) : '—';
+      const last = receiving?.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—';
+      const late = num(receiving?.latePOs || 0);
+      const missing = num(receiving?.missingPOs || 0);
+      const remaining = Math.max(0, recPlannedPOs - recReceivedPOs);
+
+      return `
+        ${header('Receiving — deadlines & exceptions', `Due ${due}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.time, 'Last received', last)}
+            ${hRow(icon.po, 'Remaining POs', fmtInt(remaining))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            ${hRow(icon.warn, 'Late POs', late ? `<span class="text-red-700">${fmtInt(late)}</span>` : fmtInt(late))}
+            ${hRow(icon.warn, 'Missing POs', missing ? `<span class="text-red-700">${fmtInt(missing)}</span>` : fmtInt(missing))}
+            <div class="text-[11px] text-gray-500 mt-2">Tip: use the Receiving page for the full list; this panel is the headline view.</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const vasView = () => {
+      const due = vas?.due ? fmtInTZ(vas.due, tz) : '—';
+      const pctDone = plannedUnits ? Math.round((appliedUnits / plannedUnits) * 100) : 0;
+      const remainingUnits = Math.max(0, plannedUnits - appliedUnits);
+
+      return `
+        ${header('VAS — plan vs actual', `Due ${due}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.units, 'Applied / Planned', `${fmtInt(appliedUnits)} / ${fmtInt(plannedUnits)} (${pctDone}%)`)}
+            ${hRow(icon.warn, 'Units remaining', fmtInt(remainingUnits))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Focus</div>
+            <div class="text-sm text-gray-800 mt-1">Watch remaining units vs due window. Use bottom tile for supplier/PO detail.</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const intlView = () => {
+      const windowText = (intl?.originMin && intl?.originMax)
+        ? `${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`
+        : '—';
+      const holds = num(intl?.holds || 0);
+      const docs = num(intl?.missingDocs || 0);
+      const notCleared = num(intl?.missingOriginClear || 0);
+
+      return `
+        ${header('Transit & Clearing — exceptions', `Origin window ${windowText}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.lane, 'Lanes', fmtInt(lanesTotal))}
+            ${hRow(icon.ship, 'Vessels', fmtInt(totalVessels))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            ${hRow(icon.warn, 'Customs holds', holds ? `<span class="text-red-700">${fmtInt(holds)}</span>` : fmtInt(holds))}
+            ${hRow(icon.warn, 'Missing docs', docs ? `<span class="text-amber-700">${fmtInt(docs)}</span>` : fmtInt(docs))}
+            ${hRow(icon.warn, 'Not origin-cleared', notCleared ? `<span class="text-amber-700">${fmtInt(notCleared)}</span>` : fmtInt(notCleared))}
+          </div>
+        </div>
+      `;
+    };
+
+    const lastMileView = () => {
+      const receipts = loadLastMileReceipts(ws) || {};
+      const r = receipts?.receipts || receipts || {};
+      const delivered = Object.values(r).filter(x => x && (x.status === 'Delivered' || x.status === 'Complete' || x.delivered_local || x.delivered_at)).length;
+      const scheduled = Object.values(r).filter(x => x && (x.status === 'Scheduled' || x.scheduled_local)).length;
+      const open = Math.max(0, totalContainers - delivered);
+
+      return `
+        ${header('Last Mile — exceptions', `Open ${fmtInt(open)} / ${fmtInt(totalContainers)}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.cont, 'Scheduled', fmtInt(scheduled))}
+            ${hRow(icon.cont, 'Delivered', fmtInt(delivered))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Focus</div>
+            <div class="text-sm text-gray-800 mt-1">Oldest open containers and delivery notes live in the bottom tile. This panel highlights weekly risk.</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const view = (() => {
+      if (selNode === 'receiving') return receivingView();
+      if (selNode === 'vas') return vasView();
+      if (selNode === 'intl') return intlView();
+      if (selNode === 'lastmile') return lastMileView();
+      return weekTotalsView();
+    })();
+
+    el.innerHTML = `<div class="min-h-[320px]">${view}</div>`;
+
+    // Bind back button
+    const back = document.getElementById('rt-back');
+    if (back && !back.dataset.bound) {
+      back.dataset.bound = '1';
+      back.onclick = () => {
+        UI.selection = { node: null, sub: null };
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        highlightSelection();
+      };
+    }
+
+    // Bind prebook inputs (week totals view only)
+    const i20 = document.getElementById('prebook-20');
+    const i40 = document.getElementById('prebook-40');
+    const bindPre = (inp, key) => {
+      if (!inp || inp.dataset.bound) return;
+      inp.dataset.bound = '1';
+      inp.addEventListener('input', () => {
+        const next = loadPrebook(ws);
+        next[key] = num(inp.value || 0);
+        savePrebook(ws, next);
+      });
+    };
+    bindPre(i20, 'c20');
+    bindPre(i40, 'c40');
+  }
+
+
 
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
@@ -1907,6 +2195,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
         const sub = btn ? (btn.getAttribute('data-sub') || null) : null;
         UI.selection = { node, sub };
         renderDetail(ws, tz, receiving, vas, intl, manual);
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
         highlightSelection();
       });
     });
@@ -3019,14 +3308,12 @@ function severityRank(level){
 }
 
 function colorToStatus(color){
-  // IMPORTANT: use the same color banding logic as the pill background to avoid mismatches
-  // (e.g. hex red showing "On Track").
-  const band = _bandFromColor(color);
-  if (band === 'red') return 'At-Risk';
-  if (band === 'yellow') return 'Watch';
-  if (band === 'green') return 'On Track';
-  if (band === 'gray') return 'Future';
-  return 'On Track';
+  const c = String(color||"").toLowerCase();
+  if(c==="red") return "At-Risk";
+  if(c==="yellow" || c==="amber") return "Watch";
+  if(c==="gray" || c==="grey") return "Future";
+  if(c==="green") return "Ahead-of-Plan";
+  return "";
 }
 
 function _bandFromColor(color){
@@ -3102,9 +3389,6 @@ function renderFooterTrends(el, nodes, weekKey) {
 
   const lanesTotal = Array.isArray(intl.lanes) ? intl.lanes.length : (intl.lanesTotal || 0);
 
-  const cbmTotal = (num(vas.appliedUnits || 0) * 0.00375);
-  const cbmText = (Number.isFinite(cbmTotal) ? cbmTotal : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
   const rows = [
     { label: 'Total POs planned – received', value: `${fmtInt(receiving.plannedPOs || 0)} – ${fmtInt(receiving.receivedPOs || 0)}`, icon: iconDoc },
     { label: 'Total Units planned – applied', value: `${fmtInt(vas.plannedUnits || 0)} – ${fmtInt(vas.appliedUnits || 0)}`, icon: iconSpark },
@@ -3112,7 +3396,6 @@ function renderFooterTrends(el, nodes, weekKey) {
     { label: 'Total Lanes', value: `${fmtInt(lanesTotal)}`, icon: iconLane },
     { label: 'Total Vessels', value: `${fmtInt(vesselsTotal)}`, icon: iconShip },
     { label: 'Total Containers', value: `${fmtInt(containersTotal)}`, icon: iconContainerSmall },
-    { label: 'Total CBM', value: `${cbmText}`, icon: iconBox },
   ];
 
   // Health pill (kept, small)
@@ -3126,15 +3409,15 @@ function renderFooterTrends(el, nodes, weekKey) {
   const pillText = (colorToStatus(worst.color) || 'On Track');
 
   el.innerHTML = `
-    <div class="grid grid-cols-1 gap-3">
+    <div class="grid grid-cols-1 gap-2">
       ${rows.map(r => `
-        <div class="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5">
+        <div class="flex items-center gap-2 rounded-xl border bg-white px-2.5 py-2">
           <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg border bg-gray-50 text-gray-700">
             ${r.icon()}
           </span>
           <div class="min-w-0">
             <div class="text-[11px] font-semibold text-gray-600 leading-tight">${escapeHtml(r.label)}</div>
-            <div class="text-base font-bold text-gray-900 leading-tight">${escapeHtml(r.value)}</div>
+            <div class="text-sm font-bold text-gray-900 leading-tight">${escapeHtml(r.value)}</div>
           </div>
         </div>
       `).join('')}
@@ -3501,8 +3784,7 @@ async function refresh() {
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
     renderDetail(ws, tz, receiving, vas, intl, manual);
-    // Footer trend uses the same completed records dataset.
-    renderFooterTrends(ws, tz, Array.isArray(records) ? records : (records?.records || records?.rows || records?.data || []), receiving, vas, intl, manual);
+    renderRightTile(ws, tz, receiving, vas, intl, manual);
     highlightSelection();
     } catch (e) {
       console.warn('[flow] refresh failed', e);
