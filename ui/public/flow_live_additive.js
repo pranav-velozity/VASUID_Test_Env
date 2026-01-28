@@ -1268,7 +1268,6 @@ function computeManualNodeStatuses(ws, tz) {
             <div id="flow-footer"></div>
           </div>
         </div>
-        </div>
 
         <!-- Detail tile moved to bottom (full width) -->
         <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[360px]">
@@ -3261,6 +3260,66 @@ function renderFooterTrends(el, nodes, weekKey) {
       </section>
     `;
 
+    const ws = (cache && cache.weekStart) || UI.currentWs;
+    const weekContainers = loadIntlWeekContainers(ws) || [];
+    const lmReceipts = loadLastMileReceipts(ws) || {};
+
+    const recLate = (receiving && receiving.latePOList) || [];
+    const recMissing = (receiving && receiving.missingPOList) || [];
+    const intlHolds = (international && international.holds) || [];
+
+    const openLastMile = weekContainers
+      .filter((c) => c && c.contId)
+      .filter((c) => {
+        const r = lmReceipts[c.contId];
+        const st = (r && r.status) || 'Open';
+        return st !== 'Delivered' && st !== 'Complete';
+      });
+
+    const exceptionPage = `
+      <section class="page">
+        <div class="hdr">
+          <div class="h1">Exception summary</div>
+          <div class="sub">Point-in-time snapshot • Week of ${fmtDate(ws)}</div>
+        </div>
+
+        <div class="grid2">
+          <div class="card">
+            <div class="k">Receiving</div>
+            <div class="v">${recLate.length + recMissing.length}</div>
+            <div class="muted">Late + missing POs</div>
+            <div class="list">
+              ${recLate.slice(0, 15).map((x) => `<div>Late • ${esc(x)}</div>`).join('')}
+              ${recMissing.slice(0, 15).map((x) => `<div>Missing • ${esc(x)}</div>`).join('')}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="k">Transit & clearing</div>
+            <div class="v">${intlHolds.length}</div>
+            <div class="muted">Lanes on hold</div>
+            <div class="list">
+              ${intlHolds.slice(0, 20).map((h) => `<div>${esc(h.laneKey || h.key || '')}${h.reason ? ` • ${esc(h.reason)}` : ''}</div>`).join('')}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="k">Last mile</div>
+            <div class="v">${openLastMile.length}</div>
+            <div class="muted">Open containers/AWBs</div>
+            <div class="list">
+              ${openLastMile.slice(0, 25).map((c) => `<div>${esc(c.contId)}${c.awb ? ` • ${esc(c.awb)}` : ''}</div>`).join('')}
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="k">Notes</div>
+            <div class="muted">Use the Flow page to drill in and mark items complete. This PDF is a read-only snapshot.</div>
+          </div>
+        </div>
+      </section>
+    `;
+
     const execPage = `
       <section class="page">
         <div class="hdr">
@@ -3351,6 +3410,7 @@ function renderFooterTrends(el, nodes, weekKey) {
     `;
 
     return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
+      ${exceptionPage}
       ${execPage}
       ${receivingPage}
       ${vasPage}
@@ -3412,11 +3472,29 @@ async function refresh() {
       resetBtn.onclick = () => {
         // Flow-only reset (do not broadcast global events that can break other pages)
         UI.selection = { node: 'receiving', sub: null };
+
         try {
-          // clear lightweight per-week manual inputs
-          localStorage.removeItem(`flow:intl:${UI.currentWs}`);
-          localStorage.removeItem(`flow:lastmile:${UI.currentWs}`);
+          const ws = UI.currentWs;
+
+          // Clear Flow's per-week stores (do NOT touch other pages' keys)
+          const prefixes = [
+            `flow:intl:${ws}:`,                 // lane manual keys
+            `flow:lastmile_receipts:${ws}:`,    // receipt keys
+          ];
+
+          // Remove prefix-matched keys
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (prefixes.some((p) => k.startsWith(p))) localStorage.removeItem(k);
+          }
+
+          // Remove exact per-week keys
+          localStorage.removeItem(flowKey(ws));                 // flow_v1 aggregate
+          localStorage.removeItem(intlWeekContainersKey(ws));   // cached container list
+          localStorage.removeItem(lastMileReceiptsKey(ws));     // cached receipts map
         } catch {}
+
         // Re-render just this page
         refresh();
       };
