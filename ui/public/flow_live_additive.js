@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v53)
+/* flow_live_additive.js (v51)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -125,8 +125,6 @@
 
   // Format in business TZ with Intl (avoid heavy libs)
   function fmtInTZ(date, tz) {
-    const d = (date instanceof Date) ? date : new Date(date);
-    if (!d || isNaN(d)) return '';
     try {
       return new Intl.DateTimeFormat('en-US', {
         timeZone: tz,
@@ -135,9 +133,9 @@
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
-      }).format(d);
+      }).format(date);
     } catch {
-      try { return d.toISOString(); } catch { return ''; }
+      return date.toISOString();
     }
   }
 
@@ -260,17 +258,6 @@ function statusLabel(level) {
   if (level === 'red') return 'Delayed';
   return 'Future';
 }
-
-// Shared status color palette used across Flow renderers
-const levelColor = (level) => ({
-  green: '#34d399',
-  red: '#fb7185',
-  upcoming: '#cbd5e1',
-  yellow: '#e6b800',
-  gray: '#f6d365',
-  future: '#e5e7eb',
-}[level] || '#9ca3af');
-
 
 function strokeForLevel(level, upcoming=false) {
     // Matte palette (less saturated)
@@ -619,7 +606,6 @@ function computeCartonStatsFromRecords(records) {
 
   // Records: count applied units and attribute to supplier via plan join (fallback to record fields).
   let appliedUnits = 0;
-  let lastAppliedAt = null;
   const appliedBySup = new Map();
   const appliedByPO = new Map();
 
@@ -627,13 +613,6 @@ function computeCartonStatsFromRecords(records) {
     const qty = num(r.qty ?? r.quantity ?? r.units ?? r.target_qty ?? r.applied_qty ?? 1);
     const q = qty > 0 ? qty : 1;
     appliedUnits += q;
-
-    // Try to infer an "actual" timestamp from records (best-effort, optional).
-    const tsRaw = r.applied_at_utc || r.applied_at || r.completed_at_utc || r.completed_at || r.updated_at_utc || r.updated_at || r.created_at_utc || r.created_at || r.timestamp || r.ts;
-    if (tsRaw) {
-      const td = new Date(tsRaw);
-      if (!isNaN(td) && (!lastAppliedAt || td > lastAppliedAt)) lastAppliedAt = td;
-    }
 
     const po = getPO(r);
     if (po) appliedByPO.set(po, (appliedByPO.get(po) || 0) + q);
@@ -1017,7 +996,6 @@ function computeCartonStatsFromRecords(records) {
     // Lane status determination
     const now = new Date();
     const laneRows = [];
-    let lastMilestoneAt = null;
     let holds = 0;
     let seaCount = 0, airCount = 0;
     let missingDocs = 0, missingOriginClear = 0, missingDepart = 0, missingArrive = 0, missingDestClear = 0;
@@ -1044,11 +1022,6 @@ function computeCartonStatsFromRecords(records) {
             originClearedAt && !isNaN(originClearedAt) ? originClearedAt.getTime() : 0
           ))
         : null;
-
-      // Track latest known milestone across lanes (best-effort for "actual" display).
-      for (const d of [packingListReadyAt, originClearedAt, departedAt, arrivedAt, destClearedAt, originReadyAt]) {
-        if (d && !isNaN(d) && (!lastMilestoneAt || d > lastMilestoneAt)) lastMilestoneAt = d;
-      }
 
       let level = 'green';
 
@@ -1120,8 +1093,6 @@ function computeCartonStatsFromRecords(records) {
       level: agg,
       originMin,
       originMax,
-      lastMilestoneAt,
-
       seaCount,
       airCount,
       holds,
@@ -1260,13 +1231,11 @@ function computeManualNodeStatuses(ws, tz) {
             </div>
             <div id="flow-journey" class="w-full"></div>
           </div>
-          <!-- Summary tile (right 1/3) -->
-          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[220px] lg:col-span-1">
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-sm font-semibold text-gray-700">Week totals</div>
-            </div>
+          <!-- Insights tile moved to right 1/3 -->
+          <div class="rounded-2xl border bg-white shadow-sm p-3 min-h-[320px] lg:col-span-1">
             <div id="flow-footer"></div>
           </div>
+        </div>
         </div>
 
         <!-- Detail tile moved to bottom (full width) -->
@@ -1288,8 +1257,8 @@ function computeManualNodeStatuses(ws, tz) {
         st.id = 'flow-journey-style';
         st.textContent = `
           /* Journey map sizing + crispness */
-          #flow-journey svg { width: 100%; height: 500px; display: block; }
-          @media (min-width: 1024px) { #flow-journey svg { height: 540px; } }
+          #flow-journey svg { width: 100%; height: 240px; display: block; }
+          @media (min-width: 1024px) { #flow-journey svg { height: 260px; } }
           .flow-journey-hit { cursor: pointer; }
           .flow-journey-hit:focus { outline: none; }
         `;
@@ -1517,28 +1486,6 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: false },
     ];
 
-    // Planned vs Actual (display only; never persisted)
-    const plannedActual = (() => {
-      const planned = {
-        receiving: receiving.due,
-        vas: vas.due,
-        intl: intl.originMax,
-        lastmile: manual?.baselines?.lastMileMax,
-      };
-      const actual = {
-        receiving: receiving.lastReceived,
-        vas: vas.lastAppliedAt || null,
-        intl: intl.lastMilestoneAt || null,
-        lastmile: (manual?.dates?.deliveredAt || manual?.dates?.delivered_at || manual?.manual?.delivered_at) || null,
-      };
-
-      const fmt = (d) => (d ? fmtInTZ((d instanceof Date) ? d : new Date(d), tz) : '—');
-      return (id) => {
-        if (!planned[id] && !actual[id]) return '';
-        return `Planned ${fmt(planned[id])} • Actual ${fmt(actual[id])}`;
-      };
-    })();
-
     const matte = (hex, alpha) => {
       const h = (hex || '#9ca3af').replace('#','');
       const r = parseInt(h.slice(0,2),16) || 156;
@@ -1591,23 +1538,20 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const road = {
       A: { x: 80,  y: 70 },   // start
       B: { x: 920, y: 70 },   // top-right corner
-      C: { x: 920, y: 235 },  // mid-right corner  // mid-right corner
-      D: { x: 120, y: 235 },  // mid-left corner  // mid-left corner
-      E: { x: 120, y: 400 },  // bottom-left corner  // bottom-left corner
-      F: { x: 920, y: 400 },  // end  // end
+      C: { x: 920, y: 185 },  // mid-right corner
+      D: { x: 120, y: 185 },  // mid-left corner
+      E: { x: 120, y: 315 },  // bottom-left corner
+      F: { x: 920, y: 315 },  // end
     };
     const rad = 40;
 
     // Node placement on the road (per your reference layout)
     const pts = {
-      milk:      { x: road.A.x, y: road.A.y }, // start
-      // Receiving: shift ~30% left on the top line
-      receiving: { x: Math.round(road.A.x + 0.35 * (road.B.x - road.A.x)), y: road.A.y },
-      // VAS: shift ~30% right on the middle line
-      vas:       { x: Math.round(road.D.x + 0.65 * (road.C.x - road.D.x)), y: road.C.y },
-      // Transit & Clearing: shift ~25% left on the bottom line
-      intl:      { x: Math.round((road.D.x + rad) + 0.20 * (road.F.x - (road.D.x + rad))), y: road.E.y },
-      lastmile:  { x: road.F.x, y: road.F.y }, // end
+      milk:      { x: road.A.x,                         y: road.A.y },        // start of the journey
+      receiving: { x: Math.round((road.A.x + road.B.x) / 2), y: road.A.y },    // middle of first straight
+      vas:       { x: Math.round((road.C.x + road.D.x) / 2), y: road.C.y },    // middle of second straight
+      intl:      { x: Math.round((road.D.x + rad + road.F.x) / 2), y: road.E.y }, // middle of third straight
+      lastmile:  { x: road.F.x,                         y: road.F.y },        // end point
     };
 
     const order = ['milk','receiving','vas','intl','lastmile'];
@@ -1676,14 +1620,14 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
       const d = segPathBetween(fromId, toId);
       if (!d) continue;
-      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />`;
+      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />`;
     }
 
     // Ghost/base road behind colored segments (thicker, subtle)
-    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />`;
+    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Center dashed line
-    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
 
     // Milestones (icons in white circles)
     let milestones = '';
@@ -1698,7 +1642,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const labelX = p.x;
       const labelAnchor = 'middle';
       // Node name above icon
-      const nameY = p.y - 46;
+      const nameY = p.y - 34;
 
       const st = statusText(n);
       const stLevel = statusLevel(n);
@@ -1708,20 +1652,17 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       // Status pill below icon
       const pillW = Math.max(58, 14 + (String(st).length * 7));
       const pillH = 18;
-      const pillY = p.y + 42;
+      const pillY = p.y + 22;
       const pillX = p.x - (pillW / 2);
       const pillTextX = p.x;
 
-      const pa = plannedActual(id);
-      const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
           <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
           ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
-          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${n.label}</text>
-          ${paText}
+          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.70)">${n.label}</text>
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
             <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
@@ -1769,19 +1710,25 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
 
     root.innerHTML = `
       <div class="w-full overflow-hidden">
-        <svg viewBox="-180 0 1250 560" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:520px; width:100%;">
+        <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:320px; width:100%;">
 
           <!-- road shadow (subtle) -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
           <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
           ${baseRoad}
           ${segs}
           ${dashed}
           ${milestones}
           ${ongoing}
         </svg>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+        ${stat('Receiving', recA, recB, nodes[1])}
+        ${stat('VAS applied', vasA, vasB, nodes[2])}
+        ${stat('Transit & Clearing', intlA, intlB, nodes[3])}
+        ${stat('Last Mile', lmA, lmB, nodes[4])}
       </div>
     `;
 
@@ -1792,6 +1739,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           const node = el.getAttribute('data-node');
           UI.selection = { node, sub: null };
           renderDetail(ws, tz, receiving, vas, intl, manual);
+    renderRightWeekTotals(ws, receiving, vas, intl);
+
           highlightSelection();
         });
       });
@@ -1906,6 +1855,8 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
         const sub = btn ? (btn.getAttribute('data-sub') || null) : null;
         UI.selection = { node, sub };
         renderDetail(ws, tz, receiving, vas, intl, manual);
+    renderRightWeekTotals(ws, receiving, vas, intl);
+
         highlightSelection();
       });
     });
@@ -2024,7 +1975,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 }
 
 if (sel.node === 'vas') {
-      const subtitle = `Planned ${fmtInTZ(vas.due, tz)} • Actual ${vas.lastAppliedAt ? fmtInTZ(vas.lastAppliedAt, tz) : '—'} • Planned ${vas.plannedUnits} units • Applied ${vas.appliedUnits} units`;
+      const subtitle = `Due ${fmtInTZ(vas.due, tz)} • Planned ${vas.plannedUnits} units • Applied ${vas.appliedUnits} units`;
       const insights = [
         `Completion: <b>${Math.round(vas.completion * 100)}%</b>`,
         vas.plannedPOs ? `${vas.plannedPOs} planned POs this week` : null,
@@ -2084,7 +2035,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     
     if (sel.node === 'intl') {
       const lanes = (intl.lanes || []).slice();
-      const subtitle = `Planned ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)} • Actual ${intl.lastMilestoneAt ? fmtInTZ(intl.lastMilestoneAt, tz) : '—'}`;
+      const subtitle = `Origin ready window ${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`;
       const wcState = loadIntlWeekContainers(ws);
       const weekContainers = (wcState && Array.isArray(wcState.containers)) ? wcState.containers : [];
 
@@ -2310,30 +2261,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const arrived = v(manual.arrived_at);
     const destClr = v(manual.dest_customs_cleared_at);
 
-    // Baseline (reference-only): show expected milestone dates without persisting.
-    const vasDueB = makeBizLocalDate(
-      isoDate(addDays(new Date(`${ws}T00:00:00Z`), BASELINE.vas_complete_due.dayOffset)),
-      BASELINE.vas_complete_due.time,
-      tz
-    );
-    const originMaxB = addDays(vasDueB, BASELINE.origin_ready_days_max);
-    const packBaseDT = originMaxB;
-    const originClrBaseDT = originMaxB;
-    const departedBaseDT = addDays(originMaxB, 1);
-    const transitDaysB = (lane.freight === 'Air') ? BASELINE.transit_days_air : BASELINE.transit_days_sea;
-    const arrivedBaseDT = addDays(departedBaseDT, transitDaysB);
-    const destClrBaseDT = addDays(arrivedBaseDT, 2);
-
-    const baseVal = (d) => {
-      if (!d || isNaN(d)) return '';
-      try { return toLocalDT(d.toISOString()); } catch { return ''; }
-    };
-    const basePack = baseVal(packBaseDT);
-    const baseOriginClr = baseVal(originClrBaseDT);
-    const baseDeparted = baseVal(departedBaseDT);
-    const baseArrived = baseVal(arrivedBaseDT);
-    const baseDestClr = baseVal(destClrBaseDT);
-
     const hold = !!manual.customs_hold;
     const note = String(manual.note || '');
 
@@ -2421,50 +2348,27 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
           <div class="rounded-xl border p-3">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
-              <button type="button" id="flow-intl-copy-all" class="text-[11px] text-gray-600 underline hover:text-gray-800">Copy baselines</button>
-            </div>
+            <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
                 <input id="flow-intl-pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${pack}"/>
-                <div class="mt-1 text-[11px] text-gray-500 flex items-center justify-between gap-2">
-                  <span>Baseline: <span class="font-mono">${basePack}</span></span>
-                  <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-pack" data-val="${basePack}">Copy</button>
-                </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
-                <div class="mt-1 text-[11px] text-gray-500 flex items-center justify-between gap-2">
-                  <span>Baseline: <span class="font-mono">${baseOriginClr}</span></span>
-                  <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-originclr" data-val="${baseOriginClr}">Copy</button>
-                </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
-                <div class="mt-1 text-[11px] text-gray-500 flex items-center justify-between gap-2">
-                  <span>Baseline: <span class="font-mono">${baseDeparted}</span></span>
-                  <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-departed" data-val="${baseDeparted}">Copy</button>
-                </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
-                <div class="mt-1 text-[11px] text-gray-500 flex items-center justify-between gap-2">
-                  <span>Baseline: <span class="font-mono">${baseArrived}</span></span>
-                  <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-arrived" data-val="${baseArrived}">Copy</button>
-                </div>
               </label>
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
-                <div class="mt-1 text-[11px] text-gray-500 flex items-center justify-between gap-2">
-                  <span>Baseline: <span class="font-mono">${baseDestClr}</span></span>
-                  <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-destclr" data-val="${baseDestClr}">Copy</button>
-                </div>
               </label>
             </div>
 
@@ -2524,44 +2428,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       });
     });
 
-
-
-    // Baseline helpers (UI-only; no persistence)
-    const copyAll = detail.querySelector('#flow-intl-copy-all');
-    if (copyAll && !copyAll.dataset.bound) {
-      copyAll.dataset.bound = '1';
-      copyAll.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        detail.querySelectorAll('.flow-intl-copy').forEach(btn => {
-          const tid = btn.getAttribute('data-target');
-          const val = btn.getAttribute('data-val') || '';
-          const inp = tid ? detail.querySelector('#' + CSS.escape(tid)) : null;
-          if (inp && val) {
-            inp.value = val;
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        });
-      });
-    }
-
-    detail.querySelectorAll('.flow-intl-copy').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const tid = btn.getAttribute('data-target');
-        const val = btn.getAttribute('data-val') || '';
-        const inp = tid ? detail.querySelector('#' + CSS.escape(tid)) : null;
-        if (inp && val) {
-          inp.value = val;
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
-          inp.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
-    });
 
     // Week-level Containers UI (add/remove/save)
     const wcAdd = detail.querySelector('#flow-wc-add');
@@ -3018,12 +2884,13 @@ function severityRank(level){
 }
 
 function colorToStatus(color){
-  const c = String(color||"").toLowerCase();
-  if(c==="red") return "At-Risk";
-  if(c==="yellow" || c==="amber") return "Watch";
-  if(c==="gray" || c==="grey") return "Future";
-  if(c==="green") return "Ahead-of-Plan";
-  return "";
+  // Normalize arbitrary color tokens (hex, rgb, semantic words) into the same pill labels used across Flow.
+  const band = _bandFromColor(color);
+  if (band === 'red') return 'Delayed';
+  if (band === 'yellow') return 'At Risk';
+  if (band === 'gray') return 'Upcoming';
+  if (band === 'green') return 'On Track';
+  return 'On Track';
 }
 
 function _bandFromColor(color){
@@ -3058,124 +2925,144 @@ function statusStroke(color){
 }
 
 
-
 function renderFooterTrends(el, nodes, weekKey) {
-  // Backwards-compatible overload:
-  // Called as renderFooterTrends(weekKey, tz, records, receiving, vas, intl, manual)
-  if (typeof el === 'string') {
-    const wk = el;
-    const receiving = arguments[3] || {};
-    const vas = arguments[4] || {};
-    const intl = arguments[5] || {};
-    const manual = arguments[6] || {};
+    // Backwards-compatible overload:
+    // Some builds call renderFooterTrends(weekKey, tz, records, receiving, vas, intl, lm).
+    if (typeof el === 'string') {
+      const wk = el;
+      const receiving = arguments[3] || null;
+      const vas = arguments[4] || null;
+      const intl = arguments[5] || null;
+      const lm = arguments[6] || null;
 
-    const footerEl = document.getElementById('flow-footer') || document.getElementById('vo-footer');
-    return renderFooterTrends(footerEl, { receiving, vas, intl, manual }, wk);
-  }
-
-  // Normal signature: (el: HTMLElement, data: {receiving,vas,intl,manual}, weekKey: string)
-  if (!el || typeof el !== 'object' || typeof el.innerHTML === 'undefined') return;
-
-  const data = nodes || {};
-  const receiving = data.receiving || {};
-  const vas = data.vas || {};
-  const intl = data.intl || {};
-  const manual = data.manual || {};
-
-  // Week-level Intl containers (for vessels/containers totals)
-  let wc = { containers: [] };
-  try { wc = loadIntlWeekContainers(weekKey) || wc; } catch {}
-  const weekContainers = (wc && Array.isArray(wc.containers)) ? wc.containers : [];
-
-  const containersTotal = weekContainers.length;
-  const vesselsTotal = (() => {
-    const s = new Set();
-    for (const c of weekContainers) {
-      const v = String(c?.vessel || '').trim();
-      if (v) s.add(v);
+      const footerEl = document.getElementById('vo-footer');
+      const n = [
+        { id: 'receiving', label: 'Receiving', color: (receiving && receiving.color) || '#10b981' },
+        { id: 'vas', label: 'VAS', color: (vas && vas.color) || '#10b981' },
+        { id: 'intl', label: 'Transit', color: (intl && intl.color) || '#10b981' },
+        { id: 'lm', label: 'Last Mile', color: (lm && lm.color) || '#10b981' },
+      ];
+      return renderFooterTrends(footerEl, n, wk);
     }
-    return s.size;
-  })();
 
-  const lanesTotal = Array.isArray(intl.lanes) ? intl.lanes.length : (intl.lanesTotal || 0);
+    // Normal signature: (el: HTMLElement, nodes: [{label,color}], weekKey: string)
+    if (!el || typeof el !== 'object' || typeof el.innerHTML === 'undefined') return;
 
-  const rows = [
-    { label: 'Total POs planned – received', value: `${fmtInt(receiving.plannedPOs || 0)} – ${fmtInt(receiving.receivedPOs || 0)}`, icon: iconDoc },
-    { label: 'Total Units planned – applied', value: `${fmtInt(vas.plannedUnits || 0)} – ${fmtInt(vas.appliedUnits || 0)}`, icon: iconSpark },
-    { label: 'Total Cartons in – cartons out', value: `${fmtInt(receiving.cartonsInTotal || 0)} – ${fmtInt(receiving.cartonsOutTotal || 0)}`, icon: iconBox },
-    { label: 'Total Lanes', value: `${fmtInt(lanesTotal)}`, icon: iconLane },
-    { label: 'Total Vessels', value: `${fmtInt(vesselsTotal)}`, icon: iconShip },
-    { label: 'Total Containers', value: `${fmtInt(containersTotal)}`, icon: iconContainerSmall },
-  ];
+    const applied = (typeof getAppliedThisWeek === 'function') ? getAppliedThisWeek(weekKey) : 0;
+    const worst = (Array.isArray(nodes) && nodes.length)
+      ? nodes.reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc, nodes[0])
+      : { label: 'Health', color: '#10b981' };
 
-  // Health pill (kept, small)
-  const nodeColors = [
-    { id: 'receiving', color: (receiving && receiving.color) || levelColor(receiving.level || 'green') },
-    { id: 'vas', color: (vas && vas.color) || levelColor(vas.level || 'green') },
-    { id: 'intl', color: (intl && intl.color) || levelColor(intl.level || 'green') },
-    { id: 'lm', color: levelColor((manual.levels && manual.levels.lastMile) || manual.levels?.lastmile || 'green') },
-  ];
-  const worst = nodeColors.reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc, nodeColors[0] || { color: '#10b981' });
-  const pillText = (colorToStatus(worst.color) || 'On Track');
+    const pill = (colorToStatus(worst.color) || 'On Track');
+    el.innerHTML = `
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+              style="background:${statusBg(worst.color)}; border-color:${statusStroke(worst.color)};">
+          <span class="inline-block h-2 w-2 rounded-full" style="background:${worst.color};"></span>
+          <span class="font-semibold">Health:</span>
+          <span>${pill}</span>
+        </span>
+        <span class="text-xs text-gray-700">Applied this week: <span class="font-semibold">${fmtInt(applied)}</span></span>
+      </div>
+    `;
+  }
 
-  el.innerHTML = `
-    <div class="grid grid-cols-1 gap-2">
-      ${rows.map(r => `
-        <div class="flex items-center gap-2 rounded-xl border bg-white px-2.5 py-2">
-          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg border bg-gray-50 text-gray-700">
-            ${r.icon()}
-          </span>
-          <div class="min-w-0">
-            <div class="text-[11px] font-semibold text-gray-600 leading-tight">${escapeHtml(r.label)}</div>
-            <div class="text-sm font-bold text-gray-900 leading-tight">${escapeHtml(r.value)}</div>
-          </div>
+
+
+  
+  // ------------------------- Right Tile: Week totals (display-only) -------------------------
+  function _svgShipIcon(){
+    return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 20h18" />
+      <path d="M4 17h16l-1.5 3H5.5L4 17z" />
+      <path d="M6 16V8h12v8" />
+      <path d="M10 8V5h4v3" />
+    </svg>`;
+  }
+  function _svgPlaneIcon(){
+    return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2 16l9-4V3l2-1 1 11 8 3-1 2-7-2-3 5-2 1 1-6-6-2z"/>
+    </svg>`;
+  }
+  function _svgContainersIcon(){
+    // shipping containers / pallets vibe
+    return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="3" y="8" width="8" height="10" rx="1"></rect>
+      <rect x="13" y="6" width="8" height="12" rx="1"></rect>
+      <path d="M6 11v4M8 11v4M16 9v6M18 9v6"></path>
+      <path d="M2 20h20"></path>
+    </svg>`;
+  }
+  function _svgBoxIcon(){
+    return `<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 8l-9-5-9 5 9 5 9-5z"></path>
+      <path d="M3 8v8l9 5 9-5V8"></path>
+      <path d="M12 13v8"></path>
+    </svg>`;
+  }
+  function _row(iconHtml, label, value){
+    return `
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="flex items-center gap-2 text-gray-700">
+          <span class="text-gray-500">${iconHtml}</span>
+          <span class="font-semibold">${label}</span>
         </div>
-      `).join('')}
-    </div>
-    <div class="mt-3 flex items-center gap-2">
-      <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
-            style="background:${statusBg(worst.color)}; border-color:${statusStroke(worst.color)};">
-        <span class="inline-block h-2 w-2 rounded-full" style="background:${worst.color};"></span>
-        <span class="font-semibold">Health:</span>
-        <span>${escapeHtml(pillText)}</span>
-      </span>
-    </div>
-  `;
-
-  function escapeHtml(s) {
-    return String(s ?? '')
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;')
-      .replace(/'/g,'&#39;');
+        <div class="text-gray-900 font-semibold tabular-nums">${value}</div>
+      </div>
+    `;
   }
 
-  // Tiny inline icons (no external deps)
-  function iconDoc() {
-    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h8"/></svg>`;
+  function renderRightWeekTotals(ws, receiving, vas, intl) {
+    const el = document.getElementById('flow-footer');
+    if (!el) return;
+
+    const plannedPOs = receiving?.plannedPOs ?? 0;
+    const receivedPOs = receiving?.receivedPOs ?? 0;
+
+    const plannedUnits = vas?.plannedUnits ?? 0;
+    const appliedUnits = vas?.appliedUnits ?? 0;
+
+    const cartonsIn = receiving?.cartonsInTotal ?? 0;
+    const cartonsOut = receiving?.cartonsOutTotal ?? 0;
+
+    const lanes = Array.isArray(intl?.lanes) ? intl.lanes.length : 0;
+
+    // Containers + vessels come from the per-week container list (lane-level)
+    let containers = 0, vessels = 0;
+    try {
+      const st = loadIntlWeekContainers(ws);
+      const list = Array.isArray(st?.containers) ? st.containers : [];
+      containers = list.length;
+      const set = new Set();
+      for (const c of list) {
+        const v = String(c?.vessel || '').trim();
+        if (v) set.add(v);
+      }
+      vessels = set.size;
+    } catch {}
+
+    // Slightly larger typography + more spacing (as requested)
+    el.innerHTML = `
+      <div class="h-full flex flex-col">
+        <div class="text-base font-semibold text-gray-800 mb-2">Week totals</div>
+        <div class="divide-y">
+          ${_row(_svgBoxIcon(), "POs planned – received", `${fmtInt(plannedPOs)} – ${fmtInt(receivedPOs)}`)}
+          ${_row(`<span class="inline-flex items-center gap-1">${_svgBoxIcon()}</span>`, "Units planned – applied", `${fmtInt(plannedUnits)} – ${fmtInt(appliedUnits)}`)}
+          ${_row(_svgBoxIcon(), "Cartons in – cartons out", `${fmtInt(cartonsIn)} – ${fmtInt(cartonsOut)}`)}
+          ${_row(_svgBoxIcon(), "Total lanes", fmtInt(lanes))}
+          ${_row(`<span class="inline-flex items-center gap-1">${_svgShipIcon()}${_svgPlaneIcon()}</span>`, "Total vessels", fmtInt(vessels))}
+          ${_row(_svgContainersIcon(), "Total containers", fmtInt(containers))}
+        </div>
+        <div class="mt-auto pt-3">
+          <!-- Health pill lives in the global footer (vo-footer); keep this tile focused on totals. -->
+          <div class="text-xs text-gray-500">Tip: edit baseline or copy baseline dates in lane details to confirm timing.</div>
+        </div>
+      </div>
+    `;
   }
-  function iconSpark() {
-    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.2 5.2L18 9l-4.8 1.8L12 16l-1.2-5.2L6 9l4.8-1.8L12 2z"/><path d="M5 14l.7 3L9 18l-3.3 1-.7 3-.7-3L1.9 18l3.4-1 .7-3z"/></svg>`;
-  }
-  function iconBox() {
-    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9 5-9-5"/><path d="M3 8l9-5 9 5"/><path d="M12 13v9"/></svg>`;
-  }
-  function iconLane() {
-    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18"/><path d="M18 3v18"/><path d="M12 3v4"/><path d="M12 11v4"/><path d="M12 19v2"/></svg>`;
-  }
-  function iconShip() {
-    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l9 4 9-4"/><path d="M3 17V9l9-4 9 4v8"/><path d="M12 5v16"/></svg>`;
-  }
-  function iconContainerSmall() {
-    return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>`;
-  }
-}
 
 
-
-
-  // ------------------------- PDF Reporting (Print-to-PDF) -------------------------
+// ------------------------- PDF Reporting (Print-to-PDF) -------------------------
   // Generates a multi-page printable report in a new window and triggers the browser print dialog.
   // This avoids external PDF libraries and is resilient to undefined data.
   function escHtml(s) {
@@ -3257,66 +3144,6 @@ function renderFooterTrends(el, nodes, weekKey) {
           <div class="muted">Week start: ${escHtml(ws)} • Generated: ${escHtml(new Date().toLocaleString())}</div>
         </div>
         ${bodyHtml}
-      </section>
-    `;
-
-    const ws = (cache && cache.weekStart) || UI.currentWs;
-    const weekContainers = loadIntlWeekContainers(ws) || [];
-    const lmReceipts = loadLastMileReceipts(ws) || {};
-
-    const recLate = (receiving && receiving.latePOList) || [];
-    const recMissing = (receiving && receiving.missingPOList) || [];
-    const intlHolds = (international && international.holds) || [];
-
-    const openLastMile = weekContainers
-      .filter((c) => c && c.contId)
-      .filter((c) => {
-        const r = lmReceipts[c.contId];
-        const st = (r && r.status) || 'Open';
-        return st !== 'Delivered' && st !== 'Complete';
-      });
-
-    const exceptionPage = `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">Exception summary</div>
-          <div class="sub">Point-in-time snapshot • Week of ${fmtDate(ws)}</div>
-        </div>
-
-        <div class="grid2">
-          <div class="card">
-            <div class="k">Receiving</div>
-            <div class="v">${recLate.length + recMissing.length}</div>
-            <div class="muted">Late + missing POs</div>
-            <div class="list">
-              ${recLate.slice(0, 15).map((x) => `<div>Late • ${esc(x)}</div>`).join('')}
-              ${recMissing.slice(0, 15).map((x) => `<div>Missing • ${esc(x)}</div>`).join('')}
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="k">Transit & clearing</div>
-            <div class="v">${intlHolds.length}</div>
-            <div class="muted">Lanes on hold</div>
-            <div class="list">
-              ${intlHolds.slice(0, 20).map((h) => `<div>${esc(h.laneKey || h.key || '')}${h.reason ? ` • ${esc(h.reason)}` : ''}</div>`).join('')}
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="k">Last mile</div>
-            <div class="v">${openLastMile.length}</div>
-            <div class="muted">Open containers/AWBs</div>
-            <div class="list">
-              ${openLastMile.slice(0, 25).map((c) => `<div>${esc(c.contId)}${c.awb ? ` • ${esc(c.awb)}` : ''}</div>`).join('')}
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="k">Notes</div>
-            <div class="muted">Use the Flow page to drill in and mark items complete. This PDF is a read-only snapshot.</div>
-          </div>
-        </div>
       </section>
     `;
 
@@ -3410,7 +3237,6 @@ function renderFooterTrends(el, nodes, weekKey) {
     `;
 
     return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
-      ${exceptionPage}
       ${execPage}
       ${receivingPage}
       ${vasPage}
@@ -3472,29 +3298,11 @@ async function refresh() {
       resetBtn.onclick = () => {
         // Flow-only reset (do not broadcast global events that can break other pages)
         UI.selection = { node: 'receiving', sub: null };
-
         try {
-          const ws = UI.currentWs;
-
-          // Clear Flow's per-week stores (do NOT touch other pages' keys)
-          const prefixes = [
-            `flow:intl:${ws}:`,                 // lane manual keys
-            `flow:lastmile_receipts:${ws}:`,    // receipt keys
-          ];
-
-          // Remove prefix-matched keys
-          for (let i = localStorage.length - 1; i >= 0; i--) {
-            const k = localStorage.key(i);
-            if (!k) continue;
-            if (prefixes.some((p) => k.startsWith(p))) localStorage.removeItem(k);
-          }
-
-          // Remove exact per-week keys
-          localStorage.removeItem(flowKey(ws));                 // flow_v1 aggregate
-          localStorage.removeItem(intlWeekContainersKey(ws));   // cached container list
-          localStorage.removeItem(lastMileReceiptsKey(ws));     // cached receipts map
+          // clear lightweight per-week manual inputs
+          localStorage.removeItem(`flow:intl:${UI.currentWs}`);
+          localStorage.removeItem(`flow:lastmile:${UI.currentWs}`);
         } catch {}
-
         // Re-render just this page
         refresh();
       };
@@ -3573,6 +3381,8 @@ async function refresh() {
     // default selection if invalid
     if (!UI.selection?.node || UI.selection.node === 'milk') UI.selection = { node: 'receiving', sub: null };
     renderDetail(ws, tz, receiving, vas, intl, manual);
+    renderRightWeekTotals(ws, receiving, vas, intl);
+
     // Footer trend uses the same completed records dataset.
     renderFooterTrends(ws, tz, Array.isArray(records) ? records : (records?.records || records?.rows || records?.data || []), receiving, vas, intl, manual);
     highlightSelection();
