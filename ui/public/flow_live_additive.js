@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v60)
+/* flow_live_additive.js (v53)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -2863,7 +2863,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
             <div class="flex items-center justify-between mt-3">
               <div id="flow-intl-save-msg" class="text-xs text-gray-500"></div>
-              <button id="flow-intl-save" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+              <button id="flow-intl-save" data-ws="${escapeAttr(ws)}" data-lane="${escapeAttr(lane.key)}" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
             </div>
           </div>
 
@@ -3098,7 +3098,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           customs_hold: hold,
           note: String(note || ''),
         };
-        saveIntlLaneManual(ws, key, obj);
+        saveIntlLaneManual(wsNow, key, obj);
         const msg = detail.querySelector('#flow-intl-save-msg');
         if (msg) msg.textContent = 'Saved';
         // Refresh to recompute lane level + badges
