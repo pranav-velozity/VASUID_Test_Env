@@ -1322,7 +1322,7 @@ function computeManualNodeStatuses(ws, tz) {
       <div data-node="${id}" data-flow-node="${id}" class="rounded-xl border p-3 hover:bg-gray-50 cursor-pointer ${dis}">
         <div class="flex items-start justify-between gap-2">
           <div>
-            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-8 h-8 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
+            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-9 h-9 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
             <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
           </div>
           <div class="flex items-center gap-2">
@@ -1750,7 +1750,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         <div class="rounded-xl border bg-white p-2">
           <div class="flex items-center justify-between gap-2">
             <div class="text-xs font-semibold text-gray-700">${title}</div>
-            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-[11px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
+            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-xs font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
           </div>
           <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
           ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
@@ -3019,12 +3019,14 @@ function severityRank(level){
 }
 
 function colorToStatus(color){
-  const c = String(color||"").toLowerCase();
-  if(c==="red") return "At-Risk";
-  if(c==="yellow" || c==="amber") return "Watch";
-  if(c==="gray" || c==="grey") return "Future";
-  if(c==="green") return "Ahead-of-Plan";
-  return "";
+  // IMPORTANT: use the same color banding logic as the pill background to avoid mismatches
+  // (e.g. hex red showing "On Track").
+  const band = _bandFromColor(color);
+  if (band === 'red') return 'At-Risk';
+  if (band === 'yellow') return 'Watch';
+  if (band === 'green') return 'On Track';
+  if (band === 'gray') return 'Future';
+  return 'On Track';
 }
 
 function _bandFromColor(color){
@@ -3100,6 +3102,9 @@ function renderFooterTrends(el, nodes, weekKey) {
 
   const lanesTotal = Array.isArray(intl.lanes) ? intl.lanes.length : (intl.lanesTotal || 0);
 
+  const cbmTotal = (num(vas.appliedUnits || 0) * 0.00375);
+  const cbmText = (Number.isFinite(cbmTotal) ? cbmTotal : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const rows = [
     { label: 'Total POs planned – received', value: `${fmtInt(receiving.plannedPOs || 0)} – ${fmtInt(receiving.receivedPOs || 0)}`, icon: iconDoc },
     { label: 'Total Units planned – applied', value: `${fmtInt(vas.plannedUnits || 0)} – ${fmtInt(vas.appliedUnits || 0)}`, icon: iconSpark },
@@ -3107,6 +3112,7 @@ function renderFooterTrends(el, nodes, weekKey) {
     { label: 'Total Lanes', value: `${fmtInt(lanesTotal)}`, icon: iconLane },
     { label: 'Total Vessels', value: `${fmtInt(vesselsTotal)}`, icon: iconShip },
     { label: 'Total Containers', value: `${fmtInt(containersTotal)}`, icon: iconContainerSmall },
+    { label: 'Total CBM', value: `${cbmText}`, icon: iconBox },
   ];
 
   // Health pill (kept, small)
@@ -3120,15 +3126,15 @@ function renderFooterTrends(el, nodes, weekKey) {
   const pillText = (colorToStatus(worst.color) || 'On Track');
 
   el.innerHTML = `
-    <div class="grid grid-cols-1 gap-2">
+    <div class="grid grid-cols-1 gap-3">
       ${rows.map(r => `
-        <div class="flex items-center gap-2 rounded-xl border bg-white px-2.5 py-2">
+        <div class="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5">
           <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg border bg-gray-50 text-gray-700">
             ${r.icon()}
           </span>
           <div class="min-w-0">
             <div class="text-[11px] font-semibold text-gray-600 leading-tight">${escapeHtml(r.label)}</div>
-            <div class="text-sm font-bold text-gray-900 leading-tight">${escapeHtml(r.value)}</div>
+            <div class="text-base font-bold text-gray-900 leading-tight">${escapeHtml(r.value)}</div>
           </div>
         </div>
       `).join('')}
