@@ -922,15 +922,17 @@ function loadWeekSignoff(ws) {
   const k = weekSignoffKey(ws);
   try {
     const raw = localStorage.getItem(k);
-    if (!raw) return { receivingComplete: false, vasComplete: false, updatedAt: null };
+    if (!raw) return { receivingComplete: false, vasComplete: false, receivingAt: null, vasAt: null, updatedAt: null };
     const o = JSON.parse(raw) || {};
     return {
       receivingComplete: !!o.receivingComplete,
       vasComplete: !!o.vasComplete,
+      receivingAt: o.receivingAt || null,
+      vasAt: o.vasAt || null,
       updatedAt: o.updatedAt || null,
     };
   } catch {
-    return { receivingComplete: false, vasComplete: false, updatedAt: null };
+    return { receivingComplete: false, vasComplete: false, receivingAt: null, vasAt: null, updatedAt: null };
   }
 }
 
@@ -939,6 +941,8 @@ function saveWeekSignoff(ws, next) {
   const o = {
     receivingComplete: !!next?.receivingComplete,
     vasComplete: !!next?.vasComplete,
+    receivingAt: next?.receivingAt || null,
+    vasAt: next?.vasAt || null,
     updatedAt: new Date().toISOString(),
   };
   try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
@@ -1587,8 +1591,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
         lastmile: manual?.baselines?.lastMileMax,
       };
       const actual = {
-        receiving: receiving.lastReceived,
-        vas: vas.lastAppliedAt || null,
+        receiving: (receiving?.signoff?.receivingAt || receiving.lastReceived),
+        vas: (vas?.signoff?.vasAt || vas.lastAppliedAt || null),
         intl: intl.lastMilestoneAt || null,
         lastmile: (manual?.dates?.deliveredAt || manual?.dates?.delivered_at || manual?.manual?.delivered_at) || null,
       };
@@ -2032,7 +2036,7 @@ const signoffSection = (context) => {
             </div>
           </div>
 
-          ${signoffSection('week')}
+          
 
           <div class="flex items-center justify-between">
             <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
@@ -2043,7 +2047,7 @@ const signoffSection = (context) => {
             </span>
             <span class="text-xs text-gray-600">Deadlines & exceptions on node click</span>
           </div>
-          ${signoffSection('node')}
+          
         </div>
       `;
     };
@@ -2084,7 +2088,7 @@ const signoffSection = (context) => {
             </div>
           </div>
 
-          ${signoffSection('week')}
+          
 
           <div class="flex items-center justify-between">
             <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
@@ -2095,7 +2099,7 @@ const signoffSection = (context) => {
             </span>
             <span class="text-xs text-gray-600">Click nodes for exceptions</span>
           </div>
-          ${signoffSection('node')}
+          
         </div>
       `;
     };
@@ -2235,7 +2239,7 @@ const signoffSection = (context) => {
       return weekTotalsView();
     })();
 
-    el.innerHTML = `<div class="min-h-[320px]">${view}</div>`;
+    el.innerHTML = `<div class="min-h-[320px]">${view}${signoffSection(selNode ? 'node' : 'week')}</div>`;
 
     // Bind back button
     const back = document.getElementById('rt-back');
@@ -2271,7 +2275,15 @@ const bindSign = (inp, key) => {
   inp.dataset.bound = '1';
   inp.addEventListener('change', () => {
     const next = loadWeekSignoff(ws);
-    next[key] = !!inp.checked;
+    const checked = !!inp.checked;
+    next[key] = checked;
+    // Capture sign-off timestamp for journey 'Actual' display.
+    if (key === 'receivingComplete') {
+      next.receivingAt = checked ? (next.receivingAt || new Date().toISOString()) : null;
+    }
+    if (key === 'vasComplete') {
+      next.vasAt = checked ? (next.vasAt || new Date().toISOString()) : null;
+    }
     saveWeekSignoff(ws, next);
 
     // Recompute local node levels immediately (no backend changes).
