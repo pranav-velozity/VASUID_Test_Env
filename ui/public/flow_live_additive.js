@@ -1229,7 +1229,8 @@ function computeManualNodeStatuses(ws, tz) {
   const UI = {
     mounted: false,
     currentWs: null,
-    selection: { node: 'receiving', sub: null },
+    // Default focus on Milk Run on initial load (right tile + journey highlight)
+    selection: { node: 'milk', sub: null },
   };
 
   function ensureFlowPageExists() {
@@ -1845,6 +1846,9 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const plannedUnits = num(vas?.plannedUnits || 0);
     const cbm = appliedUnits * 0.00375;
 
+    // Receiving CBM is derived from planned units (plan rows) * 0.00375
+    const receivingCbmPlanned = plannedUnits * 0.00375;
+
     const recPlannedPOs = num(receiving?.plannedPOs || 0);
     const recReceivedPOs = num(receiving?.receivedPOs || 0);
 
@@ -1959,6 +1963,55 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       `;
     };
 
+    const milkRunView = () => {
+      // Milk Run is a planning checkpoint. Keep this view focused on plan inputs.
+      return `
+        ${header('Milk Run — planning', `Week of ${ws}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.po, 'POs planned', fmtInt(recPlannedPOs))}
+            ${hRow(icon.units, 'Units planned', fmtInt(plannedUnits))}
+            ${hRow(icon.box, 'Planned CBM', fmt2(receivingCbmPlanned))}
+          </div>
+
+          ${pairRow(
+            hRow(icon.lane, 'Total lanes', fmtInt(lanesTotal)),
+            hRow(icon.ship, 'Total vessels', fmtInt(totalVessels))
+          )}
+
+          ${pairRow(
+            hRow(icon.cont, 'Total containers', fmtInt(totalContainers)),
+            hRow(icon.box, 'Total CBM', fmt2(cbm))
+          )}
+
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Pre-booked containers</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">Enter committed capacity for this week (local only)</div>
+            <div class="grid grid-cols-2 gap-3 mt-3">
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">20 ft</div>
+                <input id="prebook-20" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c20)}" />
+              </label>
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">40 ft</div>
+                <input id="prebook-40" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c40)}" />
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                  style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
+              <span class="inline-block h-2 w-2 rounded-full" style="background:${health.color};"></span>
+              <span class="font-semibold">Health</span>
+              <span>${health.label}</span>
+            </span>
+            <span class="text-xs text-gray-600">Click nodes for exceptions</span>
+          </div>
+        </div>
+      `;
+    };
+
     const receivingView = () => {
       const due = receiving?.due ? fmtInTZ(receiving.due, tz) : '—';
       const last = receiving?.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—';
@@ -1972,6 +2025,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           <div class="rounded-2xl border bg-gray-50 p-3">
             ${hRow(icon.time, 'Last received', last)}
             ${hRow(icon.po, 'Remaining POs', fmtInt(remaining))}
+            ${hRow(icon.box, 'Receiving CBM (planned)', fmt2(receivingCbmPlanned))}
           </div>
           <div class="rounded-2xl border bg-white p-3">
             ${hRow(icon.warn, 'Late POs', late ? `<span class="text-red-700">${fmtInt(late)}</span>` : fmtInt(late))}
@@ -1986,6 +2040,29 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const due = vas?.due ? fmtInTZ(vas.due, tz) : '—';
       const pctDone = plannedUnits ? Math.round((appliedUnits / plannedUnits) * 100) : 0;
       const remainingUnits = Math.max(0, plannedUnits - appliedUnits);
+      const remainingCbm = Math.max(0, remainingUnits) * 0.00375;
+      const appliedCbm = appliedUnits * 0.00375;
+
+      // Pace / deadline helper (UI-only)
+      const pace = (() => {
+        const d = vas?.due instanceof Date ? vas.due : (vas?.due ? new Date(vas.due) : null);
+        if (!d || isNaN(d)) return null;
+        const now = new Date();
+        const ms = d.getTime() - now.getTime();
+        const daysLeft = Math.ceil(ms / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 0) return { label: 'Past due', value: `${fmtInt(Math.max(0, Math.round((-ms) / (1000 * 60 * 60))))}h` };
+        const perDay = remainingUnits / Math.max(1, daysLeft);
+        return { label: 'Pace needed', value: `${fmtInt(Math.ceil(perDay))} units/day` };
+      })();
+
+      const lateBy = (() => {
+        if (!vas?.due) return null;
+        const now = new Date();
+        const d = vas.due instanceof Date ? vas.due : new Date(vas.due);
+        if (isNaN(d)) return null;
+        const diffH = Math.round((now.getTime() - d.getTime()) / (1000 * 60 * 60));
+        return diffH > 0 ? diffH : 0;
+      })();
 
       return `
         ${header('VAS — plan vs actual', `Due ${due}`)}
@@ -1993,10 +2070,13 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           <div class="rounded-2xl border bg-gray-50 p-3">
             ${hRow(icon.units, 'Applied / Planned', `${fmtInt(appliedUnits)} / ${fmtInt(plannedUnits)} (${pctDone}%)`)}
             ${hRow(icon.warn, 'Units remaining', fmtInt(remainingUnits))}
+            ${hRow(icon.box, 'CBM applied', fmt2(appliedCbm))}
+            ${hRow(icon.box, 'CBM remaining', fmt2(remainingCbm))}
+            ${pace ? hRow(icon.time, pace.label, pace.value) : ''}
           </div>
           <div class="rounded-2xl border bg-white p-3">
             <div class="text-xs font-semibold text-gray-700">Focus</div>
-            <div class="text-sm text-gray-800 mt-1">Watch remaining units vs due window. Use bottom tile for supplier/PO detail.</div>
+            <div class="text-sm text-gray-800 mt-1">Watch remaining units vs the due window${lateBy ? ` (now ${fmtInt(lateBy)}h past due)` : ''}. Use the bottom tile for supplier/PO detail.</div>
           </div>
         </div>
       `;
@@ -2009,6 +2089,9 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
       const holds = num(intl?.holds || 0);
       const docs = num(intl?.missingDocs || 0);
       const notCleared = num(intl?.missingOriginClear || 0);
+      const onTime = Array.isArray(intl?.lanes)
+        ? intl.lanes.filter(l => (l?.level === 'green') || (_bandFromColor(l?.color || '') === 'green')).length
+        : 0;
 
       return `
         ${header('Transit & Clearing — exceptions', `Origin window ${windowText}`)}
@@ -2016,6 +2099,8 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
           <div class="rounded-2xl border bg-gray-50 p-3">
             ${hRow(icon.lane, 'Lanes', fmtInt(lanesTotal))}
             ${hRow(icon.ship, 'Vessels', fmtInt(totalVessels))}
+            ${hRow(icon.cont, 'Containers', fmtInt(totalContainers))}
+            ${hRow(icon.time, 'On-time lanes', fmtInt(onTime))}
           </div>
           <div class="rounded-2xl border bg-white p-3">
             ${hRow(icon.warn, 'Customs holds', holds ? `<span class="text-red-700">${fmtInt(holds)}</span>` : fmtInt(holds))}
@@ -2029,8 +2114,13 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     const lastMileView = () => {
       const receipts = loadLastMileReceipts(ws) || {};
       const r = receipts?.receipts || receipts || {};
-      const delivered = Object.values(r).filter(x => x && (x.status === 'Delivered' || x.status === 'Complete' || x.delivered_local || x.delivered_at)).length;
-      const scheduled = Object.values(r).filter(x => x && (x.status === 'Scheduled' || x.scheduled_local)).length;
+      const vals = Object.values(r).filter(Boolean);
+      const isDelivered = (x) => !!(x && (x.status === 'Delivered' || x.status === 'Complete' || x.delivered_local || x.delivered_at));
+      const isScheduled = (x) => !!(x && (x.status === 'Scheduled' || x.scheduled_local));
+
+      const delivered = vals.filter(isDelivered).length;
+      // Scheduled should exclude delivered (two-step workflow: scheduled → delivered)
+      const scheduled = vals.filter(x => isScheduled(x) && !isDelivered(x)).length;
       const open = Math.max(0, totalContainers - delivered);
 
       return `
@@ -2049,6 +2139,7 @@ function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
     };
 
     const view = (() => {
+      if (selNode === 'milk') return milkRunView();
       if (selNode === 'receiving') return receivingView();
       if (selNode === 'vas') return vasView();
       if (selNode === 'intl') return intlView();
