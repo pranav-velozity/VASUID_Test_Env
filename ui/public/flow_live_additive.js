@@ -12,7 +12,7 @@
   // ------------------------- PATCH (v51.1) -------------------------
   // Guardrails to keep other modules from breaking Flow.
   // NOTE: Scripts load order is exec -> receiving -> flow (defer). Some helpers are expected globally.
-  window.__FLOW_BUILD__ = 'v62-weekstore-lastmile-advance-btn' + new Date().toISOString();
+  window.__FLOW_BUILD__ = "v63-lastmile-scheduled-table-fix" + new Date().toISOString();
 
   // Receiving module expects this helper; if missing it throws and can interrupt week load flows.
   if (typeof window.computeCartonsOutByPOFromState !== 'function') {
@@ -2838,6 +2838,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           size_ft: String(c.size_ft || '').trim(),
           vessel,
           delivery_local: String((rcp && rcp.delivery_local) || '').trim(),
+          scheduled_local: String((rcp && rcp.scheduled_local) || '').trim(),
+          status: String((rcp && rcp.status) || '').trim(),
           pod_received: !!((rcp && rcp.pod_received) || false),
           note: String((rcp && rcp.last_mile_note) || ''),
           laneCount: lane_keys.length,
