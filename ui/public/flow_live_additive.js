@@ -12,7 +12,7 @@
   // ------------------------- PATCH (v51.1) -------------------------
   // Guardrails to keep other modules from breaking Flow.
   // NOTE: Scripts load order is exec -> receiving -> flow (defer). Some helpers are expected globally.
-  window.__FLOW_BUILD__ = 'v62-weekstore-lastmile-schedule-sync' + new Date().toISOString();
+  window.__FLOW_BUILD__ = 'v62-weekstore-lastmile-advance-btn' + new Date().toISOString();
 
   // Receiving module expects this helper; if missing it throws and can interrupt week load flows.
   if (typeof window.computeCartonsOutByPOFromState !== 'function') {
@@ -2868,14 +2868,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Open</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_local).length}</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => !r.scheduled_local && !r.delivery_local).length}</div>
           </div>
         </div>
       `;
 
       const rows = contRows.map(r => {
-        const st = r.delivery_local ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
-                                 : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
+        const st = r.delivery_local
+          ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Delivered</span>`
+          : (r.scheduled_local
+            ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('gray')} whitespace-nowrap">Scheduled</span>`
+            : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`);
         return [
           `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
           r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
@@ -2887,7 +2890,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           st,
           r.delivery_local
             ? '<span class="text-gray-400">—</span>'
-            : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`,
+            : (r.scheduled_local
+              ? `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`
+              : `<button data-lm-schedule="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-sky-50 hover:bg-sky-100">Schedule</button>`),
         ];
       });
 
@@ -3360,9 +3365,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
   
   function lastMileEditor(ws, tz, r) {
+    const scheduledAt = r.scheduled_local ? String(r.scheduled_local).replace('T',' ') : '';
     const deliveredAt = r.delivery_local ? String(r.delivery_local).replace('T',' ') : '';
     const note = String(r.note || '');
-    const canReceive = !r.delivery_local;
+    const state = deliveredAt ? 'Delivered' : (scheduledAt ? 'Scheduled' : 'Open');
+    const canSchedule = !scheduledAt && !deliveredAt;
+    const canReceive = !!scheduledAt && !deliveredAt;
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -3371,17 +3379,21 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div class="text-sm font-semibold text-gray-700">Selected container</div>
             <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(r.container_id || '—')} • ${escapeHtml(r.vessel || '—')}</div>
           </div>
-          <div class="text-xs ${canReceive ? 'text-amber-700' : 'text-emerald-700'}">${canReceive ? 'Open' : 'Complete'}</div>
+          <div class="text-xs ${state==='Delivered' ? 'text-emerald-700' : (state==='Scheduled' ? 'text-gray-700' : 'text-amber-700')}">${escapeHtml(state)}</div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-sm">
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Scheduled at</div>
+            <div class="font-medium">${scheduledAt ? escapeHtml(scheduledAt) : '<span class="text-gray-400">—</span>'}</div>
+          </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Delivered at</div>
             <div class="font-medium">${deliveredAt ? escapeHtml(deliveredAt) : '<span class="text-gray-400">—</span>'}</div>
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">POD</div>
-            <div class="font-medium">${r.pod_received ? 'Yes' : (canReceive ? '<span class="text-gray-400">—</span>' : 'No')}</div>
+            <div class="font-medium">${r.pod_received ? 'Yes' : (deliveredAt ? 'No' : '<span class="text-gray-400">—</span>')}</div>
           </div>
         </div>
 
@@ -3393,15 +3405,21 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="flex items-center justify-between mt-3">
           <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
           <div class="flex items-center gap-2">
-            ${canReceive ? `
+            ${canSchedule ? `
+              <button data-lm-schedule="1"
+                data-ws="${escapeAttr(ws)}"
+                data-cont="${escapeAttr(r.key)}"
+                data-uid="${escapeAttr(r.uid)}"
+                class="px-3 py-1.5 rounded-lg text-sm border bg-sky-50 hover:bg-sky-100">Schedule (now)</button>
+            ` : (canReceive ? `
               <button data-lm-deliver="1"
                 data-ws="${escapeAttr(ws)}"
                 data-cont="${escapeAttr(r.key)}"
                 data-uid="${escapeAttr(r.uid)}"
                 class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">Receive (now)</button>
             ` : `
-              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Received</button>
-            `}
+              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Delivered</button>
+            `)}
             <button data-lm-note-save="1"
               data-ws="${escapeAttr(ws)}"
               data-cont="${escapeAttr(r.key)}"
