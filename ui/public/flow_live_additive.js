@@ -343,109 +343,14 @@ function iconContainer() {
   }
 
   function saveFlowManual(ws, data) {
-    try {
-      localStorage.setItem(flowKey(ws), JSON.stringify({ ...(data || {}), _updatedAt: new Date().toISOString() }));
-    } catch { /* ignore */ }
+    const payload = { ...(data || {}), _updatedAt: new Date().toISOString() };
+    try { localStorage.setItem(flowKey(ws), JSON.stringify(payload)); } catch { /* ignore */ }
+
+    try { cacheWeek(ws, { flowManual: payload }); } catch {}
+    try { postWeekPatchToBackend(ws, { flowManual: payload }); } catch {}
+
+    return payload;
   }
-
-  
-  function asArray(x) {
-    if (Array.isArray(x)) return x;
-    if (!x) return [];
-    // Common API wrappers
-    for (const k of ['items','rows','data','records','result','results']) {
-      if (x && Array.isArray(x[k])) return x[k];
-    }
-    return [];
-  }
-
-// ------------------------- Data fetch (reusing existing endpoints) -------------------------
-  async function loadPlan(ws) {
-    // Prefer window.state.plan if it matches current ws
-    const s = window.state || {};
-    if (s.weekStart === ws && Array.isArray(s.plan) && s.plan.length) return s.plan;
-    // Fallback to backend endpoints used elsewhere
-    try { const r = await api(`/plan?weekStart=${encodeURIComponent(ws)}`); return asArray(r); } catch {}
-    try { const r = await api(`/plan/weeks/${encodeURIComponent(ws)}`); return asArray(r); } catch {}
-    return [];
-  }
-
-  async function loadReceiving(ws) {
-    // Receiving module uses /receiving?weekStart=... and /receiving/weeks/:ws for saves.
-    try { const r = await api(`/receiving?weekStart=${encodeURIComponent(ws)}`); return asArray(r); } catch {}
-    try { const r = await api(`/receiving/weeks/${encodeURIComponent(ws)}`); return asArray(r); } catch {}
-    return [];
-  }
-
-  async function loadRecords(ws, tz) {
-    const s = window.state || {};
-    if (s.weekStart === ws && Array.isArray(s.records) && s.records.length) return s.records;
-
-    // Derive week range in ISO; keep it simple: ws..ws+6
-    const wsD = new Date(`${ws}T00:00:00Z`);
-    const weD = new Date(wsD.getTime());
-    weD.setUTCDate(weD.getUTCDate() + 6);
-    const from = `${ws}T00:00:00.000Z`;
-    const to = `${isoDate(weD)}T23:59:59.999Z`;
-
-    // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
-    // Prefer complete for performance, but fall back to all if API supports.
-    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); return asArray(r); } catch {}
-    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); return asArray(r); } catch {}
-    return [];
-  }
-
-  // ------------------------- Computations -------------------------
-  function normalizeSupplier(x) {
-    return String(x || '').trim() || 'Unknown';
-  }
-
-  function normalizePO(x) {
-    return String(x || '').trim().toUpperCase();
-  }
-
-  function getPO(row) {
-    return normalizePO(
-      row.po_number ?? row.poNumber ?? row.po_num ?? row.poNum ?? row.PO_Number ?? row.PO ?? row.po ?? row.PO_NO ?? row.po_no ?? ''
-    );
-  }
-
-  function getSupplier(row) {
-    return normalizeSupplier(
-      row.supplier_name ?? row.supplierName ?? row.supplier ?? row.vendor ?? row.vendor_name ?? row.factory ?? row.Supplier ?? row.Vendor ?? ''
-    );
-  }
-
-  function num(val) {
-    if (val == null) return 0;
-    if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
-    const s = String(val).replace(/,/g, '').trim();
-    const n = Number(s);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-
-  function getPlanUnits(planRows) {
-    // canonical field in this codebase is target_qty (Exec/Plan); keep fallbacks.
-    return (planRows || []).reduce((acc, r) => {
-      const n = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
-      return acc + n;
-    }, 0);
-  }
-
-  function groupPlanBySupplier(planRows) {
-  const m = new Map();
-  for (const r of planRows || []) {
-    const sup = getSupplier(r);
-    const po = getPO(r);
-    const units = num(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.qty ?? r.units ?? r.quantity ?? r.target ?? 0);
-    if (!m.has(sup)) m.set(sup, { supplier: sup, pos: new Set(), units: 0 });
-    const o = m.get(sup);
-    if (po) o.pos.add(po);
-    o.units += units;
-  }
-  return Array.from(m.values()).map(x => ({ supplier: x.supplier, poCount: x.pos.size, units: x.units }));
-}
 
   function receivingByPO(receivingRows) {
     const m = new Map();
@@ -731,7 +636,34 @@ function computeCartonStatsFromRecords(records) {
   }
 
   function intlStorageKey(ws, key) {
-    return `flow:intl:${ws}:${key}`;
+    return `flow:intl:${ws}
+
+// Lane manual persistence (docs/milestones/holds/notes) — week + lane scoped
+function saveIntlLaneManual(ws, key, obj) {
+  const k = `flow:intl:${ws}:${key}`;
+  const o = (obj && typeof obj === 'object') ? obj : {};
+  try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+
+  // Update cached full map (server merge is shallow, so we must send the whole map)
+  let map = {};
+  try {
+    map = (window.UI && UI.weekStoreCache && UI.weekStoreCache[ws] && UI.weekStoreCache[ws].intlLaneManual && typeof UI.weekStoreCache[ws].intlLaneManual === 'object')
+      ? { ...(UI.weekStoreCache[ws].intlLaneManual || {}) }
+      : {};
+  } catch { map = {}; }
+  map[String(key)] = o;
+
+  try { cacheWeek(ws, { intlLaneManual: map }); } catch {}
+  try { postWeekPatchToBackend(ws, { intlLaneManual: map }); } catch {}
+  return o;
+}
+
+function loadIntlLaneManual(ws, key) {
+  const k = `flow:intl:${ws}:${key}`;
+  try { return JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch { return {}; }
+}
+
+:${key}`;
   }
 
   // Week-level containers store (independent of selected lane)
@@ -884,6 +816,10 @@ function computeCartonStatsFromRecords(records) {
 
     const state = { ...(prev || {}), containers: next, _v: 1, _migratedFromLaneContainers: true };
     try { localStorage.setItem(k, JSON.stringify(state)); } catch { /* ignore */ }
+
+    try { cacheWeek(ws, { intlWeekContainers: state }); } catch {}
+    try { postWeekPatchToBackend(ws, { intlWeekContainers: state }); } catch {}
+
     return state;
   }
 
@@ -908,34 +844,12 @@ function computeCartonStatsFromRecords(records) {
     const k = prebookKey(ws);
     const o = { c20: num(next?.c20 || 0), c40: num(next?.c40 || 0) };
     try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+
+    try { cacheWeek(ws, { prebook: o }); } catch {}
+    try { postWeekPatchToBackend(ws, { prebook: o }); } catch {}
+
     return o;
   }
-
-
-
-// ------------------------- Week sign-off (Receiving / VAS) -------------------------
-// UI-only "master tick" per week. This is a deliberate sign-off signal and must NEVER
-// auto-write actual timestamps. It can influence node status only when checked.
-function weekSignoffKey(ws) { return `flow:weekSignoff:${ws}`; }
-
-function loadWeekSignoff(ws) {
-  try { if (UI && UI.signoffCache && UI.signoffCache[ws]) return UI.signoffCache[ws]; } catch (e) {}
-  const k = weekSignoffKey(ws);
-  try {
-    const raw = localStorage.getItem(k);
-    if (!raw) return { receivingComplete: false, vasComplete: false, receivingAt: null, vasAt: null, updatedAt: null };
-    const o = JSON.parse(raw) || {};
-    return {
-      receivingComplete: !!o.receivingComplete,
-      vasComplete: !!o.vasComplete,
-      receivingAt: o.receivingAt || null,
-      vasAt: o.vasAt || null,
-      updatedAt: o.updatedAt || null,
-    };
-  } catch {
-    return { receivingComplete: false, vasComplete: false, receivingAt: null, vasAt: null, updatedAt: null };
-  }
-}
 
 function saveWeekSignoff(ws, next) {
   const k = weekSignoffKey(ws);
@@ -946,70 +860,110 @@ function saveWeekSignoff(ws, next) {
     vasAt: next?.vasAt || null,
     updatedAt: new Date().toISOString(),
   };
-  try { localStorage.setItem(k, JSON.stringify(o)); } catch (e) {}
-  cacheSignoff(ws, o);
-  // Write-through to backend (async; UI remains snappy)
-  postSignoffToBackend(ws, o);
+  try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+
+  try {
+    if (!window.UI) window.UI = {};
+    if (!UI.weekStoreCache) UI.weekStoreCache = {};
+    UI.weekStoreCache[ws] = { ...(UI.weekStoreCache[ws] || {}), weekSignoff: o };
+  } catch {}
+
+  // Write-through to backend (async; never blocks UI)
+  try { postWeekPatchToBackend(ws, { weekSignoff: o }); } catch {}
+
   return o;
 }
-// ------------------------- Backend wiring for week sign-off (SQLite) -------------------------
+
+// ------------------------- Backend week-store (SQLite) -------------------------
+// Persist Flow week-scoped UI inputs so they sync across browsers.
+// Server endpoints:
+//   GET  /flow/week/:weekStart?facility=LKWF
+//   GET  /flow/week/:weekStart/all
+//   POST /flow/week/:weekStart   { facility, patch }
 function getFacility() {
   try {
     const f = (window.state && window.state.facility) ? String(window.state.facility).trim() : '';
     return f || 'default';
-  } catch (e) { return 'default'; }
+  } catch { return 'default'; }
 }
 
-async function fetchWeekFromBackend(ws) {
-  const base = getApiBase();
-  if (!base) return null;
+async function getWeekFromBackend(ws) {
   const facility = getFacility();
   try {
-    return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(facility)}`);
-  } catch (e) {
-    return null;
-  }
+    const r = await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(facility)}`);
+    return (r && typeof r === 'object') ? r : null;
+  } catch { return null; }
 }
 
-function cacheSignoff(ws, signoff) {
+function cacheWeek(ws, data) {
   try {
-    if (!UI.signoffCache) UI.signoffCache = {};
-    UI.signoffCache[ws] = signoff;
-  } catch (e) { /* ignore */ }
+    if (!window.UI) window.UI = {};
+    if (!UI.weekStoreCache) UI.weekStoreCache = {};
+    UI.weekStoreCache[ws] = { ...(UI.weekStoreCache[ws] || {}), ...(data || {}) };
+  } catch { /* ignore */ }
 }
 
-async function primeSignoffFromBackend(ws) {
-  const r = await fetchWeekFromBackend(ws);
-  if (!r || !r.data) return null;
-  const d = r.data || {};
-  const signoff = {
-    receivingComplete: !!d.receivingComplete,
-    vasComplete: !!d.vasComplete,
-    receivingAt: d.receivingAt || null,
-    vasAt: d.vasAt || null,
-    updatedAt: r.updated_at || r.updatedAt || null,
-  };
-  cacheSignoff(ws, signoff);
-  // Keep local cache in sync (read-only mirror; does NOT create timestamps automatically).
-  try { localStorage.setItem(weekSignoffKey(ws), JSON.stringify({ ...signoff })); } catch (e) {}
-  return signoff;
-}
-
-function postSignoffToBackend(ws, signoff) {
-  const base = getApiBase();
-  if (!base) return;
+async function postWeekPatchToBackend(ws, patch) {
   const facility = getFacility();
-  const patch = {
-    receivingComplete: !!signoff?.receivingComplete,
-    receivingAt: signoff?.receivingAt || null,
-    vasComplete: !!signoff?.vasComplete,
-    vasAt: signoff?.vasAt || null,
-  };
-  api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(facility)}`, {
+  const body = JSON.stringify({ facility, patch: patch || {} });
+  // Fire-and-forget; callers should not await.
+  api(`/flow/week/${encodeURIComponent(ws)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  }).catch((e) => console.warn('[flow] signoff backend write failed', e));
+    body,
+  }).catch(e => console.warn('Flow week-store save failed', e));
+}
+
+// Prime localStorage + cache from backend (so existing UI code can keep using localStorage).
+async function primeWeekFromBackend(ws) {
+  try {
+    if (!ws) return;
+    // Only fetch once per ws per page-load
+    if (window.UI && UI.__weekStorePrimed && UI.__weekStorePrimed[ws]) return;
+    if (!window.UI) window.UI = {};
+    if (!UI.__weekStorePrimed) UI.__weekStorePrimed = {};
+    UI.__weekStorePrimed[ws] = true;
+
+    const resp = await getWeekFromBackend(ws);
+    const data = resp && resp.data ? resp.data : null;
+    if (!data) return;
+
+    cacheWeek(ws, data);
+
+    // 1) Week sign-off
+    if (data.weekSignoff) {
+      try { localStorage.setItem(weekSignoffKey(ws), JSON.stringify(data.weekSignoff)); } catch {}
+    }
+
+    // 2) Pre-booked containers
+    if (data.prebook) {
+      try { localStorage.setItem(prebookKey(ws), JSON.stringify(data.prebook)); } catch {}
+    }
+
+    // 3) Manual nodes store (facility-scoped)
+    if (data.flowManual) {
+      try { localStorage.setItem(flowKey(ws), JSON.stringify(data.flowManual)); } catch {}
+    }
+
+    // 4) Intl lane manual maps -> per-lane localStorage keys
+    if (data.intlLaneManual && typeof data.intlLaneManual === 'object') {
+      try {
+        for (const [laneKey, obj] of Object.entries(data.intlLaneManual)) {
+          try { localStorage.setItem(intlStorageKey(ws, laneKey), JSON.stringify(obj || {})); } catch {}
+        }
+      } catch {}
+    }
+
+    // 5) Week-level containers
+    if (data.intlWeekContainers) {
+      try { localStorage.setItem(intlWeekContainersKey(ws), JSON.stringify(data.intlWeekContainers)); } catch {}
+    }
+
+    // 6) Last-mile receipts
+    if (data.lastMileReceipts) {
+      try { localStorage.setItem(lastMileReceiptsKey(ws), JSON.stringify(data.lastMileReceipts)); } catch {}
+    }
+  } catch { /* ignore */ }
 }
 
 
@@ -3971,11 +3925,10 @@ async function refresh() {
     if (wkInp) wkInp.value = ws;
 
     UI.currentWs = ws;
+
+    // Pull any saved week-scoped Flow inputs from backend so they sync across browsers
+    await primeWeekFromBackend(ws);
     const tz = getBizTZ();
-
-    // Prime week sign-off from backend (best-effort; falls back to local cache)
-    try { await primeSignoffFromBackend(ws); } catch (e) {}
-
 
     try {
       setSubheader(ws);
