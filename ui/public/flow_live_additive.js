@@ -335,17 +335,116 @@ function iconContainer() {
   }
 
   function loadFlowManual(ws) {
+    // Prefer backend-loaded week data when available.
+    try {
+      if (UI && UI.weekData && UI.currentWs === ws) return UI.weekData;
+    } catch { /* ignore */ }
     try {
       const raw = localStorage.getItem(flowKey(ws));
       if (!raw) return null;
       return JSON.parse(raw);
     } catch { return null; }
+  } catch { return null; }
   }
 
   function saveFlowManual(ws, data) {
+    // Mirror to localStorage (harmless) but write-through to backend so it persists cross-browser.
     try {
       localStorage.setItem(flowKey(ws), JSON.stringify({ ...(data || {}), _updatedAt: new Date().toISOString() }));
     } catch { /* ignore */ }
+
+    try {
+      // Write-through (do not await so UI stays snappy).
+      if (UI && UI.currentWs === ws) {
+        patchFlowWeek(ws, (data || {})).catch(() => {});
+      }
+    } catch { /* ignore */ }
+  }
+
+  // ------------------------- Backend persistence (Flow week store) -------------------------
+  // This is additive: we still keep localStorage helpers above, but the UI will prefer backend.
+  function getApiBase() {
+    const meta = document.querySelector('meta[name="api-base"]');
+    const fromMeta = meta && meta.content ? String(meta.content).trim() : '';
+    const fromWin = (typeof window.__API_BASE__ !== 'undefined') ? String(window.__API_BASE__ || '').trim() : '';
+    const fromState = (window.state && window.state.apiBase) ? String(window.state.apiBase).trim() : '';
+    const base = (fromMeta || fromWin || fromState || '').replace(/\/$/, '');
+    return base;
+  }
+
+  async function flowFetch(path, opts) {
+    const base = getApiBase();
+    const url = (base ? base : '') + path;
+    const res = await fetch(url, {
+      method: (opts && opts.method) ? opts.method : 'GET',
+      headers: (opts && opts.headers) ? opts.headers : undefined,
+      body: (opts && opts.body) ? opts.body : undefined,
+      credentials: 'omit',
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(()=>'');
+      throw new Error(`HTTP ${res.status} ${res.statusText}: ${t}`);
+    }
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return res.json();
+    return res.text();
+  }
+
+  function currentFacility() {
+    return (UI && UI.currentFacility) ? UI.currentFacility
+      : ((window.state?.facility || '').trim() || 'LKWF');
+  }
+
+  async function getFlowWeekAll(ws) {
+    try {
+      return await flowFetch(`/api/flow/week/${encodeURIComponent(ws)}/all`, { method: 'GET' });
+    } catch (e) {
+      console.warn('[flow] getFlowWeekAll failed', e);
+      return null;
+    }
+  }
+
+  async function patchFlowWeek(ws, patch) {
+    const facility = currentFacility();
+    const qs = `?facility=${encodeURIComponent(facility)}`;
+    try {
+      const resp = await flowFetch(`/api/flow/week/${encodeURIComponent(ws)}${qs}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch || {}),
+      });
+
+      // Update in-memory cache so UI reflects immediately.
+      UI.weekAll = UI.weekAll || { week_start: ws, facilities: {} };
+      UI.weekAll.facilities = UI.weekAll.facilities || {};
+      UI.weekAll.facilities[facility] = UI.weekAll.facilities[facility] || { data: {} };
+      UI.weekAll.facilities[facility].data = UI.weekAll.facilities[facility].data || {};
+      try {
+        deepMerge(UI.weekAll.facilities[facility].data, patch || {});
+      } catch {
+        UI.weekAll.facilities[facility].data = { ...(UI.weekAll.facilities[facility].data || {}), ...(patch || {}) };
+      }
+      UI.weekData = UI.weekAll.facilities[facility].data;
+
+      return resp;
+    } catch (e) {
+      console.warn('[flow] patchFlowWeek failed', e);
+      throw e;
+    }
+  }
+
+  function deepMerge(target, source) {
+    if (!source || typeof source !== 'object') return target;
+    if (!target || typeof target !== 'object') return target;
+    for (const [k, v] of Object.entries(source)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) {
+        if (!target[k] || typeof target[k] !== 'object' || Array.isArray(target[k])) target[k] = {};
+        deepMerge(target[k], v);
+      } else {
+        target[k] = v;
+      }
+    }
+    return target;
   }
 
   
@@ -782,12 +881,26 @@ function computeCartonStatsFromRecords(records) {
   }
 
   function loadIntlWeekContainers(ws) {
-    const k = intlWeekContainersKey(ws);
-    let state = { containers: [], _v: 1 };
-    try {
-      const raw = localStorage.getItem(k);
-      if (raw) state = JSON.parse(raw) || state;
-    } catch { /* ignore */ }
+  // Backend cache
+  try {
+    if (UI && UI.weekData && UI.currentWs === ws) {
+      const st = UI.weekData.intl_week_containers || UI.weekData.intlWeekContainers || UI.weekData.weekContainers || null;
+      if (st && typeof st === 'object') return st;
+      const arr = UI.weekData.containers;
+      if (Array.isArray(arr)) return { containers: arr, _v: 1 };
+    }
+  } catch { /* ignore */ }
+
+  const k = intlWeekContainersKey(ws);
+  let state = { containers: [], _v: 1 };
+  try {
+    const raw = localStorage.getItem(k);
+    if (raw) state = JSON.parse(raw) || state;
+  } catch { /* ignore */ }
+  if (!state || typeof state !== 'object') state = { containers: [], _v: 1 };
+  if (!Array.isArray(state.containers)) state.containers = [];
+  return state;
+} catch { /* ignore */ }
 
     // One-time migration from legacy lane-level containers:
     // flow:intl:<ws>:<laneKey> { containers: [...] }
@@ -851,19 +964,23 @@ function computeCartonStatsFromRecords(records) {
     return state;
   }
 
-  function saveIntlWeekContainers(ws, containers) {
-    const k = intlWeekContainersKey(ws);
-    let prev = { containers: [] };
-    try { prev = JSON.parse(localStorage.getItem(k) || '{}') || prev; } catch { prev = { containers: [] }; }
+  function saveIntlWeekContainers(ws, containersOrState) {
+  const state = (containersOrState && typeof containersOrState === 'object' && Array.isArray(containersOrState.containers))
+    ? containersOrState
+    : { containers: Array.isArray(containersOrState) ? containersOrState : [], _v: 1 };
 
-    const prevByUid = new Map();
-    const prevById = new Map();
-    (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
-      const uid = String(c.container_uid || c.uid || '').trim();
-      const id = String(c.container_id || c.container || '').trim();
-      if (uid) prevByUid.set(uid, c);
-      if (id) prevById.set(id, c);
-    });
+  // Legacy mirror
+  try { localStorage.setItem(intlWeekContainersKey(ws), JSON.stringify(state)); } catch { /* ignore */ }
+
+  // Backend write-through
+  try {
+    if (UI && UI.currentWs === ws) {
+      patchFlowWeek(ws, { intl_week_containers: state }).catch(() => {});
+    }
+  } catch { /* ignore */ }
+
+  return state;
+});
 
     const next = (Array.isArray(containers) ? containers : []).map(c => {
       const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
@@ -893,23 +1010,40 @@ function computeCartonStatsFromRecords(records) {
   function prebookKey(ws) { return `flow:prebook:${ws}`; }
 
   function loadPrebook(ws) {
-    const k = prebookKey(ws);
-    try {
-      const raw = localStorage.getItem(k);
-      if (!raw) return { c20: 0, c40: 0 };
-      const o = JSON.parse(raw) || {};
-      return { c20: num(o.c20 || 0), c40: num(o.c40 || 0) };
-    } catch {
+  try {
+    if (UI && UI.weekData && UI.currentWs === ws) {
+      const o = UI.weekData || {};
+      return {
+        prebook20: Number(o.prebook20 ?? o.prebook_20 ?? 0) || 0,
+        prebook40: Number(o.prebook40 ?? o.prebook_40 ?? 0) || 0,
+      };
+    }
+  } catch { /* ignore */ }
+
+  const k = prebookKey(ws);
+  try {
+    const raw = localStorage.getItem(k);
+    const o = raw ? JSON.parse(raw) : {};
+    return { prebook20: Number(o?.prebook20 || 0) || 0, prebook40: Number(o?.prebook40 || 0) || 0 };
+  } catch { return { prebook20: 0, prebook40: 0 }; }
+} catch {
       return { c20: 0, c40: 0 };
     }
   }
 
-  function savePrebook(ws, next) {
-    const k = prebookKey(ws);
-    const o = { c20: num(next?.c20 || 0), c40: num(next?.c40 || 0) };
-    try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
-    return o;
-  }
+  function savePrebook(ws, prebook20, prebook40) {
+  const next = { prebook20: Number(prebook20 || 0) || 0, prebook40: Number(prebook40 || 0) || 0, updatedAt: new Date().toISOString() };
+
+  try { localStorage.setItem(prebookKey(ws), JSON.stringify(next)); } catch { /* ignore */ }
+
+  try {
+    if (UI && UI.currentWs === ws) {
+      patchFlowWeek(ws, { prebook20: next.prebook20, prebook40: next.prebook40 }).catch(() => {});
+    }
+  } catch { /* ignore */ }
+
+  return next;
+}
 
 
 
@@ -919,6 +1053,21 @@ function computeCartonStatsFromRecords(records) {
 function weekSignoffKey(ws) { return `flow:weekSignoff:${ws}`; }
 
 function loadWeekSignoff(ws) {
+  // Prefer backend cache loaded in refresh()
+  try {
+    if (UI && UI.weekData && UI.currentWs === ws) {
+      const o = UI.weekData || {};
+      return {
+        receivingComplete: !!o.receivingComplete,
+        vasComplete: !!o.vasComplete,
+        receivingAt: o.receivingAt || null,
+        vasAt: o.vasAt || null,
+        updatedAt: o.updatedAt || o.updated_at || null,
+      };
+    }
+  } catch { /* ignore */ }
+
+  // Fallback (legacy local-only)
   const k = weekSignoffKey(ws);
   try {
     const raw = localStorage.getItem(k);
@@ -934,17 +1083,33 @@ function loadWeekSignoff(ws) {
   } catch {
     return { receivingComplete: false, vasComplete: false, receivingAt: null, vasAt: null, updatedAt: null };
   }
+};
+  } catch {
+    return { receivingComplete: false, vasComplete: false, receivingAt: null, vasAt: null, updatedAt: null };
+  }
 }
 
-function saveWeekSignoff(ws, next) {
-  const k = weekSignoffKey(ws);
-  const o = {
-    receivingComplete: !!next?.receivingComplete,
-    vasComplete: !!next?.vasComplete,
-    receivingAt: next?.receivingAt || null,
-    vasAt: next?.vasAt || null,
-    updatedAt: new Date().toISOString(),
-  };
+function saveWeekSignoff(ws, patch) {
+  const next = { ...(loadWeekSignoff(ws) || {}), ...(patch || {}), updatedAt: new Date().toISOString() };
+
+  // Legacy mirror
+  try { localStorage.setItem(weekSignoffKey(ws), JSON.stringify(next)); } catch { /* ignore */ }
+
+  // Backend write-through
+  try {
+    if (UI && UI.currentWs === ws) {
+      patchFlowWeek(ws, {
+        receivingComplete: !!next.receivingComplete,
+        receivingAt: next.receivingAt || null,
+        vasComplete: !!next.vasComplete,
+        vasAt: next.vasAt || null,
+        updatedAt: next.updatedAt || null,
+      }).catch(() => {});
+    }
+  } catch { /* ignore */ }
+
+  return next;
+};
   try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
   return o;
 }
@@ -959,48 +1124,78 @@ function saveWeekSignoff(ws, next) {
   }
 
   function loadLastMileReceipts(ws) {
-    const k = lastMileReceiptsKey(ws);
-    try {
-      const raw = localStorage.getItem(k);
-      const obj = raw ? JSON.parse(raw) : {};
+  // Backend cache
+  try {
+    if (UI && UI.weekData && UI.currentWs === ws) {
+      const obj = UI.weekData.lastmile_receipts || UI.weekData.lastMileReceipts || UI.weekData.last_mile_receipts || {};
       return (obj && typeof obj === 'object') ? obj : {};
-    } catch {
+    }
+  } catch { /* ignore */ }
+
+  const k = lastMileReceiptsKey(ws);
+  try {
+    const raw = localStorage.getItem(k);
+    const obj = raw ? JSON.parse(raw) : {};
+    return (obj && typeof obj === 'object') ? obj : {};
+  } catch { return {}; }
+} catch {
       return {};
     }
   }
 
-  function saveLastMileReceipts(ws, receipts) {
-    const k = lastMileReceiptsKey(ws);
-    try { localStorage.setItem(k, JSON.stringify(receipts || {})); } catch { /* ignore */ }
-  }
+  function saveLastMileReceipts(ws, obj) {
+  const prior = loadLastMileReceipts(ws) || {};
+  const next = { ...(prior || {}), ...(obj || {}), updatedAt: new Date().toISOString() };
+
+  try { localStorage.setItem(lastMileReceiptsKey(ws), JSON.stringify(next)); } catch { /* ignore */ }
+
+  try {
+    if (UI && UI.currentWs === ws) {
+      patchFlowWeek(ws, { lastmile_receipts: next }).catch(() => {});
+    }
+  } catch { /* ignore */ }
+
+  return next;
+}
 
   function loadIntlLaneManual(ws, key) {
-    try {
-      const raw = localStorage.getItem(intlStorageKey(ws, key));
-      return raw ? JSON.parse(raw) : {};
-    } catch {
+  // Backend cache
+  try {
+    if (UI && UI.weekData && UI.currentWs === ws) {
+      const lanes = UI.weekData.intl_lanes || UI.weekData.intlLanes || {};
+      const v = (lanes && key && lanes[key]) ? lanes[key] : {};
+      return (v && typeof v === 'object') ? v : {};
+    }
+  } catch { /* ignore */ }
+
+  // Legacy
+  try {
+    const raw = localStorage.getItem(intlStorageKey(ws, key));
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+} catch {
       return {};
     }
   }
 
   function saveIntlLaneManual(ws, key, obj) {
-    try {
-      const k = intlStorageKey(ws, key);
-      let prev = {};
-      try { prev = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch { prev = {}; }
+  // Merge with prior to avoid accidental wipes.
+  const prior = loadIntlLaneManual(ws, key) || {};
+  const next = { ...(prior || {}), ...(obj || {}), _updatedAt: new Date().toISOString() };
 
-      // Merge containers by stable container_uid (fallback: container_id) to preserve downstream fields
-      // (e.g., last-mile delivery tracking)
-      const next = { ...(prev || {}), ...(obj || {}) };
-      if (obj && Array.isArray(obj.containers)) {
-        const prevByUid = new Map();
-        const prevById = new Map();
-        (Array.isArray(prev.containers) ? prev.containers : []).forEach(c => {
-          const uid = String(c.container_uid || c.uid || '').trim();
-          const id = String(c.container_id || c.container || '').trim();
-          if (uid) prevByUid.set(uid, c);
-          if (id) prevById.set(id, c);
-        });
+  // Legacy mirror
+  try { localStorage.setItem(intlStorageKey(ws, key), JSON.stringify(next)); } catch { /* ignore */ }
+
+  // Backend write-through under intl_lanes[<laneKey>]
+  try {
+    if (UI && UI.currentWs === ws && key) {
+      const patch = { intl_lanes: { [key]: next } };
+      patchFlowWeek(ws, patch).catch(() => {});
+    }
+  } catch { /* ignore */ }
+
+  return next;
+});
 
         next.containers = obj.containers.map(c => {
           const uid = String(c.container_uid || c.uid || '').trim();
@@ -3986,6 +4181,13 @@ async function refresh() {
     } catch (e) {
       console.warn('[flow] load error', e);
     }
+    // Load week-scoped manual inputs from backend (SQLite) so they persist cross-browser.
+    UI.currentFacility = currentFacility();
+    UI.weekAll = await getFlowWeekAll(ws) || { week_start: ws, facilities: {} };
+    UI.weekData = (UI.weekAll.facilities && UI.weekAll.facilities[UI.currentFacility] && UI.weekAll.facilities[UI.currentFacility].data)
+      ? UI.weekAll.facilities[UI.currentFacility].data
+      : {};
+
 
     const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows, records);
     const vas = computeVASStatus(ws, tz, planRows, records);
