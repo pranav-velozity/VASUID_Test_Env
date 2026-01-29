@@ -324,107 +324,6 @@ function iconContainer() {
     return res.text();
   }
 
-
-// ------------------------- Backend week-store wiring (SQLite) -------------------------
-// Server endpoints (base is meta[name="api-base"]):
-//   GET  /flow/week/:weekStart?facility=LKWF
-//   POST /flow/week/:weekStart?facility=LKWF   { ...patch }
-//
-// Guardrail: when we "prime" from backend we suppress write-through to avoid loops.
-function getFacility() {
-  try {
-    const f = (window.state && window.state.facility) ? String(window.state.facility).trim() : '';
-    return f || 'LKWF';
-  } catch { return 'LKWF'; }
-}
-
-async function fetchFlowWeek(ws, facility) {
-  const f = String(facility || getFacility() || 'LKWF').trim() || 'LKWF';
-  try {
-    return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(f)}`);
-  } catch (e) {
-    return null;
-  }
-}
-
-async function patchFlowWeek(ws, patch, facility) {
-  const f = String(facility || getFacility() || 'LKWF').trim() || 'LKWF';
-  if (!ws || !patch || typeof patch !== 'object') return null;
-  if (window.__FLOW_SUPPRESS_BACKEND_WRITE__) return null;
-  try {
-    return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(f)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-  } catch (e) {
-    console.warn('[flow] backend patch failed', e);
-    return null;
-  }
-}
-
-// Prime local week-scoped stores from backend once per (ws, facility).
-async function primeFlowWeekFromBackend(ws) {
-  const f = getFacility();
-  window.__FLOW_PRIMED__ = window.__FLOW_PRIMED__ || {};
-  const key = `${ws}::${f}`;
-  if (window.__FLOW_PRIMED__[key]) return;
-  window.__FLOW_PRIMED__[key] = true;
-
-  const r = await fetchFlowWeek(ws, f);
-  const d = r && r.data ? r.data : null;
-  if (!d) return;
-
-  // Mirror into localStorage WITHOUT generating timestamps automatically.
-  window.__FLOW_SUPPRESS_BACKEND_WRITE__ = true;
-  try {
-    // Week sign-off
-    if ('receivingComplete' in d || 'vasComplete' in d || 'receivingAt' in d || 'vasAt' in d) {
-      try {
-        const o = {
-          receivingComplete: !!d.receivingComplete,
-          vasComplete: !!d.vasComplete,
-          receivingAt: d.receivingAt || null,
-          vasAt: d.vasAt || null,
-          updatedAt: (r.updated_at || r.updatedAt || null),
-        };
-        localStorage.setItem(weekSignoffKey(ws), JSON.stringify(o));
-      } catch {}
-    }
-
-    // Pre-booked containers
-    if (d.prebook && typeof d.prebook === 'object') {
-      try { localStorage.setItem(prebookKey(ws), JSON.stringify({ c20: num(d.prebook.c20 || 0), c40: num(d.prebook.c40 || 0) })); } catch {}
-    }
-
-    // Intl lane manual data (map laneKey -> obj)
-    if (d.intl_lanes && typeof d.intl_lanes === 'object') {
-      try {
-        for (const [laneKey, obj] of Object.entries(d.intl_lanes)) {
-          if (!laneKey) continue;
-          localStorage.setItem(intlStorageKey(ws, laneKey), JSON.stringify(obj || {}));
-        }
-      } catch {}
-    }
-
-    // Week-level intl containers
-    if (d.intl_weekcontainers) {
-      try {
-        const arr = Array.isArray(d.intl_weekcontainers) ? d.intl_weekcontainers : (Array.isArray(d.intl_weekcontainers.containers) ? d.intl_weekcontainers.containers : []);
-        const state = { containers: arr || [], _v: 1, _fromBackend: true };
-        localStorage.setItem(intlWeekContainersKey(ws), JSON.stringify(state));
-      } catch {}
-    }
-
-    // Last Mile receipts
-    if (d.lastmile_receipts && typeof d.lastmile_receipts === 'object') {
-      try { localStorage.setItem(lastMileReceiptsKey(ws), JSON.stringify(d.lastmile_receipts || {})); } catch {}
-    }
-  } finally {
-    window.__FLOW_SUPPRESS_BACKEND_WRITE__ = false;
-  }
-}
-
   function uniq(arr) {
     return Array.from(new Set((arr || []).filter(Boolean)));
   }
@@ -985,6 +884,8 @@ function computeCartonStatsFromRecords(records) {
 
     const state = { ...(prev || {}), containers: next, _v: 1, _migratedFromLaneContainers: true };
     try { localStorage.setItem(k, JSON.stringify(state)); } catch { /* ignore */ }
+    // Write-through to backend (week-level containers)
+    try { patchFlowWeek(ws, { intl_weekcontainers: (state.containers || []) }); } catch (e) {}
     return state;
   }
 
@@ -1009,7 +910,6 @@ function computeCartonStatsFromRecords(records) {
     const k = prebookKey(ws);
     const o = { c20: num(next?.c20 || 0), c40: num(next?.c40 || 0) };
     try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
-    patchFlowWeek(ws, { prebook: o });
     return o;
   }
 
@@ -1048,13 +948,6 @@ function saveWeekSignoff(ws, next) {
     updatedAt: new Date().toISOString(),
   };
   try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
-  // Write-through (async). UI remains local-first.
-  patchFlowWeek(ws, {
-    receivingComplete: o.receivingComplete,
-    receivingAt: o.receivingAt,
-    vasComplete: o.vasComplete,
-    vasAt: o.vasAt,
-  });
   return o;
 }
 
@@ -1081,7 +974,6 @@ function saveWeekSignoff(ws, next) {
   function saveLastMileReceipts(ws, receipts) {
     const k = lastMileReceiptsKey(ws);
     try { localStorage.setItem(k, JSON.stringify(receipts || {})); } catch { /* ignore */ }
-    patchFlowWeek(ws, { lastmile_receipts: (receipts || {}) });
   }
 
   function loadIntlLaneManual(ws, key) {
@@ -1126,8 +1018,6 @@ function saveWeekSignoff(ws, next) {
       }
 
       localStorage.setItem(k, JSON.stringify(next || {}));
-      // Persist lane-scoped manual inputs to backend (stored as week.facility.data.intl_lanes[key])
-      try { patchFlowWeek(ws, { intl_lanes: { [key]: (next || {}) } }); } catch {}
     } catch { /* ignore */ }
   }
 
@@ -4016,8 +3906,6 @@ async function refresh() {
     ws = normalizeWeekStartToMonday(ws);
     if (!window.state) window.state = {};
     window.state.weekStart = ws;
-    // Prime week-scoped local stores from backend so data is shared across browsers.
-    await primeFlowWeekFromBackend(ws);
     const wkInp = document.getElementById('week-start');
     if (wkInp) wkInp.value = ws;
 
