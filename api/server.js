@@ -500,7 +500,7 @@ function mondayOfLoose(ymd) {
     d.setUTCDate(d.getUTCDate() + diff);
     return d.toISOString().slice(0,10);
   } catch { return ''; }
-
+}
 
 function normFacility(v) {
   return String(v || '').trim();
@@ -531,8 +531,6 @@ const flowWeekAllForWeek = db.prepare(`
   WHERE week_start = ?
   ORDER BY facility
 `);
-
-}
 
 /* ===== BEGIN: /plan?weekStart=YYYY-MM-DD alias =====
    Returns the same payload as GET /plan/weeks/:mondayISO
@@ -893,12 +891,12 @@ app.post('/flow/week/:weekStart', (req, res) => {
   });
 });
 
-
 app.listen(PORT, () => {
   console.log(`UID Ops backend listening on http://localhost:${PORT}`);
   console.log(`DB file: ${DB_FILE}`);
   console.log(`CORS origin(s): ${allowList.join(', ')}`);
 });
+
 
 
 
