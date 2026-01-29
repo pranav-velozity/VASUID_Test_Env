@@ -891,13 +891,10 @@ app.post('/flow/week/:weekStart', (req, res) => {
   });
 });
 
+
 app.listen(PORT, () => {
   console.log(`UID Ops backend listening on http://localhost:${PORT}`);
   console.log(`DB file: ${DB_FILE}`);
   console.log(`CORS origin(s): ${allowList.join(', ')}`);
 });
-
-
-
-
 
