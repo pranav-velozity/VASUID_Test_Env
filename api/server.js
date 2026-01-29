@@ -14,7 +14,6 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // set to your fronten
 const DB_DIR = process.env.DB_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DB_DIR, { recursive: true });
 const DB_FILE = process.env.DB_FILE || path.join(DB_DIR, 'uid_ops_testenv.sqlite');
-
 // ---- App ----
 const app = express();
 
@@ -42,14 +41,18 @@ app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '100mb' }));
 
 /* ===== BEGIN: /api alias -> root endpoints =====
-   This lets /api/plan, /api/records, /api/bins hit the same handlers as
-   /plan, /records, /bins without duplicating code.
+   This lets /api/plan, /api/records, /api/bins, /api/flow/... hit the same handlers as
+   /plan, /records, /bins, /flow/... without duplicating code.
    Place ABOVE all your app.get('/...') routes.
 */
-app.use('/api', (req, res, next) => {
-  // keep querystring; only drop the /api prefix
-  // e.g. /api/plan?weekStart=2025-11-03 -> /plan?weekStart=2025-11-03
-  req.url = req.url.replace(/^\/api\/?/, '/');
+app.use((req, _res, next) => {
+  if (req.url === '/api' || req.url === '/api/') {
+    req.url = '/';
+    return next();
+  }
+  if (req.url.startsWith('/api/')) {
+    req.url = req.url.slice(4) || '/'; // drop leading "/api"
+  }
   next();
 });
 /* ===== END: /api alias ===== */
@@ -142,21 +145,6 @@ CREATE TABLE IF NOT EXISTS receiving(
 CREATE INDEX IF NOT EXISTS idx_receiving_week ON receiving(week_start);
 CREATE INDEX IF NOT EXISTS idx_receiving_supplier ON receiving(week_start, supplier_name);
 `);
-
-
-// ---- Flow week persistence (facility-scoped) ----
-db.exec(`
-CREATE TABLE IF NOT EXISTS flow_week (
-  facility   TEXT NOT NULL,
-  week_start TEXT NOT NULL,
-  data       TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  PRIMARY KEY (facility, week_start)
-);
-CREATE INDEX IF NOT EXISTS idx_flow_week_ws ON flow_week(week_start);
-CREATE INDEX IF NOT EXISTS idx_flow_week_fac ON flow_week(facility);
-`);
-
 
 
 const selectRecordById = db.prepare('SELECT * FROM records WHERE id = ?');
@@ -502,36 +490,6 @@ function mondayOfLoose(ymd) {
   } catch { return ''; }
 }
 
-function normFacility(v) {
-  return String(v || '').trim();
-}
-
-function safeJsonParse(s, fallback) {
-  try { return JSON.parse(s); } catch { return fallback; }
-}
-
-// Flow week prepared statements (facility-scoped)
-const flowWeekGet = db.prepare(`
-  SELECT data, updated_at
-  FROM flow_week
-  WHERE facility = ? AND week_start = ?
-`);
-
-const flowWeekUpsert = db.prepare(`
-  INSERT INTO flow_week(facility, week_start, data, updated_at)
-  VALUES (?, ?, ?, datetime('now'))
-  ON CONFLICT(facility, week_start) DO UPDATE SET
-    data = excluded.data,
-    updated_at = excluded.updated_at
-`);
-
-const flowWeekAllForWeek = db.prepare(`
-  SELECT facility, data, updated_at
-  FROM flow_week
-  WHERE week_start = ?
-  ORDER BY facility
-`);
-
 /* ===== BEGIN: /plan?weekStart=YYYY-MM-DD alias =====
    Returns the same payload as GET /plan/weeks/:mondayISO
    (works for /api/plan too thanks to the /api alias above)
@@ -821,77 +779,6 @@ app.get('/bins', (req, res) => {
 
 
 // ---- Start ----
-
-// ===== Flow Week API (facility-scoped) =====
-
-// GET /flow/week/:weekStart?facility=LKWF
-app.get('/flow/week/:weekStart', (req, res) => {
-  const wsIn = String(req.params.weekStart || '').trim();
-  const facility = normFacility(req.query.facility);
-  if (!facility) return res.status(400).json({ error: 'facility required' });
-
-  const monday = mondayOfLoose(wsIn);
-  if (!monday) return res.status(400).json({ error: 'invalid weekStart' });
-
-  const row = flowWeekGet.get(facility, monday);
-  if (!row) return res.json({ facility, week_start: monday, data: null, updated_at: null });
-
-  return res.json({
-    facility,
-    week_start: monday,
-    data: safeJsonParse(row.data, null),
-    updated_at: row.updated_at || null
-  });
-});
-
-// GET /flow/week/:weekStart/all  (full view for the week across facilities)
-app.get('/flow/week/:weekStart/all', (req, res) => {
-  const wsIn = String(req.params.weekStart || '').trim();
-  const monday = mondayOfLoose(wsIn);
-  if (!monday) return res.status(400).json({ error: 'invalid weekStart' });
-
-  const rows = flowWeekAllForWeek.all(monday);
-  const facilities = {};
-  for (const r of rows) {
-    facilities[r.facility] = {
-      data: safeJsonParse(r.data, null),
-      updated_at: r.updated_at || null
-    };
-  }
-  return res.json({ week_start: monday, facilities });
-});
-
-// POST /flow/week/:weekStart?facility=LKWF   body: { ...patch }
-// Patch-merge semantics to avoid wiping unrelated fields.
-app.post('/flow/week/:weekStart', (req, res) => {
-  const wsIn = String(req.params.weekStart || '').trim();
-  const facility = normFacility(req.query.facility);
-  if (!facility) return res.status(400).json({ error: 'facility required' });
-
-  const monday = mondayOfLoose(wsIn);
-  if (!monday) return res.status(400).json({ error: 'invalid weekStart' });
-
-  const patch = (req.body && typeof req.body === 'object') ? req.body : null;
-  if (!patch) return res.status(400).json({ error: 'patch object required' });
-
-  const existingRow = flowWeekGet.get(facility, monday);
-  const existing = existingRow ? (safeJsonParse(existingRow.data, {}) || {}) : {};
-
-  // Shallow merge is intentionally minimal and predictable.
-  // If/when Flow sends nested partials, we can promote this to a deep merge.
-  const merged = { ...existing, ...patch };
-
-  flowWeekUpsert.run(facility, monday, JSON.stringify(merged));
-
-  return res.json({
-    ok: true,
-    facility,
-    week_start: monday,
-    data: merged
-  });
-});
-
-
 app.listen(PORT, () => {
   console.log(`UID Ops backend listening on http://localhost:${PORT}`);
   console.log(`DB file: ${DB_FILE}`);
