@@ -636,7 +636,8 @@ function computeCartonStatsFromRecords(records) {
   }
 
   function intlStorageKey(ws, key) {
-    return `flow:intl:${ws}
+  return `flow:intl:${ws}:${key}`;
+}
 
 // Lane manual persistence (docs/milestones/holds/notes) — week + lane scoped
 function saveIntlLaneManual(ws, key, obj) {
@@ -662,9 +663,6 @@ function loadIntlLaneManual(ws, key) {
   const k = `flow:intl:${ws}:${key}`;
   try { return JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch { return {}; }
 }
-
-:${key}`;
-  }
 
   // Week-level containers store (independent of selected lane)
   function intlWeekContainersKey(ws) {
