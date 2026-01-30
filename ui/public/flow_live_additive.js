@@ -1710,11 +1710,11 @@ function computeManualNodeStatuses(ws, tz) {
       const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
       if (actualRaw) {
         const d = fmtDateOnly(actualRaw);
-        return d ? `<span class="whitespace-nowrap font-semibold" style="color:#1d4ed8">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
+        return d ? `<span class="whitespace-nowrap font-semibold" style="color:#334155">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
       }
       if (plannedDate && !isNaN(plannedDate)) {
         const d = fmtDateOnly(plannedDate);
-        return d ? `<span class="whitespace-nowrap" style="color:#990033">${escapeHtml(d)} <span class="text-[10px]" style="color:#990033">planned</span></span>` : '<span class="text-gray-400">—</span>';
+        return d ? `<span class="whitespace-nowrap" style="color:#7a1f33">${escapeHtml(d)} <span class="text-[10px]" style="color:#7a1f33">planned</span></span>` : '<span class="text-gray-400">—</span>';
       }
       return '<span class="text-gray-400">—</span>';
     };
@@ -1728,11 +1728,11 @@ function computeManualNodeStatuses(ws, tz) {
         return '';
       };
       const stages = [
-        { label: 'Packing List Created', keys: ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'] },
-        { label: 'In Origin Customs', keys: ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'] },
-        { label: 'Departed Origin', keys: ['departed_at','departedAt','departed'] },
-        { label: 'Arrived Destination', keys: ['arrived_at','arrivedAt','arrived'] },
-        { label: 'In Destination Customs', keys: ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'] },
+        { label: 'Packing list ready', keys: ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'] },
+        { label: 'Origin customs cleared', keys: ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'] },
+        { label: 'Departed origin', keys: ['departed_at','departedAt','departed'] },
+        { label: 'Arrived destination', keys: ['arrived_at','arrivedAt','arrived'] },
+        { label: 'Destination customs cleared', keys: ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'] },
       ];
       let best = null;
       for (const st of stages) {
@@ -1789,7 +1789,7 @@ function computeManualNodeStatuses(ws, tz) {
           <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
           <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
           <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
-          <td class="py-2 pr-2 text-center">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
+          <td class="py-2 pr-2 text-left">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
         </tr>
       `;
     }).join('');
@@ -1824,7 +1824,7 @@ function computeManualNodeStatuses(ws, tz) {
                 <th class="text-center py-2 pr-2">🚚 Departed</th>
                 <th class="text-center py-2 pr-2">📍 Arrived</th>
                 <th class="text-center py-2 pr-2">🛃 Dest Customs</th>
-                <th class="text-center py-2 pr-2">Container #</th>
+                <th class="text-left py-2 pr-2">Container #</th>
               </tr>
             </thead>
             <tbody>
