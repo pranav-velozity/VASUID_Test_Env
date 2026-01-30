@@ -1710,13 +1710,39 @@ function computeManualNodeStatuses(ws, tz) {
       const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
       if (actualRaw) {
         const d = fmtDateOnly(actualRaw);
-        return d ? `<span class="whitespace-nowrap">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
+        return d ? `<span class="whitespace-nowrap font-semibold" style="color:#1d4ed8">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
       }
       if (plannedDate && !isNaN(plannedDate)) {
         const d = fmtDateOnly(plannedDate);
-        return d ? `<span class="whitespace-nowrap">${escapeHtml(d)} <span class="text-[10px]" style="color:#990033">planned</span></span>` : '<span class="text-gray-400">—</span>';
+        return d ? `<span class="whitespace-nowrap" style="color:#990033">${escapeHtml(d)} <span class="text-[10px]" style="color:#990033">planned</span></span>` : '<span class="text-gray-400">—</span>';
       }
       return '<span class="text-gray-400">—</span>';
+    };
+
+    const latestActualStatusText = (manualObj) => {
+      const getRaw = (keys) => {
+        for (const k of keys) {
+          const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
+          if (v) return v;
+        }
+        return '';
+      };
+      const stages = [
+        { label: 'Packing List Created', keys: ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'] },
+        { label: 'In Origin Customs', keys: ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'] },
+        { label: 'Departed Origin', keys: ['departed_at','departedAt','departed'] },
+        { label: 'Arrived Destination', keys: ['arrived_at','arrivedAt','arrived'] },
+        { label: 'In Destination Customs', keys: ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'] },
+      ];
+      let best = null;
+      for (const st of stages) {
+        const raw = getRaw(st.keys);
+        if (!raw) continue;
+        const d = new Date(raw);
+        if (!d || isNaN(d)) continue;
+        if (!best || d > best.date) best = { date: d, label: st.label };
+      }
+      return best ? best.label : '';
     };
 
     const contListForLane = (laneKey) => {
@@ -1744,24 +1770,26 @@ function computeManualNodeStatuses(ws, tz) {
       const pl = plannedForLane(l);
       const freightLower = String(l.freight || '').toLowerCase();
       const freightCls = freightLower === 'air' ? 'text-sky-700' : (freightLower === 'sea' ? 'text-emerald-700' : 'text-gray-700');
+      const stageTxt = latestActualStatusText(manual);
       return `
         <tr class="border-t align-top hover:bg-gray-50">
           <td class="py-2 pr-2">
             <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
             <div class="text-xs font-medium mt-0.5 ${freightCls}">${escapeHtml(l.freight || '')}</div>
+            <div class="text-xs font-semibold mt-0.5" style="color:#111827">${escapeHtml(stageTxt || 'No actual updates')}</div>
           </td>
-          <td class="py-2 pr-2">${ticket}</td>
-          <td class="py-2 pr-2">${st}</td>
-          <td class="py-2 pr-2">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
-          <td class="py-2 pr-2">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
-          <td class="py-2 pr-2">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
-          <td class="py-2 pr-2">${manual.hold ? 'Yes' : '—'}</td>
-          <td class="py-2 pr-2">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
-          <td class="py-2 pr-2">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
-          <td class="py-2 pr-2">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
-          <td class="py-2 pr-2">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
-          <td class="py-2 pr-2">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
-          <td class="py-2 pr-2">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
+          <td class="py-2 pr-2 text-center">${ticket}</td>
+          <td class="py-2 pr-2 text-center">${st}</td>
+          <td class="py-2 pr-2 text-center">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
+          <td class="py-2 pr-2 text-center">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
+          <td class="py-2 pr-2 text-center">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
+          <td class="py-2 pr-2 text-center">${manual.hold ? 'Yes' : '—'}</td>
+          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
+          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
+          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
+          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
+          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
+          <td class="py-2 pr-2 text-center">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
         </tr>
       `;
     }).join('');
@@ -1784,7 +1812,7 @@ function computeManualNodeStatuses(ws, tz) {
           <table class="w-full text-sm min-w-[1320px]">
             <thead class="sticky top-0 bg-white">
               <tr class="text-[11px] text-gray-500 border-b">
-                <th class="text-center py-2 pr-2">Supplier / Freight</th>
+                <th class="text-left py-2 pr-2">Supplier / Freight</th>
                 <th class="text-center py-2 pr-2">Zendesk</th>
                 <th class="text-center py-2 pr-2">Status</th>
                 <th class="text-center py-2 pr-2">Shipment #</th>
