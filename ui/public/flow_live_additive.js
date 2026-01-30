@@ -1654,6 +1654,111 @@ function computeManualNodeStatuses(ws, tz) {
     root.setAttribute('aria-hidden', 'false');
   }
 
+
+  function openIntlOverviewModal(ws, tz) {
+    const ctx = window.__FLOW_INTL_CTX__ || null;
+    if (!ctx || !ctx.lanes) return;
+
+    const lanes = Array.isArray(ctx.lanes) ? ctx.lanes.slice() : [];
+    const weekContainers = Array.isArray(ctx.weekContainers) ? ctx.weekContainers : [];
+
+    // Sort same as lanes tile: holds/red first, then highest remaining units
+    const rank = { red: 3, yellow: 2, green: 1, gray: 0 };
+    lanes.sort((a, b) => (rank[b.level] - rank[a.level]) || ((b.plannedUnits - b.appliedUnits) - (a.plannedUnits - a.appliedUnits)));
+
+    const root = ensureLaneModal();
+    root.querySelector('#flow-lane-modal-title').textContent = 'Transit & Clearing — Lanes (Full screen)';
+    root.querySelector('#flow-lane-modal-sub').textContent = 'All lanes for this week • Click a supplier to open the lane editor.';
+    root.querySelector('#flow-lane-modal-status').innerHTML = '';
+
+    const fmtDT = (v) => {
+      const s = String(v || '').trim();
+      if (!s) return '—';
+      try { return fmtInTZ(s, tz); } catch { return s; }
+    };
+
+    const contListForLane = (laneKey) => {
+      const ids = (weekContainers || [])
+        .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(laneKey))
+        .map(c => String(c?.container_id || c?.container || '').trim())
+        .filter(Boolean);
+      return uniqNonEmpty(ids);
+    };
+
+    const rows = lanes.map(l => {
+      const manual = loadIntlLaneManual(ws, l.key) || {};
+      const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '—';
+      const containers = contListForLane(l.key);
+      const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
+      return `
+        <tr class="border-t align-top">
+          <td class="py-2 pr-2">
+            <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
+            <div class="text-[11px] text-gray-500 mt-0.5">${escapeHtml(l.freight || '')}</div>
+          </td>
+          <td class="py-2 pr-2">${ticket}</td>
+          <td class="py-2 pr-2">${st}</td>
+          <td class="py-2 pr-2">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
+          <td class="py-2 pr-2">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
+          <td class="py-2 pr-2">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
+          <td class="py-2 pr-2">${manual.hold ? 'Yes' : '—'}</td>
+          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.pack)}</td>
+          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.originClr)}</td>
+          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.departed)}</td>
+          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.arrived)}</td>
+          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.destClr)}</td>
+          <td class="py-2 pr-2">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    root.querySelector('#flow-lane-modal-body').innerHTML = `
+      <div class="rounded-xl border p-3">
+        <div class="text-sm font-semibold text-gray-700">Lanes</div>
+        <div class="text-xs text-gray-500 mt-1">Shipment identifiers + holds + key milestones + containers (derived).</div>
+        <div class="mt-3 overflow-auto">
+          <table class="w-full text-sm min-w-[1200px]">
+            <thead>
+              <tr class="text-[11px] text-gray-500">
+                <th class="text-left py-2 pr-2">Supplier / Freight</th>
+                <th class="text-left py-2 pr-2">Zendesk</th>
+                <th class="text-left py-2 pr-2">Status</th>
+                <th class="text-left py-2 pr-2">Shipment #</th>
+                <th class="text-left py-2 pr-2">HBL</th>
+                <th class="text-left py-2 pr-2">MBL</th>
+                <th class="text-left py-2 pr-2">Hold</th>
+                <th class="text-left py-2 pr-2">Pack</th>
+                <th class="text-left py-2 pr-2">Origin clr</th>
+                <th class="text-left py-2 pr-2">Departed</th>
+                <th class="text-left py-2 pr-2">Arrived</th>
+                <th class="text-left py-2 pr-2">Dest clr</th>
+                <th class="text-left py-2 pr-2">Containers</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || '<tr><td class="py-2 text-gray-500" colspan="13">No lanes found.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    root.querySelectorAll('[data-open-lane]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const k = btn.getAttribute('data-open-lane');
+        if (!k) return;
+        openLaneModal(ws, tz, k);
+      });
+    });
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+  }
+
   function ensureFlowPageExists() {
     // 1) page section
     let page = document.getElementById('page-flow');
@@ -3060,7 +3165,10 @@ detail.innerHTML = [
         bullets(insights),
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
-          <div class="text-sm font-semibold text-gray-700">Lanes</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-sm font-semibold text-gray-700">Lanes</div>
+            <button type="button" id="flow-lanes-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button>
+          </div>
           ${table(['Supplier', 'Zendesk', 'Freight', 'Applied', 'Cartons Out', 'Containers', 'Status'], rows)}
         </div>`,
         editor,
@@ -3324,7 +3432,6 @@ detail.innerHTML = [
           </div>
           <div class="flex items-center gap-2">
             <button type="button" id="flow-lane-collapse" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Collapse</button>
-            <button type="button" id="flow-lane-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button>
             <span class="dot ${dot(lane.level)}"></span>
             <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap">${statusLabel(lane.level)}</span>
           </div>
@@ -3347,6 +3454,12 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-pack" data-val="${basePack}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+                <input id="flow-intl-shipment" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
@@ -3355,6 +3468,12 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-originclr" data-val="${baseOriginClr}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">HBL</div>
+                <input id="flow-intl-hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
@@ -3363,6 +3482,12 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-departed" data-val="${baseDeparted}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">MBL</div>
+                <input id="flow-intl-mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
@@ -3371,6 +3496,9 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-arrived" data-val="${baseArrived}">Copy</button>
                 </div>
               </label>
+
+              <div class="hidden md:block"></div>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
@@ -3379,32 +3507,16 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-destclr" data-val="${baseDestClr}">Copy</button>
                 </div>
               </label>
+
+              <div class="flex items-center gap-3 md:pt-6">
+                <label class="text-sm flex items-center gap-2">
+                  <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
+                  <span>Customs hold</span>
+                </label>
+              </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-              <label class="text-sm">
-                <div class="text-xs text-gray-500 mb-1">Shipment #</div>
-                <input id="flow-intl-shipment" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
-              </label>
-              <label class="text-sm">
-                <div class="text-xs text-gray-500 mb-1">HBL</div>
-                <input id="flow-intl-hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
-              </label>
-              <label class="text-sm">
-                <div class="text-xs text-gray-500 mb-1">MBL</div>
-                <input id="flow-intl-mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
-              </label>
-            </div>
-
-
-            <div class="flex items-center gap-3 mt-3">
-              <label class="text-sm flex items-center gap-2">
-                <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
-                <span>Customs hold</span>
-              </label>
-            </div>
-
-            <label class="text-sm mt-3 block">
+<label class="text-sm mt-3 block">
               <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
               <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
             </label>
@@ -3464,7 +3576,6 @@ detail.innerHTML = [
 
     // Lane details collapse/expand (UI-only)
     const collapseBtn = detail.querySelector('#flow-lane-collapse');
-    const fullscreenBtn = detail.querySelector('#flow-lane-fullscreen');
     const bodyWrap = detail.querySelector('#flow-lane-editor-body');
     if (collapseBtn && bodyWrap && !collapseBtn.dataset.bound) {
       collapseBtn.dataset.bound = '1';
@@ -3475,16 +3586,18 @@ detail.innerHTML = [
         collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
       });
     }
-    if (fullscreenBtn && !fullscreenBtn.dataset.bound) {
-      fullscreenBtn.dataset.bound = '1';
-      fullscreenBtn.addEventListener('click', (e) => {
+
+    // Full screen overview for all lanes (table)
+    const lanesFullBtn = detail.querySelector('#flow-lanes-fullscreen');
+    if (lanesFullBtn && !lanesFullBtn.dataset.bound) {
+      lanesFullBtn.dataset.bound = '1';
+      lanesFullBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const key = selectedKey || (UI.selection && UI.selection.sub) || null;
-        if (!key) return;
-        openLaneModal(ws, getBizTZ(), key);
+        openIntlOverviewModal(ws, getBizTZ());
       });
     }
+
 
     // Background persistence for lane identifiers (Shipment/HBL/MBL)
     const idMap = [
