@@ -1,4 +1,4 @@
-/* flow_live_additive.js (v60)
+/* flow_live_additive.js (v61)
    - Additive "Flow" page module for VelOzity Pinpoint
    - Receiving + VAS are data-driven from existing endpoints
    - International Transit + Last Mile are lightweight manual (localStorage)
@@ -12,7 +12,7 @@
   // ------------------------- PATCH (v51.1) -------------------------
   // Guardrails to keep other modules from breaking Flow.
   // NOTE: Scripts load order is exec -> receiving -> flow (defer). Some helpers are expected globally.
-  window.__FLOW_BUILD__ = 'v60-week-signoff-' + new Date().toISOString();
+  window.__FLOW_BUILD__ = "v63-lastmile-scheduled-table-fix" + new Date().toISOString();
 
   // Receiving module expects this helper; if missing it throws and can interrupt week load flows.
   if (typeof window.computeCartonsOutByPOFromState !== 'function') {
@@ -323,6 +323,112 @@ function iconContainer() {
     if (ct.includes('application/json')) return res.json();
     return res.text();
   }
+
+
+// ------------------------- Backend week-store wiring (SQLite) -------------------------
+// Server endpoints (base is meta[name="api-base"]):
+//   GET  /flow/week/:weekStart?facility=LKWF
+//   POST /flow/week/:weekStart?facility=LKWF   { ...patch }
+//
+// Guardrail: when we "prime" from backend we suppress write-through to avoid loops.
+function getFacility() {
+  try {
+    const f = (window.state && window.state.facility) ? String(window.state.facility).trim() : '';
+    return f || 'LKWF';
+  } catch { return 'LKWF'; }
+}
+
+async function fetchFlowWeek(ws, facility) {
+  const f = String(facility || getFacility() || 'LKWF').trim() || 'LKWF';
+  try {
+    return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(f)}`);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function patchFlowWeek(ws, patch, facility) {
+  const f = String(facility || getFacility() || 'LKWF').trim() || 'LKWF';
+  if (!ws || !patch || typeof patch !== 'object') return null;
+  if (window.__FLOW_SUPPRESS_BACKEND_WRITE__) return null;
+  try {
+    return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(f)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+  } catch (e) {
+    console.warn('[flow] backend patch failed', e);
+    return null;
+  }
+}
+
+// Prime local week-scoped stores from backend once per (ws, facility).
+async function primeFlowWeekFromBackend(ws) {
+  const f = getFacility();
+  window.__FLOW_PRIMED__ = window.__FLOW_PRIMED__ || {};
+  const key = `${ws}::${f}`;
+
+  // Re-prime when backend data changes (enables cross-browser sync without a full reload).
+  // We store the last observed `updated_at` per (week, facility).
+  const lastSeen = window.__FLOW_PRIMED__[key] || '';
+  const r = await fetchFlowWeek(ws, f);
+  const updatedAt = (r && (r.updated_at || r.updatedAt)) ? String(r.updated_at || r.updatedAt) : '';
+  if (updatedAt && lastSeen === updatedAt) return;
+  window.__FLOW_PRIMED__[key] = updatedAt || String(Date.now());
+
+  const d = r && r.data ? r.data : null;
+  if (!d) return;
+
+  // Mirror into localStorage WITHOUT generating timestamps automatically.
+  window.__FLOW_SUPPRESS_BACKEND_WRITE__ = true;
+  try {
+    // Week sign-off
+    if ('receivingComplete' in d || 'vasComplete' in d || 'receivingAt' in d || 'vasAt' in d) {
+      try {
+        const o = {
+          receivingComplete: !!d.receivingComplete,
+          vasComplete: !!d.vasComplete,
+          receivingAt: d.receivingAt || null,
+          vasAt: d.vasAt || null,
+          updatedAt: (r.updated_at || r.updatedAt || null),
+        };
+        localStorage.setItem(weekSignoffKey(ws), JSON.stringify(o));
+      } catch {}
+    }
+
+    // Pre-booked containers
+    if (d.prebook && typeof d.prebook === 'object') {
+      try { localStorage.setItem(prebookKey(ws), JSON.stringify({ c20: num(d.prebook.c20 || 0), c40: num(d.prebook.c40 || 0) })); } catch {}
+    }
+
+    // Intl lane manual data (map laneKey -> obj)
+    if (d.intl_lanes && typeof d.intl_lanes === 'object') {
+      try {
+        for (const [laneKey, obj] of Object.entries(d.intl_lanes)) {
+          if (!laneKey) continue;
+          localStorage.setItem(intlStorageKey(ws, laneKey), JSON.stringify(obj || {}));
+        }
+      } catch {}
+    }
+
+    // Week-level intl containers
+    if (d.intl_weekcontainers) {
+      try {
+        const arr = Array.isArray(d.intl_weekcontainers) ? d.intl_weekcontainers : (Array.isArray(d.intl_weekcontainers.containers) ? d.intl_weekcontainers.containers : []);
+        const state = { containers: arr || [], _v: 1, _fromBackend: true };
+        localStorage.setItem(intlWeekContainersKey(ws), JSON.stringify(state));
+      } catch {}
+    }
+
+    // Last Mile receipts
+    if (d.lastmile_receipts && typeof d.lastmile_receipts === 'object') {
+      try { localStorage.setItem(lastMileReceiptsKey(ws), JSON.stringify(d.lastmile_receipts || {})); } catch {}
+    }
+  } finally {
+    window.__FLOW_SUPPRESS_BACKEND_WRITE__ = false;
+  }
+}
 
   function uniq(arr) {
     return Array.from(new Set((arr || []).filter(Boolean)));
@@ -866,11 +972,6 @@ function computeCartonStatsFromRecords(records) {
     });
 
     const next = (Array.isArray(containers) ? containers : []).map(c => {
-      // Strip UI-only keys (e.g. __isNew) before persisting
-      const _c = {};
-      Object.keys(c || {}).forEach(k => { if (!String(k).startsWith('__')) _c[k] = c[k]; });
-      c = _c;
-
       const uid = String(c.container_uid || c.uid || '').trim() || _uid('c');
       const id = String(c.container_id || c.container || '').trim();
       const prior = prevByUid.get(uid) || (id && prevById.get(id)) || {};
@@ -889,6 +990,10 @@ function computeCartonStatsFromRecords(records) {
 
     const state = { ...(prev || {}), containers: next, _v: 1, _migratedFromLaneContainers: true };
     try { localStorage.setItem(k, JSON.stringify(state)); } catch { /* ignore */ }
+
+    // Write-through for cross-browser sync (server stores raw inputs only).
+    try { patchFlowWeek(ws, { intl_weekcontainers: state }); } catch { /* ignore */ }
+
     return state;
   }
 
@@ -913,6 +1018,7 @@ function computeCartonStatsFromRecords(records) {
     const k = prebookKey(ws);
     const o = { c20: num(next?.c20 || 0), c40: num(next?.c40 || 0) };
     try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+    patchFlowWeek(ws, { prebook: o });
     return o;
   }
 
@@ -951,6 +1057,13 @@ function saveWeekSignoff(ws, next) {
     updatedAt: new Date().toISOString(),
   };
   try { localStorage.setItem(k, JSON.stringify(o)); } catch {}
+  // Write-through (async). UI remains local-first.
+  patchFlowWeek(ws, {
+    receivingComplete: o.receivingComplete,
+    receivingAt: o.receivingAt,
+    vasComplete: o.vasComplete,
+    vasAt: o.vasAt,
+  });
   return o;
 }
 
@@ -977,6 +1090,7 @@ function saveWeekSignoff(ws, next) {
   function saveLastMileReceipts(ws, receipts) {
     const k = lastMileReceiptsKey(ws);
     try { localStorage.setItem(k, JSON.stringify(receipts || {})); } catch { /* ignore */ }
+    patchFlowWeek(ws, { lastmile_receipts: (receipts || {}) });
   }
 
   function loadIntlLaneManual(ws, key) {
@@ -1021,6 +1135,8 @@ function saveWeekSignoff(ws, next) {
       }
 
       localStorage.setItem(k, JSON.stringify(next || {}));
+      // Persist lane-scoped manual inputs to backend (stored as week.facility.data.intl_lanes[key])
+      try { patchFlowWeek(ws, { intl_lanes: { [key]: (next || {}) } }); } catch {}
     } catch { /* ignore */ }
   }
 
@@ -2722,6 +2838,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           size_ft: String(c.size_ft || '').trim(),
           vessel,
           delivery_local: String((rcp && rcp.delivery_local) || '').trim(),
+          scheduled_local: String((rcp && rcp.scheduled_local) || '').trim(),
+          status: String((rcp && rcp.status) || '').trim(),
           pod_received: !!((rcp && rcp.pod_received) || false),
           note: String((rcp && rcp.last_mile_note) || ''),
           laneCount: lane_keys.length,
@@ -2752,14 +2870,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Open</div>
-            <div class="text-sm font-semibold">${contRows.filter(r => !r.delivery_local).length}</div>
+            <div class="text-sm font-semibold">${contRows.filter(r => !r.scheduled_local && !r.delivery_local).length}</div>
           </div>
         </div>
       `;
 
       const rows = contRows.map(r => {
-        const st = r.delivery_local ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Scheduled</span>`
-                                 : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`;
+        const st = r.delivery_local
+          ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('green')} whitespace-nowrap">Delivered</span>`
+          : (r.scheduled_local
+            ? `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('gray')} whitespace-nowrap">Scheduled</span>`
+            : `<span class="text-xs px-2 py-0.5 rounded-full border ${pill('yellow')} whitespace-nowrap">Open</span>`);
         return [
           `<button class="text-left hover:underline" data-cont="${escapeAttr(r.key)}">${escapeHtml(r.supplier)}</button>`,
           r.ticket ? escapeHtml(r.ticket) : '<span class="text-gray-400">—</span>',
@@ -2771,7 +2892,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           st,
           r.delivery_local
             ? '<span class="text-gray-400">—</span>'
-            : `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`,
+            : (r.scheduled_local
+              ? `<button data-lm-deliver="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-emerald-50 hover:bg-emerald-100">Receive</button>`
+              : `<button data-lm-schedule="1" data-ws="${escapeAttr(ws)}" data-cont="${escapeAttr(r.key)}" data-uid="${escapeAttr(r.uid)}" class="px-2 py-1 rounded-lg text-xs border bg-sky-50 hover:bg-sky-100">Schedule</button>`),
         ];
       });
 
@@ -2871,10 +2994,10 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
       const lane_keys = Array.isArray(c.lane_keys) ? c.lane_keys : [];
 
       return `
-        <div class="flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2 ${c.__isNew ? 'bg-amber-50 border-amber-200' : 'bg-white'}" data-uid="${escapeAttr(uid)}">
-          <label class="col-span-12 sm:col-span-7 text-xs">
+        <div class="flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2" data-uid="${escapeAttr(uid)}">
+          <label class="col-span-12 sm:col-span-5 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Lanes on this container</div>
-            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white h-32 overflow-auto" multiple>
+            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white" multiple>
               ${laneOptions.map(o => {
                 const sel = lane_keys.includes(o.key) ? 'selected' : '';
                 return `<option value="${escapeAttr(o.key)}" ${sel}>${escapeHtml(o.label)}</option>`;
@@ -3094,14 +3217,13 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           : _uid('c');
 
         const wrap = document.createElement('div');
-        wrap.className = 'flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2 bg-amber-50 border-amber-200';
-        wrap.dataset.new = '1';
+        wrap.className = 'flow-wc-row grid grid-cols-12 gap-2 items-end border rounded-lg p-2';
         wrap.dataset.uid = uid;
 
         wrap.innerHTML = `
-          <label class="col-span-12 sm:col-span-7 text-xs">
+          <label class="col-span-12 sm:col-span-5 text-xs">
             <div class="text-[11px] text-gray-500 mb-1">Lanes on this container</div>
-            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white h-32 overflow-auto" multiple></select>
+            <select class="flow-wc-lanes w-full px-2 py-1.5 border rounded-lg bg-white" multiple></select>
             <div class="text-[11px] text-gray-500 mt-1">Tip: hold Ctrl/⌘ to select multiple</div>
           </label>
           <label class="col-span-12 sm:col-span-4 text-xs">
@@ -3245,9 +3367,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
   
   function lastMileEditor(ws, tz, r) {
+    const scheduledAt = r.scheduled_local ? String(r.scheduled_local).replace('T',' ') : '';
     const deliveredAt = r.delivery_local ? String(r.delivery_local).replace('T',' ') : '';
     const note = String(r.note || '');
-    const canReceive = !r.delivery_local;
+    const state = deliveredAt ? 'Delivered' : (scheduledAt ? 'Scheduled' : 'Open');
+    const canSchedule = !scheduledAt && !deliveredAt;
+    const canReceive = !!scheduledAt && !deliveredAt;
 
     return `
       <div class="mt-3 rounded-xl border p-3">
@@ -3256,17 +3381,21 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             <div class="text-sm font-semibold text-gray-700">Selected container</div>
             <div class="text-xs text-gray-500 mt-0.5">${escapeHtml(r.container_id || '—')} • ${escapeHtml(r.vessel || '—')}</div>
           </div>
-          <div class="text-xs ${canReceive ? 'text-amber-700' : 'text-emerald-700'}">${canReceive ? 'Open' : 'Complete'}</div>
+          <div class="text-xs ${state==='Delivered' ? 'text-emerald-700' : (state==='Scheduled' ? 'text-gray-700' : 'text-amber-700')}">${escapeHtml(state)}</div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 text-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-sm">
+          <div class="rounded-lg border p-2">
+            <div class="text-[11px] text-gray-500">Scheduled at</div>
+            <div class="font-medium">${scheduledAt ? escapeHtml(scheduledAt) : '<span class="text-gray-400">—</span>'}</div>
+          </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">Delivered at</div>
             <div class="font-medium">${deliveredAt ? escapeHtml(deliveredAt) : '<span class="text-gray-400">—</span>'}</div>
           </div>
           <div class="rounded-lg border p-2">
             <div class="text-[11px] text-gray-500">POD</div>
-            <div class="font-medium">${r.pod_received ? 'Yes' : (canReceive ? '<span class="text-gray-400">—</span>' : 'No')}</div>
+            <div class="font-medium">${r.pod_received ? 'Yes' : (deliveredAt ? 'No' : '<span class="text-gray-400">—</span>')}</div>
           </div>
         </div>
 
@@ -3278,15 +3407,21 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="flex items-center justify-between mt-3">
           <div id="flow-lm-save-msg" class="text-xs text-gray-500"></div>
           <div class="flex items-center gap-2">
-            ${canReceive ? `
+            ${canSchedule ? `
+              <button data-lm-schedule="1"
+                data-ws="${escapeAttr(ws)}"
+                data-cont="${escapeAttr(r.key)}"
+                data-uid="${escapeAttr(r.uid)}"
+                class="px-3 py-1.5 rounded-lg text-sm border bg-sky-50 hover:bg-sky-100">Schedule (now)</button>
+            ` : (canReceive ? `
               <button data-lm-deliver="1"
                 data-ws="${escapeAttr(ws)}"
                 data-cont="${escapeAttr(r.key)}"
                 data-uid="${escapeAttr(r.uid)}"
                 class="px-3 py-1.5 rounded-lg text-sm border bg-emerald-50 hover:bg-emerald-100">Receive (now)</button>
             ` : `
-              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Received</button>
-            `}
+              <button disabled class="px-3 py-1.5 rounded-lg text-sm border bg-gray-50 text-gray-400 cursor-not-allowed">Delivered</button>
+            `)}
             <button data-lm-note-save="1"
               data-ws="${escapeAttr(ws)}"
               data-cont="${escapeAttr(r.key)}"
@@ -3302,16 +3437,55 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const detail = document.getElementById('flow-detail');
     if (!detail) return;
 
-    // container row clicks (selection)
-    detail.querySelectorAll('[data-cont]').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', () => {
-        const k = btn.getAttribute('data-cont');
+    // container row clicks (selection) — but DO NOT bind action buttons (schedule / receive / save note),
+    // otherwise they get "bound" and never receive their real handlers.
+    detail.querySelectorAll('[data-cont]').forEach(el => {
+      if (el.matches('[data-lm-deliver="1"],[data-lm-schedule="1"],[data-lm-note-save="1"]')) return;
+      if (el.dataset.bound) return;
+      el.dataset.bound = '1';
+      el.addEventListener('click', () => {
+        const k = el.getAttribute('data-cont');
         UI.selection = { node: 'lastmile', sub: k };
         refresh();
       });
     });
+
+    const bindSchedule = (btn) => {
+      if (!btn || btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const wsNow = String(btn.getAttribute('data-ws') || ws || '').trim() || ws;
+        const contKey = btn.getAttribute('data-cont') || selectedKey;
+        const uid = String(btn.getAttribute('data-uid') || (String(contKey).split('::')[1] || '')).trim();
+
+        const msg = detail.querySelector('#flow-lm-save-msg');
+        if (!uid) {
+          if (msg) { msg.textContent = 'Update failed: missing container uid'; msg.className = 'text-xs text-red-600'; }
+          return;
+        }
+
+        const receipts = loadLastMileReceipts(wsNow);
+        const now = nowLocalDT();
+        const note = String(detail.querySelector('#flow-lm-note')?.value || '');
+
+        receipts[uid] = {
+          ...(receipts[uid] || {}),
+          scheduled_local: now,
+          status: 'Scheduled',
+          last_mile_note: note,
+          _updatedAt: new Date().toISOString(),
+        };
+        saveLastMileReceipts(wsNow, receipts);
+
+        if (msg) { msg.textContent = 'Scheduled ✓'; msg.className = 'text-xs text-blue-700'; }
+
+        UI.selection = { node: 'lastmile', sub: contKey };
+        refresh();
+      });
+    };
 
     const bindDeliver = (btn) => {
       if (!btn || btn.dataset.bound) return;
@@ -3337,7 +3511,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         receipts[uid] = {
           ...(receipts[uid] || {}),
+          // If user clicks Receive without scheduling first, we still mark delivered.
           delivery_local: now,
+          status: 'Delivered',
           pod_received: true,
           last_mile_note: note,
           _updatedAt: new Date().toISOString(),
@@ -3346,7 +3522,6 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
         if (msg) { msg.textContent = 'Received ✓'; msg.className = 'text-xs text-emerald-700'; }
 
-        // Keep selection on the same container and do a full deterministic re-render.
         UI.selection = { node: 'lastmile', sub: contKey };
         refresh();
       });
@@ -3367,7 +3542,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const note = String(detail.querySelector('#flow-lm-note')?.value || '');
 
         if (!uid) {
-          if (msg) { msg.textContent = 'Save failed: missing container uid'; msg.className = 'text-xs text-red-600'; }
+          if (msg) { msg.textContent = 'Update failed: missing container uid'; msg.className = 'text-xs text-red-600'; }
           return;
         }
 
@@ -3379,16 +3554,17 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         };
         saveLastMileReceipts(wsNow, receipts);
 
-        if (msg) { msg.textContent = 'Note saved ✓'; msg.className = 'text-xs text-emerald-700'; }
+        if (msg) { msg.textContent = 'Saved ✓'; msg.className = 'text-xs text-emerald-700'; }
 
         UI.selection = { node: 'lastmile', sub: contKey };
         refresh();
       });
     };
 
+    detail.querySelectorAll('[data-lm-schedule="1"]').forEach(bindSchedule);
     detail.querySelectorAll('[data-lm-deliver="1"]').forEach(bindDeliver);
     detail.querySelectorAll('[data-lm-note-save="1"]').forEach(bindNoteSave);
-  }
+}
 
 function manualFormIntl(ws, tz, manual) {
     const m = manual.manual || {};
@@ -3910,6 +4086,28 @@ async function refresh() {
     ws = normalizeWeekStartToMonday(ws);
     if (!window.state) window.state = {};
     window.state.weekStart = ws;
+    // Prime week-scoped local stores from backend so data is shared across browsers.
+    await primeFlowWeekFromBackend(ws);
+    // Backend sync pulse (cross-browser): periodically re-prime this week if backend changed.
+    if (!window.__FLOW_BACKEND_POLL__) {
+      window.__FLOW_BACKEND_POLL__ = setInterval(async () => {
+        try {
+          const flowSection = document.getElementById('page-flow');
+          const isFlowVisible = flowSection && !flowSection.classList.contains('hidden');
+          if (!isFlowVisible) return;
+          const wsNow = normalizeWeekStartToMonday(UI.currentWs || window.state?.weekStart || '');
+          if (!wsNow) return;
+          const before = String(window.__FLOW_PRIMED__?.[`${wsNow}::${getFacility()}`] || '');
+          await primeFlowWeekFromBackend(wsNow);
+          const after = String(window.__FLOW_PRIMED__?.[`${wsNow}::${getFacility()}`] || '');
+          if (after && after !== before) {
+            // Re-render to reflect changes pulled from backend.
+            refresh();
+          }
+        } catch {}
+      }, 5000);
+    }
+
     const wkInp = document.getElementById('week-start');
     if (wkInp) wkInp.value = ws;
 
@@ -3966,7 +4164,7 @@ async function refresh() {
           if (inp) inp.value = nextWs;
           UI.currentWs = nextWs;
           // Keep selection stable but safe
-          if (!UI.selection) UI.selection = { node: null, sub: null };
+          if (!UI.selection?.node) UI.selection = { node: 'receiving', sub: null };
           refresh();
         } catch (e) {
           console.warn('[flow] week nav failed', e);
