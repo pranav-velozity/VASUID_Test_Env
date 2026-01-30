@@ -1505,7 +1505,7 @@ function computeManualNodeStatuses(ws, tz) {
                 const cid = escapeHtml(String(c.container_id || c.container || '').trim() || '—');
                 const ft = escapeHtml(String(c.size_ft || '').trim() ? (String(c.size_ft).trim() + 'ft') : '—');
                 const ves = escapeHtml(String(c.vessel || '').trim() || '—');
-                return `<tr class="border-t"><td class="py-2 pr-2">${cid}</td><td class="py-2 pr-2">${ft}</td><td class="py-2 pr-2">${ves}</td></tr>`;
+                return `<tr class="border-t"><td class="py-3 pr-4">${cid}</td><td class="py-3 pr-4">${ft}</td><td class="py-3 pr-4">${ves}</td></tr>`;
               }).join('')}
             </tbody>
           </table>
@@ -1771,25 +1771,26 @@ function computeManualNodeStatuses(ws, tz) {
       const freightLower = String(l.freight || '').toLowerCase();
       const freightCls = freightLower === 'air' ? 'text-sky-700' : (freightLower === 'sea' ? 'text-emerald-700' : 'text-gray-700');
       const stageTxt = latestActualStatusText(manual);
+      const holdFlag = !!(manual.hold || manual.customs_hold || manual.customsHold || manual.customsHoldFlag);
       return `
         <tr class="border-t align-top hover:bg-gray-50">
-          <td class="py-2 pr-2">
+          <td class="py-3 pr-4">
             <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
             <div class="text-xs font-medium mt-0.5 ${freightCls}">${escapeHtml(l.freight || '')}</div>
-            <div class="text-xs font-semibold mt-0.5" style="color:#111827">${escapeHtml(stageTxt || 'No actual updates')}</div>
+            <div class="text-xs font-semibold mt-0.5 tracking-wide" style="color:#e90076; text-transform:uppercase">${escapeHtml(stageTxt || 'No actual updates')}</div>
           </td>
-          <td class="py-2 pr-2 text-center">${ticket}</td>
-          <td class="py-2 pr-2 text-center">${st}</td>
-          <td class="py-2 pr-2 text-center">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
-          <td class="py-2 pr-2 text-center">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
-          <td class="py-2 pr-2 text-center">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
-          <td class="py-2 pr-2 text-center">${manual.hold ? 'Yes' : '—'}</td>
-          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
-          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
-          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
-          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
-          <td class="py-2 pr-2 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
-          <td class="py-2 pr-2 text-left">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
+          <td class="py-3 px-4 text-center">${ticket}</td>
+          <td class="py-3 px-4 text-center">${st}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${holdFlag ? '✓' : '—'}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
+          <td class="py-3 pl-4 pr-4 text-left">${containers.length ? containers.map(c=>escapeHtml(c)).join('<br/>') : '—'}</td>
         </tr>
       `;
     }).join('');
@@ -1808,22 +1809,22 @@ function computeManualNodeStatuses(ws, tz) {
             <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">At risk</span> <b>${counts.yellow}</b></div>
           </div>
         </div>
-        <div class="mt-3 overflow-auto">
-          <table class="w-full text-sm min-w-[1320px]">
+        <div class="mt-5 overflow-auto">
+          <table class="w-full text-sm min-w-[1500px]">
             <thead class="sticky top-0 bg-white">
-              <tr class="text-[11px] text-gray-500 border-b">
-                <th class="text-left py-2 pr-2">Supplier / Freight</th>
-                <th class="text-center py-2 pr-2">Zendesk</th>
-                <th class="text-center py-2 pr-2">Status</th>
-                <th class="text-center py-2 pr-2">Shipment #</th>
-                <th class="text-center py-2 pr-2">HBL</th>
-                <th class="text-center py-2 pr-2">MBL</th>
-                <th class="text-center py-2 pr-2">Hold</th>
-                <th class="text-center py-2 pr-2">📄 Pack List</th>
-                <th class="text-center py-2 pr-2">🛃 Origin Customs</th>
-                <th class="text-center py-2 pr-2">🚚 Departed</th>
-                <th class="text-center py-2 pr-2">📍 Arrived</th>
-                <th class="text-center py-2 pr-2">🛃 Dest Customs</th>
+              <tr class="text-[13px] text-gray-600 border-b">
+                <th class="text-left py-3 pr-4">Supplier / Freight</th>
+                <th class="text-center py-3 px-4">Zendesk</th>
+                <th class="text-center py-3 px-4">Status</th>
+                <th class="text-center py-3 px-4">Shipment #</th>
+                <th class="text-center py-3 px-4">HBL</th>
+                <th class="text-center py-3 px-4">MBL</th>
+                <th class="text-center py-3 px-4">Hold</th>
+                <th class="text-center py-3 px-4">📄 Pack List</th>
+                <th class="text-center py-3 px-4">🛃 Origin Customs</th>
+                <th class="text-center py-3 px-4">🚚 Departed</th>
+                <th class="text-center py-3 px-4">📍 Arrived</th>
+                <th class="text-center py-3 px-4">🛃 Dest Customs</th>
                 <th class="text-left py-2 pr-2">Container #</th>
               </tr>
             </thead>
