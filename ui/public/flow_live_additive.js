@@ -4623,17 +4623,17 @@ function buildReportHTML(cache) {
       }
     };
 
-    const nodePageHTML = (title, rightHTML, detailHTML) => {
+    const nodePageHTML = (pageTitle, rightTitle, rightHTML, bottomTitle, detailHTML) => {
       return `
         <div class="page">
-          <div class="pageTitle">${escape(title)}</div>
+          <div class="pageTitle">${escape(pageTitle)}</div>
           <div class="pageGrid">
             <div class="box">
-              <div class="boxTitle">Right tile</div>
+              <div class="boxTitle">${escape(rightTitle || 'Summary')}</div>
               <div class="boxBody">${rightHTML || '<div class="muted">—</div>'}</div>
             </div>
             <div class="box">
-              <div class="boxTitle">Bottom tile</div>
+              <div class="boxTitle">${escape(bottomTitle || 'Details')}</div>
               <div class="boxBody">${detailHTML || '<div class="muted">—</div>'}</div>
             </div>
           </div>
@@ -4655,13 +4655,14 @@ function buildReportHTML(cache) {
       // Page 1: Cover
       pages.push(`
         <div class="page cover">
-          <div class="coverCenter">
-            <div class="coverTitle">VelOzity Pinpoint</div>
+          <div class="coverBlock">
+            <div class="coverBrand"><span class="brandAccent">VelOzity</span> <span class="brandAccent">Pinpoint</span> <span class="brandPin">📍</span></div>
             <div class="coverWeek">${escape(weekLabel)}</div>
             <div class="coverRange">${escape(fmtDateRange(ws))}</div>
           </div>
         </div>
       `);
+
 
       // Page 2: Overview (S-curve + Week totals)
       const journeyHTML = captureHTML(document.getElementById('flow-journey'));
@@ -4684,11 +4685,11 @@ function buildReportHTML(cache) {
 
       // Receiving
       safeRenderForNode('receiving');
-      pages.push(nodePageHTML('Receiving', captureHTML(document.getElementById('flow-footer')), captureHTML(document.getElementById('flow-detail'))));
+      pages.push(nodePageHTML('Receiving', 'Receiving summary', captureHTML(document.getElementById('flow-footer')), 'Receiving detail', captureHTML(document.getElementById('flow-detail'))));
 
       // VAS
       safeRenderForNode('vas');
-      pages.push(nodePageHTML('VAS Processing', captureHTML(document.getElementById('flow-footer')), captureHTML(document.getElementById('flow-detail'))));
+      pages.push(nodePageHTML('VAS Processing', 'VAS summary', captureHTML(document.getElementById('flow-footer')), 'VAS detail', captureHTML(document.getElementById('flow-detail'))));
 
       // Transit & Clearing special: (A) right tile + lanes tile (no lane details)
       safeRenderForNode('intl');
@@ -4700,7 +4701,7 @@ function buildReportHTML(cache) {
           <div class="pageTitle">Transit &amp; Clearing</div>
           <div class="pageGrid">
             <div class="box">
-              <div class="boxTitle">Right tile</div>
+              <div class="boxTitle">Transit &amp; Clearing summary</div>
               <div class="boxBody">${intlRight || '<div class="muted">—</div>'}</div>
             </div>
             <div class="box">
@@ -4732,39 +4733,35 @@ function buildReportHTML(cache) {
       } catch (e) {
         console.warn('[flow] pdf lanes fullscreen capture failed', e);
       }
-
-      // Transit & Clearing special: (C) week containers tile (last tile)
-      const contTileHTML = extractIntlContainersTileHTML(intlDetailRaw);
-      if (contTileHTML) {
-        pages.push(`
-          <div class="page">
-            <div class="pageTitle">Transit &amp; Clearing — Containers</div>
-            <div class="box">
-              <div class="boxBody">${contTileHTML}</div>
-            </div>
-          </div>
-        `);
-      }
-
-      // Last Mile
+      // Transit & Clearing containers pages intentionally omitted in PDF.
+// Last Mile
       safeRenderForNode('lastmile');
-      pages.push(nodePageHTML('Last Mile', captureHTML(document.getElementById('flow-footer')), captureHTML(document.getElementById('flow-detail'))));
+      pages.push(nodePageHTML('Last Mile', 'Last Mile summary', captureHTML(document.getElementById('flow-footer')), 'Last Mile detail', captureHTML(document.getElementById('flow-detail'))));
 
       // Final timestamp page
       pages.push(`
         <div class="page cover">
-          <div class="coverCenter">
-            <div class="coverWeek">REPORT CREATED</div>
+          <div class="coverBlock">
+            <div class="coverBrand"><span class="brandAccent">Report created</span></div>
             <div class="coverRange">${escape(createdAt)}</div>
           </div>
         </div>
       `);
+
 
       // Restore selection
       try {
         // Best effort restore to original selection
         // (we used UI.selection directly; keep stable afterwards)
       } catch {}
+
+      // Add per-page footer text (avoid relying on print page counters, which vary by browser/PDF driver)
+      const totalPages = pages.length;
+      const pagesWithFooter = pages.map((p, i) => {
+        try {
+          return String(p).replace(/<\/div>\s*$/, `<div class="pageFooter">VelOzity Pinpoint • Page ${i+1} of ${totalPages}</div></div>`);
+        } catch { return p; }
+      });
 
       // Build print window
       const style = `
@@ -4782,27 +4779,27 @@ function buildReportHTML(cache) {
           .overviewGrid { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 14px; align-items: start; }
           .pageGrid { display: grid; grid-template-columns: 0.9fr 1.4fr; gap: 14px; align-items: start; }
           .cover { display:flex; align-items:center; justify-content:center; min-height: 7.0in; }
-          .coverCenter { text-align:center; }
-          .coverTitle { font-size: 40px; font-weight: 900; letter-spacing: 0.02em; }
-          .coverWeek { font-size: 22px; font-weight: 800; margin-top: 10px; }
+          .coverBlock { width: 100%; padding-left: 0.8in; text-align: left; }
+          .coverBrand { font-size: 40px; font-weight: 900; letter-spacing: 0.02em; line-height: 1.05; }
+          .brandAccent { color: #990033; }
+          .brandPin { color: #990033; font-size: 34px; margin-left: 6px; }
+          .coverWeek { font-size: 22px; font-weight: 800; margin-top: 10px; color: #111827; }
           .coverRange { font-size: 14px; color: rgba(17,24,39,0.65); margin-top: 6px; }
           /* Make tables print nicely */
           table { width: 100%; border-collapse: collapse; }
           th, td { border-bottom: 1px solid rgba(17,24,39,0.10); padding: 6px 8px; vertical-align: top; }
           th { color: rgba(17,24,39,0.65); font-size: 11px; font-weight: 800; }
           /* Footer */
-          .footer { position: fixed; bottom: 0.22in; right: 0.5in; font-size: 10px; color: rgba(17,24,39,0.70); }
+          .pageFooter { position: absolute; right: 0; bottom: 0; font-size: 10px; color: rgba(17,24,39,0.70); }
           @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .footer::after { content: "VelOzity Pinpoint • Page " counter(page) " of " counter(pages); }
           }
         </style>
       `;
 
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>VelOzity Pinpoint — ${escape(weekLabel)}</title>${style}</head>
         <body>
-          <div class="footer"></div>
-          ${pages.join('\n')}
+          ${pagesWithFooter.join('\n')}
         </body></html>`;
 
       const w = window.open('', '_blank');
