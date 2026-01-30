@@ -1661,6 +1661,7 @@ function computeManualNodeStatuses(ws, tz) {
 
     const lanes = Array.isArray(ctx.lanes) ? ctx.lanes.slice() : [];
     const weekContainers = Array.isArray(ctx.weekContainers) ? ctx.weekContainers : [];
+    const intl = ctx.intl || null;
 
     // Sort same as lanes tile: holds/red first, then highest remaining units
     const rank = { red: 3, yellow: 2, green: 1, gray: 0 };
@@ -1677,6 +1678,35 @@ function computeManualNodeStatuses(ws, tz) {
       try { return fmtInTZ(s, tz); } catch { return s; }
     };
 
+    // Planned fallback baselines for a lane (derived from Intl window + freight mode).
+    // We intentionally do NOT store these in backend; UI recomputes them.
+    const plannedForLane = (lane) => {
+      const originMin = (intl && intl.originMin instanceof Date) ? intl.originMin : null;
+      const originMax = (intl && intl.originMax instanceof Date) ? intl.originMax : null;
+      if (!originMin || !originMax) return { pack: null, originClr: null, departed: null, arrived: null, destClr: null };
+      const pack = originMin;
+      const originClr = originMax;
+      const departed = addDays(originClr, 1);
+      const transitDays = (lane && lane.freight === 'Air') ? BASELINE.transit_days_air : BASELINE.transit_days_sea;
+      const arrived = addDays(departed, transitDays);
+      const destClr = addDays(arrived, 2);
+      return { pack, originClr, departed, arrived, destClr };
+    };
+
+    // Resolve actual lane dates from any known schema (backend-synced + back-compat), else planned.
+    const laneDateCell = (manualObj, plannedDate, keys) => {
+      const tryKey = (k) => {
+        const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
+        return v ? v : '';
+      };
+      const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
+      if (actualRaw) return `<span class="whitespace-nowrap">${escapeHtml(fmtDT(actualRaw))}</span>`;
+      if (plannedDate && !isNaN(plannedDate)) {
+        return `<span class="whitespace-nowrap">${escapeHtml(fmtInTZ(plannedDate, tz))} <span class="text-[10px] text-gray-400">planned</span></span>`;
+      }
+      return '<span class="text-gray-400">—</span>';
+    };
+
     const contListForLane = (laneKey) => {
       const ids = (weekContainers || [])
         .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(laneKey))
@@ -1685,16 +1715,28 @@ function computeManualNodeStatuses(ws, tz) {
       return uniqNonEmpty(ids);
     };
 
+    // Summary strip for quick scan
+    const counts = lanes.reduce((acc, l) => {
+      acc.total++;
+      acc[l.level] = (acc[l.level] || 0) + 1;
+      const m = String(l.freight || '').toLowerCase();
+      if (m === 'air') acc.air++; else if (m === 'sea') acc.sea++;
+      return acc;
+    }, { total: 0, red: 0, yellow: 0, green: 0, gray: 0, sea: 0, air: 0 });
+
     const rows = lanes.map(l => {
-      const manual = loadIntlLaneManual(ws, l.key) || {};
+      const manual = (l && l.manual && typeof l.manual === 'object') ? l.manual : (loadIntlLaneManual(ws, l.key) || {});
       const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '—';
       const containers = contListForLane(l.key);
       const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
+      const pl = plannedForLane(l);
+      const freightLower = String(l.freight || '').toLowerCase();
+      const freightCls = freightLower === 'air' ? 'text-sky-700' : (freightLower === 'sea' ? 'text-emerald-700' : 'text-gray-700');
       return `
-        <tr class="border-t align-top">
+        <tr class="border-t align-top hover:bg-gray-50">
           <td class="py-2 pr-2">
             <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
-            <div class="text-[11px] text-gray-500 mt-0.5">${escapeHtml(l.freight || '')}</div>
+            <div class="text-xs font-medium mt-0.5 ${freightCls}">${escapeHtml(l.freight || '')}</div>
           </td>
           <td class="py-2 pr-2">${ticket}</td>
           <td class="py-2 pr-2">${st}</td>
@@ -1702,11 +1744,11 @@ function computeManualNodeStatuses(ws, tz) {
           <td class="py-2 pr-2">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
           <td class="py-2 pr-2">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
           <td class="py-2 pr-2">${manual.hold ? 'Yes' : '—'}</td>
-          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.pack)}</td>
-          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.originClr)}</td>
-          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.departed)}</td>
-          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.arrived)}</td>
-          <td class="py-2 pr-2 whitespace-nowrap">${fmtDT(manual.destClr)}</td>
+          <td class="py-2 pr-2">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
+          <td class="py-2 pr-2">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
+          <td class="py-2 pr-2">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
+          <td class="py-2 pr-2">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
+          <td class="py-2 pr-2">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
           <td class="py-2 pr-2">${containers.length ? escapeHtml(containers.join(', ')) : '—'}</td>
         </tr>
       `;
@@ -1714,12 +1756,22 @@ function computeManualNodeStatuses(ws, tz) {
 
     root.querySelector('#flow-lane-modal-body').innerHTML = `
       <div class="rounded-xl border p-3">
-        <div class="text-sm font-semibold text-gray-700">Lanes</div>
-        <div class="text-xs text-gray-500 mt-1">Shipment identifiers + holds + key milestones + containers (derived).</div>
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Lanes</div>
+            <div class="text-xs text-gray-500 mt-1">Dates show <b>Actual</b> when entered; otherwise fall back to <b>Planned</b>.</div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Sea</span> <b>${counts.sea}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Air</span> <b>${counts.air}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Delayed</span> <b>${counts.red}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">At risk</span> <b>${counts.yellow}</b></div>
+          </div>
+        </div>
         <div class="mt-3 overflow-auto">
-          <table class="w-full text-sm min-w-[1200px]">
-            <thead>
-              <tr class="text-[11px] text-gray-500">
+          <table class="w-full text-sm min-w-[1320px]">
+            <thead class="sticky top-0 bg-white">
+              <tr class="text-[11px] text-gray-500 border-b">
                 <th class="text-left py-2 pr-2">Supplier / Freight</th>
                 <th class="text-left py-2 pr-2">Zendesk</th>
                 <th class="text-left py-2 pr-2">Status</th>
@@ -3158,7 +3210,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => {
       `;
 
             // Expose latest Intl context for UI handlers (modal, etc.)
-      try { window.__FLOW_INTL_CTX__ = { ws, tz, lanes, weekContainers }; } catch {}
+      try { window.__FLOW_INTL_CTX__ = { ws, tz, lanes, weekContainers, intl }; } catch {}
 
 detail.innerHTML = [
         header('Transit & Clearing', intl.level, subtitle),
