@@ -271,7 +271,20 @@ app.post('/flow/week/:weekStart', (req, res) => {
 
   const existingRow = flowWeekGet.get(facility, monday);
   const existing = existingRow ? (safeJsonParse(existingRow.data, {}) || {}) : {};
-  const merged = { ...existing, ...patch };
+  const merged = (function mergeFlowWeek(existingObj, patchObj) {
+    const out = { ...(existingObj || {}) };
+    for (const [k, v] of Object.entries(patchObj || {})) {
+      if (k === 'intl_lanes' && v && typeof v === 'object' && !Array.isArray(v)) {
+        const prev = (existingObj && existingObj.intl_lanes && typeof existingObj.intl_lanes === 'object' && !Array.isArray(existingObj.intl_lanes))
+          ? existingObj.intl_lanes
+          : {};
+        out.intl_lanes = { ...prev, ...v };
+        continue;
+      }
+      out[k] = v;
+    }
+    return out;
+  })(existing, patch);
 
   flowWeekUpsert.run(facility, monday, JSON.stringify(merged));
 
@@ -886,12 +899,11 @@ app.get('/bins', (req, res) => {
 });
 /* ===== END: /bins alias ===== */
 
-
-
 // ---- Start ----
 app.listen(PORT, () => {
   console.log(`UID Ops backend listening on http://localhost:${PORT}`);
   console.log(`DB file: ${DB_FILE}`);
   console.log(`CORS origin(s): ${allowList.join(', ')}`);
 });
+
 
