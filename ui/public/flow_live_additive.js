@@ -226,6 +226,19 @@
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
+  // UI helper: compact progress bar (pct: 0..100)
+  function progressBar(pct, opts) {
+    const p = clamp(Number(pct) || 0, 0, 100);
+    const w = (opts && opts.w) ? opts.w : 'w-32';
+    const h = (opts && opts.h) ? opts.h : 'h-2';
+    const bg = (opts && opts.bg) ? opts.bg : 'bg-gray-100';
+    const fill = (opts && opts.fill) ? opts.fill : 'bg-emerald-400';
+    return `
+      <div class="${w} ${h} ${bg} rounded-full overflow-hidden border" title="${Math.round(p)}%">
+        <div class="h-full ${fill}" style="width:${p}%;"></div>
+      </div>
+    `;
+  }
   function statusFromDue(due, actual, now) {
     // Soft cutoffs:
     // - if actual exists, compare actual to due
@@ -1391,6 +1404,255 @@ function computeManualNodeStatuses(ws, tz) {
     // Default focus on Milk Run on initial load (right tile + journey highlight)
     selection: { node: 'milk', sub: null },
   };
+
+  // ------------------------- Lane modal (Transit & Clearing) -------------------------
+  function ensureLaneModal() {
+    let root = document.getElementById('flow-lane-modal');
+    if (root) return root;
+
+    root = document.createElement('div');
+    root.id = 'flow-lane-modal';
+    root.className = 'fixed inset-0 z-[9999] hidden';
+
+    root.innerHTML = `
+      <div class="absolute inset-0 bg-black/40" data-flow-modal-close="1"></div>
+      <div class="absolute inset-3 md:inset-6 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col">
+        <div class="p-3 border-b flex items-center justify-between gap-3">
+          <div>
+            <div id="flow-lane-modal-title" class="text-base font-semibold text-gray-800"></div>
+            <div id="flow-lane-modal-sub" class="text-xs text-gray-500 mt-0.5"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="flow-lane-modal-status"></div>
+            <button class="px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 text-sm" data-flow-modal-close="1">Close</button>
+          </div>
+        </div>
+        <div id="flow-lane-modal-body" class="p-3 overflow-auto flex-1"></div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    // close handlers
+    root.querySelectorAll('[data-flow-modal-close]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeLaneModal();
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const r = document.getElementById('flow-lane-modal');
+        if (r && !r.classList.contains('hidden')) closeLaneModal();
+      }
+    });
+
+    return root;
+  }
+
+  function closeLaneModal() {
+    const root = document.getElementById('flow-lane-modal');
+    if (!root) return;
+    root.classList.add('hidden');
+    root.setAttribute('aria-hidden', 'true');
+  }
+
+  function openLaneModal(ws, tz, laneKey) {
+    const ctx = window.__FLOW_INTL_CTX__ || null;
+    if (!ctx || !ctx.lanes || !ctx.weekContainers) return;
+
+    const lane = (ctx.lanes || []).find(l => l && l.key === laneKey);
+    if (!lane) return;
+
+    const manual = loadIntlLaneManual(ws, laneKey) || {};
+    const root = ensureLaneModal();
+
+    const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? String(lane.ticket) : '';
+    const title = `${lane.supplier} • ${lane.freight}${ticket ? ` • Zendesk ${ticket}` : ''}`;
+    const subtitle = `Lane key: ${lane.key}`;
+
+    const statusHtml = `
+      <span class="dot ${dot(lane.level)}"></span>
+      <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap ml-2">${statusLabel(lane.level)}</span>
+    `;
+
+    root.querySelector('#flow-lane-modal-title').textContent = title;
+    root.querySelector('#flow-lane-modal-sub').textContent = subtitle;
+    root.querySelector('#flow-lane-modal-status').innerHTML = statusHtml;
+
+    // Containers derived from week-level containers
+    const conts = (ctx.weekContainers || [])
+      .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(lane.key))
+      .filter(c => {
+        const cid = String(c?.container_id || c?.container || '').trim();
+        const ves = String(c?.vessel || '').trim();
+        const ft = String(c?.size_ft || '').trim();
+        return !!(cid || ves || ft);
+      });
+
+    const contRows = conts.length ? `
+      <div class="rounded-xl border p-3">
+        <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">${iconContainer()} <span>Containers</span></div>
+        <div class="mt-2 overflow-auto">
+          <table class="w-full text-sm">
+            <thead><tr>
+              <th class="th text-left py-2 pr-2">Container #</th>
+              <th class="th text-left py-2 pr-2">Size</th>
+              <th class="th text-left py-2 pr-2">Vessel</th>
+            </tr></thead>
+            <tbody>
+              ${(conts || []).map(c => {
+                const cid = escapeHtml(String(c.container_id || c.container || '').trim() || '—');
+                const ft = escapeHtml(String(c.size_ft || '').trim() ? (String(c.size_ft).trim() + 'ft') : '—');
+                const ves = escapeHtml(String(c.vessel || '').trim() || '—');
+                return `<tr class="border-t"><td class="py-2 pr-2">${cid}</td><td class="py-2 pr-2">${ft}</td><td class="py-2 pr-2">${ves}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : `
+      <div class="rounded-xl border p-3 text-sm text-gray-500">
+        No containers mapped to this lane yet (week-level containers).
+      </div>
+    `;
+
+    const dateVal = (v) => String(v || '').trim();
+
+    // Modal body: reuse the same lane fields pattern + new IDs
+    root.querySelector('#flow-lane-modal-body').innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="rounded-xl border p-3">
+          <div class="text-sm font-semibold text-gray-700">Lane dates & documents</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
+              <input data-lm-field="pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.pack))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
+              <input data-lm-field="originClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.originClr))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Departed origin</div>
+              <input data-lm-field="departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.departed))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
+              <input data-lm-field="arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.arrived))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
+              <input data-lm-field="destClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.destClr))}"/>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+              <input data-lm-field="shipmentNumber" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">HBL</div>
+              <input data-lm-field="hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">MBL</div>
+              <input data-lm-field="mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+            </label>
+          </div>
+
+          <div class="flex items-center gap-3 mt-3">
+            <label class="text-sm flex items-center gap-2">
+              <input data-lm-field="hold" type="checkbox" class="h-4 w-4" ${manual.hold ? 'checked' : ''}/>
+              <span>Customs hold</span>
+            </label>
+          </div>
+
+          <label class="text-sm mt-3 block">
+            <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
+            <textarea data-lm-field="note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(String(manual.note || ''))}</textarea>
+          </label>
+
+          <div class="flex items-center justify-end mt-3">
+            <button id="flow-lane-modal-save" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+          </div>
+          <div id="flow-lane-modal-msg" class="text-xs text-gray-500 mt-2"></div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          ${contRows}
+        </div>
+      </div>
+    `;
+
+    // Wire save button (dates + hold + note + ids)
+    const body = root.querySelector('#flow-lane-modal-body');
+    const saveBtn = body.querySelector('#flow-lane-modal-save');
+    const msg = body.querySelector('#flow-lane-modal-msg');
+
+    const readFields = () => {
+      const q = (sel) => body.querySelector(sel);
+      const get = (k) => {
+        const el = body.querySelector(`[data-lm-field="${k}"]`);
+        if (!el) return '';
+        if (el.type === 'checkbox') return !!el.checked;
+        return String(el.value || '').trim();
+      };
+      return {
+        pack: get('pack'),
+        originClr: get('originClr'),
+        departed: get('departed'),
+        arrived: get('arrived'),
+        destClr: get('destClr'),
+        hold: !!get('hold'),
+        note: get('note'),
+        shipmentNumber: get('shipmentNumber'),
+        hbl: get('hbl'),
+        mbl: get('mbl'),
+      };
+    };
+
+    const doSave = () => {
+      try {
+        const vals = readFields();
+        saveIntlLaneManual(ws, laneKey, vals);
+        if (msg) msg.textContent = 'Saved.';
+      } catch (e) {
+        if (msg) msg.textContent = 'Save failed.';
+      }
+    };
+
+    if (saveBtn) saveBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); doSave(); };
+
+    // Background persist for IDs only (blur/Enter)
+    const idKeys = new Set(['shipmentNumber','hbl','mbl']);
+    body.querySelectorAll('[data-lm-field]').forEach(el => {
+      const key = el.getAttribute('data-lm-field');
+      if (!idKeys.has(key)) return;
+
+      const saveOne = () => {
+        const v = (el.type === 'checkbox') ? !!el.checked : String(el.value || '').trim();
+        const patch = {};
+        patch[key] = v;
+        saveIntlLaneManual(ws, laneKey, patch);
+        if (msg) msg.textContent = 'Saved.';
+      };
+
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveOne();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => saveOne());
+    });
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+  }
 
   function ensureFlowPageExists() {
     // 1) page section
@@ -2603,7 +2865,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     // ---------------- Node-specific details ----------------
     if (sel.node === 'receiving') {
-  const title = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const overallPct = (num(receiving.plannedPOs) || 0) ? (num(receiving.receivedPOs || 0) / num(receiving.plannedPOs || 1)) * 100 : 0;
+  const titleBase = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const title = `${titleBase} <span class="inline-flex align-middle ml-2">${progressBar(overallPct, { w: 'w-36', h: 'h-2' })}</span>`;
   const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
 
   const insights = [
@@ -2631,19 +2895,24 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
   const supRows = (receiving.suppliers || [])
     .sort((a, b) => (b.cartonsOut || 0) - (a.cartonsOut || 0))
     .slice(0, 30)
-    .map(s => [
-      s.supplier,
-      `${s.receivedPOs}/${s.poCount}`,
-      `${Math.round(s.units)}`,
-      `${s.cartonsIn || 0}`,
-      `${s.cartonsOut || 0}`,
-    ]);
+    .map(s => {
+      const denom = num(s.poCount || 0) || 0;
+      const pct = denom ? (num(s.receivedPOs || 0) / denom) * 100 : 0;
+      return [
+        s.supplier,
+        progressBar(pct, { w: 'w-28', h: 'h-2' }),
+        `${s.receivedPOs}/${s.poCount}`,
+        `${Math.round(s.units)}`,
+        `${s.cartonsIn || 0}`,
+        `${s.cartonsOut || 0}`,
+      ];
+    });
 
   detail.innerHTML = [
     header(title, receiving.level, subtitle),
     bullets(insights),
     kpis,
-    table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
+    table(['Supplier', 'Progress', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
   ].join('');
   return;
 }
@@ -2685,16 +2954,21 @@ const vasMixHtml = (vasObj) => {
     : `<div class="mt-3 text-xs text-gray-500">No remaining POs — on track.</div>`;
   return bar + legend + tbl;
 };
-const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN(x.planned), fmtN(x.applied), `${x.pct}%`]);
+const supRows = (vas.supplierRows || []).slice(0, 12).map(x => {
+  const planned = num(x.planned || 0) || 0;
+  const applied = num(x.applied || 0) || 0;
+  const pct = planned ? (applied / planned) * 100 : 0;
+  return [x.supplier, progressBar(pct, { w: 'w-28', h: 'h-2' }), fmtN(planned), fmtN(applied), `${Math.round(pct)}%`];
+});
 
 
       detail.innerHTML = [
-        header('VAS Processing', vas.level, subtitle),
+        header(`VAS Processing <span class="inline-flex align-middle ml-2">${progressBar((num(vas.completion)||0)*100, { w: 'w-36', h: 'h-2' })}</span>`, vas.level, subtitle),
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
-            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
+            ${table(['Supplier', 'Progress', 'Planned', 'Applied', '%'], supRows)}
           </div>
           
 <div class="rounded-xl border p-3">
@@ -2778,7 +3052,10 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No lanes found in the uploaded Plan for this week.</div>
       `;
 
-      detail.innerHTML = [
+            // Expose latest Intl context for UI handlers (modal, etc.)
+      try { window.__FLOW_INTL_CTX__ = { ws, tz, lanes, weekContainers }; } catch {}
+
+detail.innerHTML = [
         header('Transit & Clearing', intl.level, subtitle),
         bullets(insights),
         kpis,
@@ -3046,12 +3323,16 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button type="button" id="flow-lane-collapse" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Collapse</button>
+            <button type="button" id="flow-lane-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button>
             <span class="dot ${dot(lane.level)}"></span>
             <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap">${statusLabel(lane.level)}</span>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+
+        <div id="flow-lane-editor-body" class="mt-3">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
@@ -3100,6 +3381,22 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               </label>
             </div>
 
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+                <input id="flow-intl-shipment" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+              </label>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">HBL</div>
+                <input id="flow-intl-hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+              </label>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">MBL</div>
+                <input id="flow-intl-mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+              </label>
+            </div>
+
+
             <div class="flex items-center gap-3 mt-3">
               <label class="text-sm flex items-center gap-2">
                 <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
@@ -3136,6 +3433,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               One container can map to multiple lanes. These containers feed Last Mile immediately.
             </div>
           </div>
+          </div>
         </div>
       </div>
     `;
@@ -3162,6 +3460,58 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     });
 
 
+
+
+    // Lane details collapse/expand (UI-only)
+    const collapseBtn = detail.querySelector('#flow-lane-collapse');
+    const fullscreenBtn = detail.querySelector('#flow-lane-fullscreen');
+    const bodyWrap = detail.querySelector('#flow-lane-editor-body');
+    if (collapseBtn && bodyWrap && !collapseBtn.dataset.bound) {
+      collapseBtn.dataset.bound = '1';
+      collapseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const collapsed = bodyWrap.classList.toggle('hidden');
+        collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+      });
+    }
+    if (fullscreenBtn && !fullscreenBtn.dataset.bound) {
+      fullscreenBtn.dataset.bound = '1';
+      fullscreenBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const key = selectedKey || (UI.selection && UI.selection.sub) || null;
+        if (!key) return;
+        openLaneModal(ws, getBizTZ(), key);
+      });
+    }
+
+    // Background persistence for lane identifiers (Shipment/HBL/MBL)
+    const idMap = [
+      ['#flow-intl-shipment', 'shipmentNumber'],
+      ['#flow-intl-hbl', 'hbl'],
+      ['#flow-intl-mbl', 'mbl'],
+    ];
+    for (const [sel, field] of idMap) {
+      const el = detail.querySelector(sel);
+      if (!el || el.dataset.bound) continue;
+      el.dataset.bound = '1';
+      const saveOne = () => {
+        const key = selectedKey || (UI.selection && UI.selection.sub) || null;
+        if (!key) return;
+        const v = String(el.value || '').trim();
+        const patch = {}; patch[field] = v;
+        saveIntlLaneManual(ws, key, patch);
+      };
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveOne();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => saveOne());
+    }
 
     // Baseline helpers (UI-only; no persistence)
     const copyAll = detail.querySelector('#flow-intl-copy-all');
