@@ -1694,15 +1694,27 @@ function computeManualNodeStatuses(ws, tz) {
     };
 
     // Resolve actual lane dates from any known schema (backend-synced + back-compat), else planned.
+    const fmtDateOnly = (val) => {
+      try {
+        const d = (val instanceof Date) ? val : new Date(val);
+        if (!d || isNaN(d)) return '';
+        return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit' }).format(d);
+      } catch (e) { return ''; }
+    };
+
     const laneDateCell = (manualObj, plannedDate, keys) => {
       const tryKey = (k) => {
         const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
         return v ? v : '';
       };
       const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
-      if (actualRaw) return `<span class="whitespace-nowrap">${escapeHtml(fmtDT(actualRaw))}</span>`;
+      if (actualRaw) {
+        const d = fmtDateOnly(actualRaw);
+        return d ? `<span class="whitespace-nowrap">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
+      }
       if (plannedDate && !isNaN(plannedDate)) {
-        return `<span class="whitespace-nowrap">${escapeHtml(fmtInTZ(plannedDate, tz))} <span class="text-[10px] text-gray-400">planned</span></span>`;
+        const d = fmtDateOnly(plannedDate);
+        return d ? `<span class="whitespace-nowrap">${escapeHtml(d)} <span class="text-[10px]" style="color:#990033">planned</span></span>` : '<span class="text-gray-400">—</span>';
       }
       return '<span class="text-gray-400">—</span>';
     };
@@ -1772,19 +1784,19 @@ function computeManualNodeStatuses(ws, tz) {
           <table class="w-full text-sm min-w-[1320px]">
             <thead class="sticky top-0 bg-white">
               <tr class="text-[11px] text-gray-500 border-b">
-                <th class="text-left py-2 pr-2">Supplier / Freight</th>
-                <th class="text-left py-2 pr-2">Zendesk</th>
-                <th class="text-left py-2 pr-2">Status</th>
-                <th class="text-left py-2 pr-2">Shipment #</th>
-                <th class="text-left py-2 pr-2">HBL</th>
-                <th class="text-left py-2 pr-2">MBL</th>
-                <th class="text-left py-2 pr-2">Hold</th>
-                <th class="text-left py-2 pr-2">Pack</th>
-                <th class="text-left py-2 pr-2">Origin clr</th>
-                <th class="text-left py-2 pr-2">Departed</th>
-                <th class="text-left py-2 pr-2">Arrived</th>
-                <th class="text-left py-2 pr-2">Dest clr</th>
-                <th class="text-left py-2 pr-2">Containers</th>
+                <th class="text-center py-2 pr-2">Supplier / Freight</th>
+                <th class="text-center py-2 pr-2">Zendesk</th>
+                <th class="text-center py-2 pr-2">Status</th>
+                <th class="text-center py-2 pr-2">Shipment #</th>
+                <th class="text-center py-2 pr-2">HBL</th>
+                <th class="text-center py-2 pr-2">MBL</th>
+                <th class="text-center py-2 pr-2">Hold</th>
+                <th class="text-center py-2 pr-2">📄 Pack List</th>
+                <th class="text-center py-2 pr-2">🛃 Origin Customs</th>
+                <th class="text-center py-2 pr-2">🚚 Departed</th>
+                <th class="text-center py-2 pr-2">📍 Arrived</th>
+                <th class="text-center py-2 pr-2">🛃 Dest Customs</th>
+                <th class="text-center py-2 pr-2">Container #</th>
               </tr>
             </thead>
             <tbody>
