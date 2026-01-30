@@ -4458,171 +4458,376 @@ function renderFooterTrends(el, nodes, weekKey) {
     } catch { return String(ws || ''); }
   }
 
-  function buildReportHTML(cache) {
-    const ws = cache?.ws || '';
-    const tz = cache?.tz || getBizTZ();
-    const receiving = cache?.receiving || {};
-    const vas = cache?.vas || {};
-    const intl = cache?.intl || {};
-    const manual = cache?.manual || {};
-
-    const suppliers = Array.isArray(receiving.suppliers) ? receiving.suppliers : [];
-
-    const execRows = [
-      ['Week', escHtml(String(ws))],
-      ['Receiving', `${escHtml(pct(receiving.receivedPOs, receiving.plannedPOs))} (${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)} POs)`],
-      ['Cartons out', escHtml(receiving.cartonsOutTotal ?? 0)],
-      ['VAS applied', `${escHtml(pct(vas.appliedUnits, vas.plannedUnits))} (${escHtml(vas.appliedUnits ?? 0)}/${escHtml(vas.plannedUnits ?? 0)} units)`],
-      ['Transit lanes', escHtml(intl.lanesTotal ?? (manual?.intl?.lanes ?? 0) ?? 0)],
-      ['Docs missing', escHtml(intl.docsMissing ?? (manual?.intl?.docsMissing ?? 0) ?? 0)],
-      ['Last Mile open', `${escHtml(manual?.lastmile?.open ?? manual?.lastMile?.open ?? 0)}/${escHtml(manual?.lastmile?.total ?? manual?.lastMile?.total ?? 0)}`],
-    ];
-
-    const supplierTable = suppliers.length ? `
-      <table>
-        <thead>
-          <tr><th>Supplier</th><th>POs received</th><th>Planned units</th><th>Cartons in</th><th>Cartons out</th></tr>
-        </thead>
-        <tbody>
-          ${suppliers.map(s => `
-            <tr>
-              <td>${escHtml(s.supplier)}</td>
-              <td>${escHtml(s.receivedPOs)}/${escHtml(s.poCount)}</td>
-              <td>${escHtml(s.units)}</td>
-              <td>${escHtml(s.cartonsIn)}</td>
-              <td>${escHtml(s.cartonsOut)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    ` : `<div class="muted">No supplier breakdown available for this week.</div>`;
-
-    const nodePage = (title, bodyHtml) => `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">${escHtml(title)}</div>
-          <div class="muted">Week start: ${escHtml(ws)} • Generated: ${escHtml(new Date().toLocaleString())}</div>
-        </div>
-        ${bodyHtml}
-      </section>
-    `;
-
-    const execPage = `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">Flow — Executive summary</div>
-          <div class="muted">${escHtml(weekRangeText(ws, tz))} • Week start: ${escHtml(ws)}</div>
-        </div>
-
-        <div class="grid2">
-          ${execRows.map(([k,v]) => `<div class="kv"><div class="k">${escHtml(k)}</div><div class="v">${v}</div></div>`).join('')}
-        </div>
-
-        <div class="spacer"></div>
-        <div class="h2">Notes</div>
-        <div class="muted">Ongoing state is based on the current process node (not date math).</div>
-      </section>
-    `;
-
-    const receivingPage = nodePage('Receiving', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(receiving.due, tz))}</div></div>
-        <div class="kv"><div class="k">Last received</div><div class="v">${escHtml(fmtDateLocal(receiving.lastReceived, tz))}</div></div>
-        <div class="kv"><div class="k">POs received</div><div class="v">${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)}</div></div>
-        <div class="kv"><div class="k">Late POs</div><div class="v">${escHtml(receiving.latePOs ?? 0)}</div></div>
-        <div class="kv"><div class="k">Cartons in</div><div class="v">${escHtml(receiving.cartonsInTotal ?? 0)}</div></div>
-        <div class="kv"><div class="k">Cartons out</div><div class="v">${escHtml(receiving.cartonsOutTotal ?? 0)}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="h2">Supplier breakdown</div>
-      ${supplierTable}
-    `);
-
-    const vasPage = nodePage('VAS Processing', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(vas.due, tz))}</div></div>
-        <div class="kv"><div class="k">Applied</div><div class="v">${escHtml(vas.appliedUnits ?? 0)} / ${escHtml(vas.plannedUnits ?? 0)} units (${escHtml(pct(vas.appliedUnits, vas.plannedUnits))})</div></div>
-        <div class="kv"><div class="k">Completion</div><div class="v">${escHtml(pct(vas.completedPOs, vas.plannedPOs))} (${escHtml(vas.completedPOs ?? 0)}/${escHtml(vas.plannedPOs ?? 0)} POs)</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">Source: completed production records aggregated for the selected week.</div>
-    `);
-
-    const intlPage = nodePage('Transit & Clearing', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Origin window</div><div class="v">${escHtml(intl.windowText ?? '—')}</div></div>
-        <div class="kv"><div class="k">Lanes</div><div class="v">${escHtml(intl.lanesTotal ?? 0)}</div></div>
-        <div class="kv"><div class="k">Mode split</div><div class="v">${escHtml(intl.modeText ?? '—')}</div></div>
-        <div class="kv"><div class="k">Docs missing</div><div class="v">${escHtml(intl.docsMissing ?? 0)}</div></div>
-        <div class="kv"><div class="k">Holds</div><div class="v">${escHtml(intl.holds ?? 0)}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">International Transit is lightweight manual data stored locally per week (unless data-driven fields are present).</div>
-    `);
-
-    const lm = manual?.lastmile || manual?.lastMile || {};
-    const lastMilePage = nodePage('Last Mile', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Delivery window</div><div class="v">${escHtml((intl && intl.lastMileWindowText) || lm.windowText || '—')}</div></div>
-        <div class="kv"><div class="k">Open</div><div class="v">${escHtml(lm.open ?? 0)}</div></div>
-        <div class="kv"><div class="k">Total</div><div class="v">${escHtml(lm.total ?? 0)}</div></div>
-        <div class="kv"><div class="k">Status</div><div class="v">${escHtml(lm.statusText || '—')}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">Last Mile is lightweight manual data stored locally per week.</div>
-    `);
-
-    const style = `
-      <style>
-        :root { color-scheme: light; }
-        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; padding: 0; color: #111827; }
-        .page { padding: 24px 28px; page-break-after: always; }
-        .page:last-child { page-break-after: auto; }
-        .hdr { margin-bottom: 14px; }
-        .h1 { font-size: 18px; font-weight: 700; }
-        .h2 { font-size: 13px; font-weight: 700; margin: 10px 0 8px; }
-        .muted { color: rgba(17,24,39,0.65); font-size: 11px; }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .kv { border: 1px solid rgba(17,24,39,0.10); border-radius: 10px; padding: 10px; }
-        .k { font-size: 10px; color: rgba(17,24,39,0.60); margin-bottom: 4px; }
-        .v { font-size: 12px; font-weight: 600; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
-        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(17,24,39,0.10); }
-        th { font-size: 10px; color: rgba(17,24,39,0.60); font-weight: 700; }
-        .spacer { height: 10px; }
-        @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      </style>
-    `;
-
-    return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
-      ${execPage}
-      ${receivingPage}
-      ${vasPage}
-      ${intlPage}
-      ${lastMilePage}
-    </body></html>`;
+  
+function buildReportHTML(cache) {
+    // Kept for backward compatibility (older callers). We now generate a
+    // print-ready report by capturing the live Flow DOM (no backend mutations).
+    // This function returns a minimal shell used by downloadFlowReportPdf().
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Flow report</title></head><body></body></html>`;
   }
 
   function downloadFlowReportPdf(cache) {
+    // SAFETY: do not touch refresh(), API base resolution, or backend patch calls.
+    // PDF generation is isolated to DOM capture + a separate print window.
+    const cap = cache || (window.UI && UI.reportCache) || {};
+    const ws = cap.ws || (window.UI && UI.currentWs) || (window.state && window.state.weekStart) || '';
+    const tz = cap.tz || getBizTZ();
+
+    const prevSel = (window.UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
+
+    const pageFlow = document.getElementById('page-flow');
+
+    const escape = (s) => escapeHtml(String(s ?? ''));
+
+    const addDaysLocal = (isoDateStr, days) => {
+      try {
+        const d = new Date(`${isoDateStr}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + days);
+        return d;
+      } catch { return null; }
+    };
+
+    const fmtDateRange = (wsISO) => {
+      const mon = addDaysLocal(wsISO, 0);
+      const sun = addDaysLocal(wsISO, 6);
+      if (!mon || !sun || isNaN(mon) || isNaN(sun)) return '—';
+      const fmt = (d) => new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit', year: 'numeric' }).format(d);
+      return `${fmt(mon)} – ${fmt(sun)}`;
+    };
+
+    // ISO week number (Monday-based)
+    const isoWeekNum = (wsISO) => {
+      try {
+        const d = new Date(`${wsISO}T00:00:00Z`);
+        // Thursday in current week decides the year.
+        const day = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+        d.setUTCDate(d.getUTCDate() - day + 3); // Thu
+        const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+        const firstDay = (firstThu.getUTCDay() + 6) % 7;
+        firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
+        const diff = d - firstThu;
+        return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
+      } catch { return null; }
+    };
+
+    const weekLabel = (() => {
+      const n = isoWeekNum(ws);
+      return n ? `Week ${String(n).padStart(2, '0')}` : 'Week —';
+    })();
+
+    const createdAt = (() => {
+      try {
+        const now = new Date();
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          year: 'numeric', month: 'short', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        }).format(now);
+      } catch {
+        return String(new Date());
+      }
+    })();
+
+    const captureHTML = (el) => {
+      if (!el) return '';
+      // Clone to avoid mutating live DOM
+      const c = el.cloneNode(true);
+      // Remove any buttons/controls that don't make sense in print
+      c.querySelectorAll('button, input, select, textarea').forEach(x => {
+        // Keep input values readable by converting to text spans
+        if (x.tagName === 'INPUT' && (x.type === 'text' || x.type === 'datetime-local')) {
+          const v = (x.value || '').trim();
+          const s = document.createElement('span');
+          s.textContent = v || '—';
+          s.style.fontSize = '12px';
+          s.style.fontWeight = '600';
+          x.replaceWith(s);
+          return;
+        }
+        if (x.tagName === 'INPUT' && x.type === 'checkbox') {
+          const s = document.createElement('span');
+          s.textContent = x.checked ? '✓' : '—';
+          s.style.fontWeight = '700';
+          x.replaceWith(s);
+          return;
+        }
+        if (x.tagName === 'TEXTAREA') {
+          const v = (x.value || x.textContent || '').trim();
+          const s = document.createElement('div');
+          s.textContent = v || '—';
+          s.style.whiteSpace = 'pre-wrap';
+          s.style.fontSize = '11px';
+          x.replaceWith(s);
+          return;
+        }
+        // Buttons etc become nothing
+        x.remove();
+      });
+      return c.innerHTML;
+    };
+
+    const stripIntlLaneDetailsFromDetailHTML = (html) => {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Remove lane editor (Lane details) section
+        const laneEditorBody = tmp.querySelector('#flow-lane-editor-body');
+        if (laneEditorBody) {
+          const wrap = laneEditorBody.closest('.rounded-xl.border.p-3') || laneEditorBody.closest('.rounded-xl') || laneEditorBody.parentElement;
+          if (wrap) wrap.remove();
+        }
+        return tmp.innerHTML;
+      } catch { return html; }
+    };
+
+    const extractIntlContainersTileHTML = (html) => {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Find the week-level containers editor section by known ids/classes
+        const wcList = tmp.querySelector('#flow-wc-list');
+        if (!wcList) return '';
+        const wrap = wcList.closest('.rounded-xl.border.p-3') || wcList.closest('.rounded-xl') || wcList.parentElement;
+        return wrap ? wrap.outerHTML : '';
+      } catch { return ''; }
+    };
+
+    const hideDuringCapture = () => {
+      try {
+        if (!document.getElementById('flow-pdf-export-style')) {
+          const st = document.createElement('style');
+          st.id = 'flow-pdf-export-style';
+          st.textContent = `
+            body.flow-pdf-exporting #page-flow { visibility: hidden !important; }
+            body.flow-pdf-exporting #flow-lane-modal-root { visibility: hidden !important; }
+          `;
+          document.head.appendChild(st);
+        }
+        document.body.classList.add('flow-pdf-exporting');
+      } catch {}
+    };
+
+    const showAfterCapture = () => {
+      try { document.body.classList.remove('flow-pdf-exporting'); } catch {}
+    };
+
+    const safeRenderForNode = (nodeKey) => {
+      try {
+        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+        UI.selection = { node: nodeKey, sub: null };
+        renderDetail(ws, tz, receiving, vas, intl, manual);
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        highlightSelection();
+      } catch (e) {
+        console.warn('[flow] pdf render node failed', nodeKey, e);
+      }
+    };
+
+    const nodePageHTML = (title, rightHTML, detailHTML) => {
+      return `
+        <div class="page">
+          <div class="pageTitle">${escape(title)}</div>
+          <div class="pageGrid">
+            <div class="box">
+              <div class="boxTitle">Right tile</div>
+              <div class="boxBody">${rightHTML || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Bottom tile</div>
+              <div class="boxBody">${detailHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
     try {
-      const html = buildReportHTML(cache || {});
+      // Ensure we have a rendered Flow DOM to capture
+      if (!pageFlow || pageFlow.classList.contains('hidden')) {
+        // If Flow isn't visible, still attempt: render once.
+        try { refresh(); } catch {}
+      }
+
+      hideDuringCapture();
+
+      const pages = [];
+
+      // Page 1: Cover
+      pages.push(`
+        <div class="page cover">
+          <div class="coverCenter">
+            <div class="coverTitle">VelOzity Pinpoint</div>
+            <div class="coverWeek">${escape(weekLabel)}</div>
+            <div class="coverRange">${escape(fmtDateRange(ws))}</div>
+          </div>
+        </div>
+      `);
+
+      // Page 2: Overview (S-curve + Week totals)
+      const journeyHTML = captureHTML(document.getElementById('flow-journey'));
+      const weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+      pages.push(`
+        <div class="page">
+          <div class="pageTitle">Overview</div>
+          <div class="overviewGrid">
+            <div class="box">
+              <div class="boxTitle">Inverted S-curve</div>
+              <div class="boxBody">${journeyHTML || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Week totals</div>
+              <div class="boxBody">${weekTotalsHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Receiving
+      safeRenderForNode('receiving');
+      pages.push(nodePageHTML('Receiving', captureHTML(document.getElementById('flow-footer')), captureHTML(document.getElementById('flow-detail'))));
+
+      // VAS
+      safeRenderForNode('vas');
+      pages.push(nodePageHTML('VAS Processing', captureHTML(document.getElementById('flow-footer')), captureHTML(document.getElementById('flow-detail'))));
+
+      // Transit & Clearing special: (A) right tile + lanes tile (no lane details)
+      safeRenderForNode('intl');
+      const intlRight = captureHTML(document.getElementById('flow-footer'));
+      const intlDetailRaw = captureHTML(document.getElementById('flow-detail'));
+      const intlDetailNoEditor = stripIntlLaneDetailsFromDetailHTML(intlDetailRaw);
+      pages.push(`
+        <div class="page">
+          <div class="pageTitle">Transit &amp; Clearing</div>
+          <div class="pageGrid">
+            <div class="box">
+              <div class="boxTitle">Right tile</div>
+              <div class="boxBody">${intlRight || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Lanes</div>
+              <div class="boxBody">${intlDetailNoEditor || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Transit & Clearing special: (B) lanes full screen table
+      try {
+        // Build the modal content (hidden during capture), then capture its body.
+        openIntlOverviewModal(ws, tz);
+        const modalBody = document.querySelector('#flow-lane-modal-body');
+        const modalTitle = document.querySelector('#flow-lane-modal-title')?.textContent || 'Transit & Clearing — Lanes (Full screen)';
+        const lanesFullHTML = captureHTML(modalBody);
+        // close modal safely
+        const root = document.getElementById('flow-lane-modal-root');
+        if (root) root.classList.add('hidden');
+        pages.push(`
+          <div class="page">
+            <div class="pageTitle">${escape(modalTitle)}</div>
+            <div class="box">
+              <div class="boxBody">${lanesFullHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        `);
+      } catch (e) {
+        console.warn('[flow] pdf lanes fullscreen capture failed', e);
+      }
+
+      // Transit & Clearing special: (C) week containers tile (last tile)
+      const contTileHTML = extractIntlContainersTileHTML(intlDetailRaw);
+      if (contTileHTML) {
+        pages.push(`
+          <div class="page">
+            <div class="pageTitle">Transit &amp; Clearing — Containers</div>
+            <div class="box">
+              <div class="boxBody">${contTileHTML}</div>
+            </div>
+          </div>
+        `);
+      }
+
+      // Last Mile
+      safeRenderForNode('lastmile');
+      pages.push(nodePageHTML('Last Mile', captureHTML(document.getElementById('flow-footer')), captureHTML(document.getElementById('flow-detail'))));
+
+      // Final timestamp page
+      pages.push(`
+        <div class="page cover">
+          <div class="coverCenter">
+            <div class="coverWeek">REPORT CREATED</div>
+            <div class="coverRange">${escape(createdAt)}</div>
+          </div>
+        </div>
+      `);
+
+      // Restore selection
+      try {
+        // Best effort restore to original selection
+        // (we used UI.selection directly; keep stable afterwards)
+      } catch {}
+
+      // Build print window
+      const style = `
+        <style>
+          :root { color-scheme: light; }
+          @page { size: letter landscape; margin: 0.5in; }
+          html, body { margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: #111827; }
+          .page { position: relative; page-break-after: always; }
+          .page:last-child { page-break-after: auto; }
+          .pageTitle { font-size: 18px; font-weight: 800; margin: 0 0 10px 0; }
+          .box { border: 1px solid rgba(17,24,39,0.12); border-radius: 14px; padding: 12px; background: #fff; }
+          .boxTitle { font-size: 12px; font-weight: 700; color: rgba(17,24,39,0.70); margin-bottom: 8px; }
+          .boxBody { font-size: 12px; }
+          .muted { color: rgba(17,24,39,0.55); font-size: 12px; }
+          .overviewGrid { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 14px; align-items: start; }
+          .pageGrid { display: grid; grid-template-columns: 0.9fr 1.4fr; gap: 14px; align-items: start; }
+          .cover { display:flex; align-items:center; justify-content:center; min-height: 7.0in; }
+          .coverCenter { text-align:center; }
+          .coverTitle { font-size: 40px; font-weight: 900; letter-spacing: 0.02em; }
+          .coverWeek { font-size: 22px; font-weight: 800; margin-top: 10px; }
+          .coverRange { font-size: 14px; color: rgba(17,24,39,0.65); margin-top: 6px; }
+          /* Make tables print nicely */
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border-bottom: 1px solid rgba(17,24,39,0.10); padding: 6px 8px; vertical-align: top; }
+          th { color: rgba(17,24,39,0.65); font-size: 11px; font-weight: 800; }
+          /* Footer */
+          .footer { position: fixed; bottom: 0.22in; right: 0.5in; font-size: 10px; color: rgba(17,24,39,0.70); }
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .footer::after { content: "VelOzity Pinpoint • Page " counter(page) " of " counter(pages); }
+          }
+        </style>
+      `;
+
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>VelOzity Pinpoint — ${escape(weekLabel)}</title>${style}</head>
+        <body>
+          <div class="footer"></div>
+          ${pages.join('\n')}
+        </body></html>`;
+
       const w = window.open('', '_blank');
-      if (!w) return;
+      if (!w) { showAfterCapture(); return; }
       w.document.open();
       w.document.write(html);
       w.document.close();
-      // Give the browser a moment to render before printing.
       w.focus();
-      setTimeout(() => {
-        try { w.print(); } catch(e) {}
-      }, 250);
+      setTimeout(() => { try { w.print(); } catch {} }, 300);
     } catch (e) {
-      console.warn('[flow] report build failed', e);
+      console.warn('[flow] pdf export failed', e);
+    } finally {
+      try {
+        if (prevSel) UI.selection = { node: prevSel.node, sub: prevSel.sub || null };
+        // Re-render once to restore the UI (best-effort; no backend writes)
+        try {
+          const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+          renderDetail(ws, tz, receiving, vas, intl, manual);
+          renderRightTile(ws, tz, receiving, vas, intl, manual);
+          highlightSelection();
+        } catch {}
+      } catch {}
+      try { showAfterCapture(); } catch {}
     }
   }
-
 async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
