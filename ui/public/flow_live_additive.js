@@ -4534,6 +4534,20 @@ function buildReportHTML(cache) {
       const c = el.cloneNode(true);
       // Remove any buttons/controls that don't make sense in print
       c.querySelectorAll('button, input, select, textarea').forEach(x => {
+        // Preserve textual buttons (e.g., lane supplier links) by converting to spans
+        if (x.tagName === 'BUTTON') {
+          const t = (x.textContent || '').trim();
+          if (t) {
+            const s = document.createElement('span');
+            s.textContent = t;
+            s.style.fontSize = '12px';
+            s.style.fontWeight = '600';
+            x.replaceWith(s);
+          } else {
+            x.remove();
+          }
+          return;
+        }
         // Keep input values readable by converting to text spans
         if (x.tagName === 'INPUT' && (x.type === 'text' || x.type === 'datetime-local')) {
           const v = (x.value || '').trim();
