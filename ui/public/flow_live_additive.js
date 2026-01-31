@@ -4592,6 +4592,34 @@ function buildReportHTML(cache) {
       } catch { return ''; }
     };
 
+    const stripSelectedContainerFromHTML = (html) => {
+      // PDF-only: remove the "Selected Container" panel from Last Mile pages.
+      // Keeps the live UI untouched.
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const needles = ['selected container', 'selected-container'];
+
+        // Try common patterns: a card/section that contains a title matching the needle.
+        const all = Array.from(tmp.querySelectorAll('*'));
+        for (const el of all) {
+          const t = (el.textContent || '').trim().toLowerCase();
+          if (!t) continue;
+          if (!needles.some(n => t === n || t.includes(n))) continue;
+
+          // Prefer removing the nearest card wrapper.
+          const wrap = el.closest('.rounded-xl') || el.closest('.rounded-2xl') || el.closest('.border') || el.closest('.box') || el.parentElement;
+          if (wrap) {
+            wrap.remove();
+            break;
+          }
+        }
+        return tmp.innerHTML;
+      } catch {
+        return html;
+      }
+    };
+
     const hideDuringCapture = () => {
       try {
         if (!document.getElementById('flow-pdf-export-style')) {
@@ -4736,7 +4764,13 @@ function buildReportHTML(cache) {
       // Transit & Clearing containers pages intentionally omitted in PDF.
 // Last Mile
       safeRenderForNode('lastmile');
-      pages.push(nodePageHTML('Last Mile', 'Last Mile summary', captureHTML(document.getElementById('flow-footer')), 'Last Mile detail', captureHTML(document.getElementById('flow-detail'))));
+      {
+        const lmRightRaw = captureHTML(document.getElementById('flow-footer'));
+        const lmDetailRaw = captureHTML(document.getElementById('flow-detail'));
+        const lmRight = stripSelectedContainerFromHTML(lmRightRaw);
+        const lmDetail = stripSelectedContainerFromHTML(lmDetailRaw);
+        pages.push(nodePageHTML('Last Mile', 'Last Mile summary', lmRight, 'Last Mile detail', lmDetail));
+      }
 
       // Final timestamp page
       pages.push(`
@@ -4835,6 +4869,16 @@ function buildReportHTML(cache) {
 
           /* Keep metric rows on a single line in PDF (Week totals) */
           .flex.items-center.justify-between > div:last-child { white-space: nowrap; }
+
+          /* Keep KPI cards (label + value) on one line across nodes (Transit KPIs, Last Mile KPIs, etc.) */
+          .rounded-lg.border.p-2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+          .rounded-lg.border.p-2 > div:first-child { white-space: nowrap; }
+          .rounded-lg.border.p-2 > div:last-child { white-space: nowrap; }
+
+          /* Keep compact stat pills (Sea/Air/Delayed/At risk) on one line in PDF */
+          .rounded-lg.border.px-2.py-1.bg-white { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+          /* If grid layout utilities are missing, still keep pills aligned */
+          .grid.grid-cols-2.sm\:grid-cols-4.gap-2.text-xs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
           /* Footer */
           .pageFooter { position: absolute; right: 0; bottom: 0; font-size: 10px; color: rgba(17,24,39,0.70); }
           @media print {
