@@ -4694,7 +4694,20 @@ function buildReportHTML(cache) {
 
       // Page 2: Overview (S-curve + Week totals)
       const journeyHTML = captureHTML(document.getElementById('flow-journey'));
-      const weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+      // IMPORTANT (PDF-only): Overview should always show Week totals (no node context).
+      // We temporarily render the right tile in "week totals" mode by clearing selection,
+      // capture the DOM, then continue with node-specific pages. Live UI is restored in finally.
+      let weekTotalsHTML = '';
+      try {
+        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+        const prev = (UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
+        UI.selection = { node: null, sub: null };
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+        if (prev) UI.selection = { node: prev.node, sub: prev.sub || null };
+      } catch (e) {
+        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+      }
       pages.push(`
         <div class="page">
           <div class="pageTitle">Overview</div>
