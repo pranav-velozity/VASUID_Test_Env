@@ -4789,6 +4789,52 @@ function buildReportHTML(cache) {
           table { width: 100%; border-collapse: collapse; }
           th, td { border-bottom: 1px solid rgba(17,24,39,0.10); padding: 6px 8px; vertical-align: top; }
           th { color: rgba(17,24,39,0.65); font-size: 11px; font-weight: 800; }
+
+          /* PDF-only utility styles (avoid importing Tailwind; keep minimal + targeted)
+             Fixes: (1) metric label/value wrapping in Week totals, (2) progress bars visibility. */
+          .flex { display:flex; }
+          .inline-flex { display:inline-flex; }
+          .items-center { align-items:center; }
+          .items-start { align-items:flex-start; }
+          .justify-between { justify-content:space-between; }
+          .gap-2 { gap: 8px; }
+          .gap-3 { gap: 12px; }
+          .py-2 { padding-top: 8px; padding-bottom: 8px; }
+          .px-3 { padding-left: 12px; padding-right: 12px; }
+          .py-1 { padding-top: 4px; padding-bottom: 4px; }
+          .p-3 { padding: 12px; }
+          .mt-0\.5 { margin-top: 2px; }
+          .mt-1 { margin-top: 4px; }
+          .mt-2 { margin-top: 8px; }
+          .mt-3 { margin-top: 12px; }
+          .space-y-3 > * + * { margin-top: 12px; }
+          .rounded-xl { border-radius: 12px; }
+          .rounded-2xl { border-radius: 16px; }
+          .rounded-full { border-radius: 9999px; }
+          .border { border: 1px solid rgba(17,24,39,0.12); }
+          .overflow-hidden { overflow: hidden; }
+          .text-xs { font-size: 11px; }
+          .text-sm { font-size: 12px; }
+          .font-semibold { font-weight: 700; }
+          .text-gray-500 { color: rgba(17,24,39,0.55); }
+          .text-gray-600 { color: rgba(17,24,39,0.60); }
+          .text-gray-700 { color: rgba(17,24,39,0.70); }
+          .text-gray-800 { color: rgba(17,24,39,0.85); }
+          .text-gray-900 { color: rgba(17,24,39,0.95); }
+          .bg-white { background: #fff; }
+          .bg-gray-50 { background: rgba(17,24,39,0.03); }
+          .bg-gray-100 { background: rgba(17,24,39,0.06); }
+
+          /* Progress bars (used in Receiving/VAS tiles) */
+          .w-36 { width: 144px; }
+          .w-32 { width: 128px; }
+          .w-28 { width: 112px; }
+          .h-2 { height: 8px; }
+          .h-full { height: 100%; }
+          .bg-emerald-400 { background: #34d399; }
+
+          /* Keep metric rows on a single line in PDF (Week totals) */
+          .flex.items-center.justify-between > div:last-child { white-space: nowrap; }
           /* Footer */
           .pageFooter { position: absolute; right: 0; bottom: 0; font-size: 10px; color: rgba(17,24,39,0.70); }
           @media print {
