@@ -1629,6 +1629,15 @@ function computeManualNodeStatuses(ws, tz) {
       const n = Number(v);
       return Number.isFinite(n) ? n : 0;
     };
+    const normalizeFreight = (v) => {
+      const s = String(v ?? '').trim();
+      if (!s) return '';
+      const low = s.toLowerCase();
+      if (low.includes('sea') || low.includes('ocean')) return 'Sea';
+      if (low.includes('air')) return 'Air';
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    };
+
 
     // -------------------- Build PO-level facts (units-only) --------------------
 
@@ -1659,8 +1668,9 @@ function computeManualNodeStatuses(ws, tz) {
 
       // Try several likely field names (keep additive + non-breaking)
       const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name || row.supplierName || row.factory || row.Factory;
-      const zendesk = row.zendesk || row.zendesk_ticket || row.ticket || row.ticket_id || row.zendeskTicket || row.zendesk_no || row.zendeskNo;
-      const freight = row.freight || row.mode || row.ship_mode || row.shipMode || row.Freight || row.transport || row.Transport;
+      const zendesk = row.zendesk || row.zendesk_ticket || row.zendesk_ticket_number || row.zendesk_ticket_num || row.ticket || row.ticket_id || row.zendeskTicket || row.zendeskTicketNumber || row.zendesk_no || row.zendeskNo;
+      const freightRaw = row.freight_type ?? row.freightType ?? row.freightTypeName ?? row.freight ?? row.mode ?? row.ship_mode ?? row.shipMode ?? row.Freight ?? row.transport_mode ?? row.transportMode ?? row.transport ?? row.Transport;
+      const freight = freightRaw ? normalizeFreight(freightRaw) : undefined;
 
       const prev = metaByPO.get(po) || {};
       metaByPO.set(po, {
@@ -1679,7 +1689,8 @@ function computeManualNodeStatuses(ws, tz) {
 
       const supplier = r.supplier || r.Supplier || r.vendor || r.Vendor || r.supplier_name || r.supplierName;
       const zendesk = r.zendesk || r.zendesk_ticket || r.ticket || r.ticket_id || r.zendeskTicket;
-      const freight = r.freight || r.mode || r.ship_mode || r.shipMode || r.Freight;
+      const freightRaw = r.freight_type ?? r.freightType ?? r.freight ?? r.mode ?? r.ship_mode ?? r.shipMode ?? r.Freight ?? r.transport_mode ?? r.transportMode;
+      const freight = freightRaw ? normalizeFreight(freightRaw) : undefined;
 
       metaByPO.set(po, {
         supplier: prev.supplier || (supplier ? String(supplier) : undefined),
@@ -1688,16 +1699,26 @@ function computeManualNodeStatuses(ws, tz) {
       });
     }
 
-    // 3) Applied units (VAS actuals) by PO from records (status=complete)
+    // 3) Applied units (VAS actuals) by PO from records (units-only, align with computeVASStatus)
+    // NOTE: We intentionally do NOT filter by status here because the VAS endpoint payload is not consistent
+    // across environments, and the core UI logic (computeVASStatus) counts all returned rows.
     const appliedUnitsByPO = new Map();
-    for (const rec of (records || [])) {
-      const status = String(rec.status ?? rec.Status ?? '').toLowerCase();
-      if (status && status !== 'complete') continue;
-      const po = normalizePO(rec.po_number ?? rec.po ?? rec.PO ?? rec.PO_Number);
+
+    const recs = Array.isArray(records)
+      ? records
+      : (records && Array.isArray(records.records) ? records.records
+        : (records && Array.isArray(records.rows) ? records.rows
+          : (records && Array.isArray(records.data) ? records.data : [])));
+
+    for (const rec of recs) {
+      const po = getPO(rec) || normalizePO(rec.po_number ?? rec.po ?? rec.PO ?? rec.PO_Number);
       if (!po) continue;
-      const qty = toNum(rec.qty ?? rec.Qty ?? rec.units ?? rec.Units ?? rec.applied_units ?? rec.appliedUnits);
-      if (!qty) continue;
-      appliedUnitsByPO.set(po, (appliedUnitsByPO.get(po) || 0) + qty);
+
+      const qtyRaw = rec.qty ?? rec.quantity ?? rec.units ?? rec.target_qty ?? rec.applied_qty ?? rec.applied_units ?? rec.appliedUnits ?? rec.Qty ?? rec.Units;
+      const qty = toNum(qtyRaw);
+      const q = qty > 0 ? qty : 1; // match computeVASStatus defaulting behavior
+
+      appliedUnitsByPO.set(po, (appliedUnitsByPO.get(po) || 0) + q);
     }
 
     // 4) Build PO-level rows for ALL planned POs (not only received)
