@@ -226,6 +226,19 @@
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
+  // UI helper: compact progress bar (pct: 0..100)
+  function progressBar(pct, opts) {
+    const p = clamp(Number(pct) || 0, 0, 100);
+    const w = (opts && opts.w) ? opts.w : 'w-32';
+    const h = (opts && opts.h) ? opts.h : 'h-2';
+    const bg = (opts && opts.bg) ? opts.bg : 'bg-gray-100';
+    const fill = (opts && opts.fill) ? opts.fill : 'bg-emerald-400';
+    return `
+      <div class="${w} ${h} ${bg} rounded-full overflow-hidden border" title="${Math.round(p)}%">
+        <div class="h-full ${fill}" style="width:${p}%;"></div>
+      </div>
+    `;
+  }
   function statusFromDue(due, actual, now) {
     // Soft cutoffs:
     // - if actual exists, compare actual to due
@@ -1392,6 +1405,453 @@ function computeManualNodeStatuses(ws, tz) {
     selection: { node: 'milk', sub: null },
   };
 
+  // ------------------------- Lane modal (Transit & Clearing) -------------------------
+  function ensureLaneModal() {
+    let root = document.getElementById('flow-lane-modal');
+    if (root) return root;
+
+    root = document.createElement('div');
+    root.id = 'flow-lane-modal';
+    root.className = 'fixed inset-0 z-[9999] hidden';
+
+    root.innerHTML = `
+      <div class="absolute inset-0 bg-black/40" data-flow-modal-close="1"></div>
+      <div class="absolute inset-3 md:inset-6 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col">
+        <div class="p-3 border-b flex items-center justify-between gap-3">
+          <div>
+            <div id="flow-lane-modal-title" class="text-base font-semibold text-gray-800"></div>
+            <div id="flow-lane-modal-sub" class="text-xs text-gray-500 mt-0.5"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="flow-lane-modal-status"></div>
+            <button class="px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 text-sm" data-flow-modal-close="1">Close</button>
+          </div>
+        </div>
+        <div id="flow-lane-modal-body" class="p-3 overflow-auto flex-1"></div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    // close handlers
+    root.querySelectorAll('[data-flow-modal-close]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeLaneModal();
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const r = document.getElementById('flow-lane-modal');
+        if (r && !r.classList.contains('hidden')) closeLaneModal();
+      }
+    });
+
+    return root;
+  }
+
+  function closeLaneModal() {
+    const root = document.getElementById('flow-lane-modal');
+    if (!root) return;
+    root.classList.add('hidden');
+    root.setAttribute('aria-hidden', 'true');
+  }
+
+  function openLaneModal(ws, tz, laneKey) {
+    const ctx = window.__FLOW_INTL_CTX__ || null;
+    if (!ctx || !ctx.lanes || !ctx.weekContainers) return;
+
+    const lane = (ctx.lanes || []).find(l => l && l.key === laneKey);
+    if (!lane) return;
+
+    const manual = loadIntlLaneManual(ws, laneKey) || {};
+    const root = ensureLaneModal();
+
+    const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? String(lane.ticket) : '';
+    const title = `${lane.supplier} • ${lane.freight}${ticket ? ` • Zendesk ${ticket}` : ''}`;
+    const subtitle = `Lane key: ${lane.key}`;
+
+    const statusHtml = `
+      <span class="dot ${dot(lane.level)}"></span>
+      <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap ml-2">${statusLabel(lane.level)}</span>
+    `;
+
+    root.querySelector('#flow-lane-modal-title').textContent = title;
+    root.querySelector('#flow-lane-modal-sub').textContent = subtitle;
+    root.querySelector('#flow-lane-modal-status').innerHTML = statusHtml;
+
+    // Containers derived from week-level containers
+    const conts = (ctx.weekContainers || [])
+      .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(lane.key))
+      .filter(c => {
+        const cid = String(c?.container_id || c?.container || '').trim();
+        const ves = String(c?.vessel || '').trim();
+        const ft = String(c?.size_ft || '').trim();
+        return !!(cid || ves || ft);
+      });
+
+    const contRows = conts.length ? `
+      <div class="rounded-xl border p-3">
+        <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">${iconContainer()} <span>Containers</span></div>
+        <div class="mt-2 overflow-auto">
+          <table class="w-full text-sm">
+            <thead><tr>
+              <th class="th text-left py-2 pr-2">Container #</th>
+              <th class="th text-left py-2 pr-2">Size</th>
+              <th class="th text-left py-2 pr-2">Vessel</th>
+            </tr></thead>
+            <tbody>
+              ${(conts || []).map(c => {
+                const cid = escapeHtml(String(c.container_id || c.container || '').trim() || '—');
+                const ft = escapeHtml(String(c.size_ft || '').trim() ? (String(c.size_ft).trim() + 'ft') : '—');
+                const ves = escapeHtml(String(c.vessel || '').trim() || '—');
+                return `<tr class="border-t"><td class="py-3 pr-4">${cid}</td><td class="py-3 pr-4">${ft}</td><td class="py-3 pr-4">${ves}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : `
+      <div class="rounded-xl border p-3 text-sm text-gray-500">
+        No containers mapped to this lane yet (week-level containers).
+      </div>
+    `;
+
+    const dateVal = (v) => String(v || '').trim();
+
+    // Modal body: reuse the same lane fields pattern + new IDs
+    root.querySelector('#flow-lane-modal-body').innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="rounded-xl border p-3">
+          <div class="text-sm font-semibold text-gray-700">Lane dates & documents</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
+              <input data-lm-field="pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.pack))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
+              <input data-lm-field="originClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.originClr))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Departed origin</div>
+              <input data-lm-field="departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.departed))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
+              <input data-lm-field="arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.arrived))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
+              <input data-lm-field="destClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.destClr))}"/>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+              <input data-lm-field="shipmentNumber" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">HBL</div>
+              <input data-lm-field="hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">MBL</div>
+              <input data-lm-field="mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+            </label>
+          </div>
+
+          <div class="flex items-center gap-3 mt-3">
+            <label class="text-sm flex items-center gap-2">
+              <input data-lm-field="hold" type="checkbox" class="h-4 w-4" ${manual.hold ? 'checked' : ''}/>
+              <span>Customs hold</span>
+            </label>
+          </div>
+
+          <label class="text-sm mt-3 block">
+            <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
+            <textarea data-lm-field="note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(String(manual.note || ''))}</textarea>
+          </label>
+
+          <div class="flex items-center justify-end mt-3">
+            <button id="flow-lane-modal-save" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+          </div>
+          <div id="flow-lane-modal-msg" class="text-xs text-gray-500 mt-2"></div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          ${contRows}
+        </div>
+      </div>
+    `;
+
+    // Wire save button (dates + hold + note + ids)
+    const body = root.querySelector('#flow-lane-modal-body');
+    const saveBtn = body.querySelector('#flow-lane-modal-save');
+    const msg = body.querySelector('#flow-lane-modal-msg');
+
+    const readFields = () => {
+      const q = (sel) => body.querySelector(sel);
+      const get = (k) => {
+        const el = body.querySelector(`[data-lm-field="${k}"]`);
+        if (!el) return '';
+        if (el.type === 'checkbox') return !!el.checked;
+        return String(el.value || '').trim();
+      };
+      return {
+        pack: get('pack'),
+        originClr: get('originClr'),
+        departed: get('departed'),
+        arrived: get('arrived'),
+        destClr: get('destClr'),
+        hold: !!get('hold'),
+        note: get('note'),
+        shipmentNumber: get('shipmentNumber'),
+        hbl: get('hbl'),
+        mbl: get('mbl'),
+      };
+    };
+
+    const doSave = () => {
+      try {
+        const vals = readFields();
+        saveIntlLaneManual(ws, laneKey, vals);
+        if (msg) msg.textContent = 'Saved.';
+      } catch (e) {
+        if (msg) msg.textContent = 'Save failed.';
+      }
+    };
+
+    if (saveBtn) saveBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); doSave(); };
+
+    // Background persist for IDs only (blur/Enter)
+    const idKeys = new Set(['shipmentNumber','hbl','mbl']);
+    body.querySelectorAll('[data-lm-field]').forEach(el => {
+      const key = el.getAttribute('data-lm-field');
+      if (!idKeys.has(key)) return;
+
+      const saveOne = () => {
+        const v = (el.type === 'checkbox') ? !!el.checked : String(el.value || '').trim();
+        const patch = {};
+        patch[key] = v;
+        saveIntlLaneManual(ws, laneKey, patch);
+        if (msg) msg.textContent = 'Saved.';
+      };
+
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveOne();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => saveOne());
+    });
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+  }
+
+
+  function openIntlOverviewModal(ws, tz) {
+    const ctx = window.__FLOW_INTL_CTX__ || null;
+    if (!ctx || !ctx.lanes) return;
+
+    const lanes = Array.isArray(ctx.lanes) ? ctx.lanes.slice() : [];
+    const weekContainers = Array.isArray(ctx.weekContainers) ? ctx.weekContainers : [];
+    const intl = ctx.intl || null;
+
+    // Sort same as lanes tile: holds/red first, then highest remaining units
+    const rank = { red: 3, yellow: 2, green: 1, gray: 0 };
+    lanes.sort((a, b) => (rank[b.level] - rank[a.level]) || ((b.plannedUnits - b.appliedUnits) - (a.plannedUnits - a.appliedUnits)));
+
+    const root = ensureLaneModal();
+    root.querySelector('#flow-lane-modal-title').textContent = 'Transit & Clearing — Lanes (Full screen)';
+    root.querySelector('#flow-lane-modal-sub').textContent = 'All lanes for this week • Click a supplier to open the lane editor.';
+    root.querySelector('#flow-lane-modal-status').innerHTML = '';
+
+    const fmtDT = (v) => {
+      const s = String(v || '').trim();
+      if (!s) return '—';
+      try { return fmtInTZ(s, tz); } catch { return s; }
+    };
+
+    // Planned fallback baselines for a lane (derived from Intl window + freight mode).
+    // We intentionally do NOT store these in backend; UI recomputes them.
+    const plannedForLane = (lane) => {
+      const originMin = (intl && intl.originMin instanceof Date) ? intl.originMin : null;
+      const originMax = (intl && intl.originMax instanceof Date) ? intl.originMax : null;
+      if (!originMin || !originMax) return { pack: null, originClr: null, departed: null, arrived: null, destClr: null };
+      const pack = originMin;
+      const originClr = originMax;
+      const departed = addDays(originClr, 1);
+      const transitDays = (lane && lane.freight === 'Air') ? BASELINE.transit_days_air : BASELINE.transit_days_sea;
+      const arrived = addDays(departed, transitDays);
+      const destClr = addDays(arrived, 2);
+      return { pack, originClr, departed, arrived, destClr };
+    };
+
+    // Resolve actual lane dates from any known schema (backend-synced + back-compat), else planned.
+    const fmtDateOnly = (val) => {
+      try {
+        const d = (val instanceof Date) ? val : new Date(val);
+        if (!d || isNaN(d)) return '';
+        return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit' }).format(d);
+      } catch (e) { return ''; }
+    };
+
+    const laneDateCell = (manualObj, plannedDate, keys) => {
+      const tryKey = (k) => {
+        const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
+        return v ? v : '';
+      };
+      const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
+      if (actualRaw) {
+        const d = fmtDateOnly(actualRaw);
+        return d ? `<span class="whitespace-nowrap font-semibold" style="color:#334155">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
+      }
+      if (plannedDate && !isNaN(plannedDate)) {
+        const d = fmtDateOnly(plannedDate);
+        return d ? `<span class="whitespace-nowrap" style="color:#7a1f33">${escapeHtml(d)} <span class="text-[10px]" style="color:#7a1f33">planned</span></span>` : '<span class="text-gray-400">—</span>';
+      }
+      return '<span class="text-gray-400">—</span>';
+    };
+
+    const latestActualStatusText = (manualObj) => {
+      const getRaw = (keys) => {
+        for (const k of keys) {
+          const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
+          if (v) return v;
+        }
+        return '';
+      };
+      const stages = [
+        { label: 'Packing list ready', keys: ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'] },
+        { label: 'Origin customs cleared', keys: ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'] },
+        { label: 'Departed origin', keys: ['departed_at','departedAt','departed'] },
+        { label: 'Arrived destination', keys: ['arrived_at','arrivedAt','arrived'] },
+        { label: 'Destination customs cleared', keys: ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'] },
+      ];
+      let best = null;
+      for (const st of stages) {
+        const raw = getRaw(st.keys);
+        if (!raw) continue;
+        const d = new Date(raw);
+        if (!d || isNaN(d)) continue;
+        if (!best || d > best.date) best = { date: d, label: st.label };
+      }
+      return best ? best.label : '';
+    };
+
+    const contListForLane = (laneKey) => {
+      const ids = (weekContainers || [])
+        .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(laneKey))
+        .map(c => String(c?.container_id || c?.container || '').trim())
+        .filter(Boolean);
+      return uniqNonEmpty(ids);
+    };
+
+    // Summary strip for quick scan
+    const counts = lanes.reduce((acc, l) => {
+      acc.total++;
+      acc[l.level] = (acc[l.level] || 0) + 1;
+      const m = String(l.freight || '').toLowerCase();
+      if (m === 'air') acc.air++; else if (m === 'sea') acc.sea++;
+      return acc;
+    }, { total: 0, red: 0, yellow: 0, green: 0, gray: 0, sea: 0, air: 0 });
+
+    const rows = lanes.map(l => {
+      const manual = (l && l.manual && typeof l.manual === 'object') ? l.manual : (loadIntlLaneManual(ws, l.key) || {});
+      const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '—';
+      const containers = contListForLane(l.key);
+      const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
+      const pl = plannedForLane(l);
+      const freightLower = String(l.freight || '').toLowerCase();
+      const freightCls = freightLower === 'air' ? 'text-sky-700' : (freightLower === 'sea' ? 'text-emerald-700' : 'text-gray-700');
+      const stageTxt = latestActualStatusText(manual);
+      const holdFlag = !!(manual.hold || manual.customs_hold || manual.customsHold || manual.customsHoldFlag);
+      return `
+        <tr class="border-t align-top hover:bg-gray-50">
+          <td class="py-3 pr-4">
+            <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
+            <div class="text-xs font-medium mt-0.5 ${freightCls}">${escapeHtml(l.freight || '')}</div>
+            <div class="text-xs font-semibold mt-0.5 tracking-wide" style="color:#e90076; text-transform:uppercase">${escapeHtml(stageTxt || 'No actual updates')}</div>
+          </td>
+          <td class="py-3 px-4 text-center">${ticket}</td>
+          <td class="py-3 px-4 text-center">${st}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${holdFlag ? '✓' : '—'}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
+          <td class="py-3 pl-4 pr-4 text-left">${containers.length ? containers.map(c=>escapeHtml(c)).join('<br/>') : '—'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    root.querySelector('#flow-lane-modal-body').innerHTML = `
+      <div class="rounded-xl border p-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Lanes</div>
+            <div class="text-xs text-gray-500 mt-1">Dates show <b>Actual</b> when entered; otherwise fall back to <b>Planned</b>.</div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Sea</span> <b>${counts.sea}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Air</span> <b>${counts.air}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Delayed</span> <b>${counts.red}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">At risk</span> <b>${counts.yellow}</b></div>
+          </div>
+        </div>
+        <div class="mt-5 overflow-auto">
+          <table class="w-full text-sm min-w-[1500px]">
+            <thead class="sticky top-0 bg-white">
+              <tr class="text-[13px] text-gray-600 border-b">
+                <th class="text-left py-3 pr-4">Supplier / Freight</th>
+                <th class="text-center py-3 px-4">Zendesk</th>
+                <th class="text-center py-3 px-4">Status</th>
+                <th class="text-center py-3 px-4">Shipment #</th>
+                <th class="text-center py-3 px-4">HBL</th>
+                <th class="text-center py-3 px-4">MBL</th>
+                <th class="text-center py-3 px-4">Hold</th>
+                <th class="text-center py-3 px-4">📄 Pack List</th>
+                <th class="text-center py-3 px-4">🛃 Origin Customs</th>
+                <th class="text-center py-3 px-4">🚚 Departed</th>
+                <th class="text-center py-3 px-4">📍 Arrived</th>
+                <th class="text-center py-3 px-4">🛃 Dest Customs</th>
+                <th class="text-left py-2 pr-2">Container #</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || '<tr><td class="py-2 text-gray-500" colspan="13">No lanes found.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    root.querySelectorAll('[data-open-lane]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const k = btn.getAttribute('data-open-lane');
+        if (!k) return;
+        openLaneModal(ws, tz, k);
+      });
+    });
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+  }
+
   function ensureFlowPageExists() {
     // 1) page section
     let page = document.getElementById('page-flow');
@@ -1484,9 +1944,947 @@ function computeManualNodeStatuses(ws, tz) {
     } catch {}
   }
 
+  function setSubheader(ws) {
+    const sub = document.getElementById('flow-sub');
+    if (!sub) return;
+    try {
+      const wsD = new Date(`${ws}T00:00:00Z`);
+      const weD = new Date(wsD.getTime());
+      weD.setUTCDate(weD.getUTCDate() + 6);
+      sub.textContent = `${ws} – ${isoDate(weD)}`;
+    } catch {
+      sub.textContent = ws;
+    }
+  }
+
+  function nodeCard({ id, title, subtitle, level, badges = [], disabled = false, upcoming = false }) {
+    const dis = disabled ? 'opacity-50 pointer-events-none' : '';
+    const badgeHtml = badges.map(b => {
+      const cls = b.level ? pill(b.level) : 'bg-gray-100 text-gray-700 border-gray-200';
+      return `<button data-sub="${b.sub || ''}" class="text-xs px-2 py-0.5 rounded-full border ${cls} hover:opacity-95">${b.label}</button>`;
+    }).join(' ');
+    return `
+      <div data-node="${id}" data-flow-node="${id}" class="rounded-xl border p-3 hover:bg-gray-50 cursor-pointer ${dis}">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-8 h-8 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
+            <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="dot ${dot(level, !!upcoming)}"></span>
+            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level, !!upcoming)}</span>
+          </div>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
+      </div>
+    `;
+  }
+
+  function setDayProgress(ws, tz) {
+    const el = document.getElementById('flow-day');
+    if (!el) return;
+    try {
+      const anchor = makeBizLocalDate(ws, BASELINE.receiving_due.time, tz); // Mon noon
+      const now = new Date();
+      const day = Math.floor(daysBetween(anchor, now)) + 1;
+      const pct = clamp(daysBetween(anchor, now) / 24, 0, 1);
+      el.textContent = `Day ${Math.max(1, day)} / 24 (baseline)`;
+    } catch {
+      el.textContent = '';
+    }
+  }
+
   
+  function renderProcessRail(nodes, forcedCurrentIdx = null) {
+    const rail = document.getElementById('flow-rail');
+    if (!rail) return;
+
+    // Expect nodes: [{id, level, upcoming}]
+    const order = ['milk','receiving','vas','intl','lastmile'];
+    const nodeById = new Map((nodes || []).map(n => [n.id, n]));
+
+    // "Ongoing" marker = operational phase (NOT the selected node).
+    // If a forced index is provided, use that; else infer from upcoming flags.
+    let currentIdx = 0;
+    if (Number.isFinite(forcedCurrentIdx)) {
+      currentIdx = Math.max(0, Math.min(order.length - 1, forcedCurrentIdx));
+    } else {
+      for (let i = 0; i < order.length; i++) {
+        const n = nodeById.get(order[i]);
+        if (n && n.upcoming === false) currentIdx = i;
+      }
+    }
+
+    const draw = () => {
+      const root = document.getElementById('flow-nodes');
+      if (!root) return;
+
+      const cards = Array.from(root.querySelectorAll('[data-flow-node]'));
+      if (!cards.length) return;
+
+      const centers = new Map();
+      for (const el of cards) {
+        const id = el.getAttribute('data-flow-node');
+        const r = el.getBoundingClientRect();
+        centers.set(id, r.left + r.width / 2);
+      }
+
+      const rr = rail.getBoundingClientRect();
+
+      if (!rr || rr.width < 80) return;
+
+      const x = (id) => {
+        const c = centers.get(id);
+        if (typeof c !== 'number') return null;
+        return Math.max(8, Math.min(rr.width - 8, c - rr.left));
+      };
+
+      const matte = (hex, alpha) => {
+        // hex like #rrggbb
+        const h = (hex || '#9ca3af').replace('#','');
+        const r = parseInt(h.slice(0,2),16) || 156;
+        const g = parseInt(h.slice(2,4),16) || 163;
+        const b = parseInt(h.slice(4,6),16) || 175;
+        return `rgba(${r},${g},${b},${alpha})`;
+      };
+
+      const strokeForLevel = (level, upcoming) => {
+        // Matte palette
+        const map = {
+          green: '#10b981',
+          red:   '#ef4444',
+          gray:  '#9ca3af'
+        };
+        const base = map[level] || map.gray;
+        return upcoming ? matte(base, 0.35) : matte(base, 0.55);
+      };
+
+      const dotFillForLevel = (level, upcoming) => {
+        const map = {
+          green: '#10b981',
+          red:   '#ef4444',
+          gray:  '#9ca3af'
+        };
+        const base = map[level] || map.gray;
+        return upcoming ? matte(base, 0.20) : matte(base, 0.45);
+      };
+
+      const label = (id) => {
+        const map = { milk:'MR', receiving:'RCV', vas:'VAS', intl:'T&C', lastmile:'LM' };
+        return map[id] || '';
+      };
+
+      const spineIcon = (id) => {
+        try {
+          const raw = (typeof NODE_ICONS !== 'undefined' && NODE_ICONS && NODE_ICONS[id]) ? String(NODE_ICONS[id]) : '';
+          if (!raw) return '';
+          // Force an explicit size for use inside the spine SVG (ignore Tailwind classes)
+          // Keep original viewBox/path/stroke etc.
+          return raw
+            .replace(/class="[^"]*"/g, 'width="24" height="24"')
+            .replace('<svg ', '<svg x="0" y="0" ');
+        } catch (e) {
+          return '';
+        }
+      };
+      const USE_SPINE_ICONS = true;
+
+      // Build segments
+      let segs = '';
+      for (let i = 0; i < order.length - 1; i++) {
+        const a = order[i], b = order[i+1];
+        const xa = x(a), xb = x(b);
+        if (xa == null || xb == null) continue;
+        const nb = nodeById.get(b) || { level:'gray', upcoming:true };
+        segs += `<line x1="${xa}" y1="16" x2="${xb}" y2="16" stroke="${strokeForLevel(nb.level, nb.upcoming)}" stroke-width="6" stroke-linecap="round"></line>`;
+      }
+
+      // Dots + labels
+      let dots = '';
+      for (let i = 0; i < order.length; i++) {
+        const id = order[i];
+        const xi = x(id);
+        if (xi == null) continue;
+        const n = nodeById.get(id) || { level:'gray', upcoming:true };
+        dots += `
+          <g>
+            <!-- icon replaces connector marker (no dot) -->
+            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-12})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
+          </g>
+        `;
+      }
+
+      // Ongoing marker aligned to current node center
+      const ongoingId = order[Math.max(0, Math.min(order.length-1, currentIdx))];
+      const xo = x(ongoingId);
+      const ongoing = (xo == null) ? '' : `
+        <g>
+          <line x1="${xo}" y1="2" x2="${xo}" y2="30" stroke="rgba(17,24,39,0.35)" stroke-width="1"></line>
+          <text x="${xo}" y="40" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
+        </g>
+      `;
+
+      rail.innerHTML = `
+        <svg width="100%" height="48" viewBox="0 0 ${rr.width} 48" preserveAspectRatio="none">
+          ${segs}
+          ${dots}
+          ${ongoing}
+        </svg>`;
+    };
+
+    requestAnimationFrame(() => {
+      draw();
+      setTimeout(draw, 0);
+    });
+  }
+
+
+function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
+    const root = document.getElementById('flow-journey');
+    if (!root) return;
+
+    const now = new Date();
+
+    // Determine operational "ongoing" index (same logic as before)
+    let ongoingIdx = 2; // default VAS
+    if ((receiving.receivedPOs || 0) < (receiving.plannedPOs || 0)) {
+      ongoingIdx = 1;
+    } else {
+      const intlInWindow = (intl.originMin instanceof Date) ? (now >= intl.originMin) : false;
+      ongoingIdx = intlInWindow ? 3 : 2;
+    }
+
+    // Node model (milk disabled)
+    const nodes = [
+      { id:'milk', label:'Milk Run', short:'MR', level:'gray', upcoming:true, disabled:true },
+      { id:'receiving', label:'Receiving', short:'RCV', level: receiving.level, upcoming: now < receiving.due },
+      { id:'vas', label:'VAS', short:'VAS', level: vas.level, upcoming: now < vas.due },
+      { id:'intl', label:'Transit & Clearing', short:'T&C', level: intl.level, upcoming: now < intl.originMax },
+      { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: false },
+    ];
+
+    // Planned vs Actual (display only; never persisted)
+    const plannedActual = (() => {
+      const planned = {
+        receiving: receiving.due,
+        vas: vas.due,
+        intl: intl.originMax,
+        lastmile: manual?.baselines?.lastMileMax,
+      };
+      const actual = {
+        receiving: (receiving?.signoff?.receivingAt || receiving.lastReceived),
+        vas: (vas?.signoff?.vasAt || vas.lastAppliedAt || null),
+        intl: intl.lastMilestoneAt || null,
+        lastmile: (manual?.dates?.deliveredAt || manual?.dates?.delivered_at || manual?.manual?.delivered_at) || null,
+      };
+
+      const fmt = (d) => (d ? fmtInTZ((d instanceof Date) ? d : new Date(d), tz) : '—');
+      return (id) => {
+        if (!planned[id] && !actual[id]) return '';
+        return `Planned ${fmt(planned[id])} • Actual ${fmt(actual[id])}`;
+      };
+    })();
+
+    const matte = (hex, alpha) => {
+      const h = (hex || '#9ca3af').replace('#','');
+      const r = parseInt(h.slice(0,2),16) || 156;
+      const g = parseInt(h.slice(2,4),16) || 163;
+      const b = parseInt(h.slice(4,6),16) || 175;
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+    // Journey/status color palette
+    // - green: on track
+    // - red: delayed
+    // - gray: At-Risk (yellow-ish tone per spec)
+    // - upcoming: distinct from At-Risk (cool neutral)
+    // - future: capability not yet live
+    const levelColor = (level) => ({
+      green: '#34d399',
+      red: '#fb7185',
+      upcoming: '#cbd5e1',
+      yellow: '#e6b800',
+      gray: '#f6d365',
+      future: '#e5e7eb',
+    }[level] || '#9ca3af');
+    const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.28) : matte(levelColor(level), 0.50);
+    const statusText = (n) => {
+      if (!n) return '—';
+      if (n.disabled) return 'Future';
+      if (n.upcoming) return 'Upcoming';
+      if (n.level === 'green') return 'On Track';
+      if (n.level === 'red') return 'Delayed';
+      return 'At-Risk';
+    };
+    const statusLevel = (n) => {
+      if (!n) return 'gray';
+      if (n.disabled) return 'future';
+      if (n.upcoming) return 'upcoming';
+      return n.level || 'gray';
+    };
+
+
+    const iconSvgFor = (id) => {
+      try {
+        const raw = (typeof NODE_ICONS !== 'undefined' && NODE_ICONS && NODE_ICONS[id]) ? String(NODE_ICONS[id]) : '';
+        if (!raw) return '';
+        return raw
+          .replace(/class="[^"]*"/g, 'width="26" height="26"')
+          .replace('<svg ', '<svg x="0" y="0" ');
+      } catch { return ''; }
+    };
+
+    // Journey path geometry (viewBox units) - inverted S road
+    const road = {
+      A: { x: 80,  y: 70 },   // start
+      B: { x: 920, y: 70 },   // top-right corner
+      C: { x: 920, y: 235 },  // mid-right corner  // mid-right corner
+      D: { x: 120, y: 235 },  // mid-left corner  // mid-left corner
+      E: { x: 120, y: 400 },  // bottom-left corner  // bottom-left corner
+      F: { x: 920, y: 400 },  // end  // end
+    };
+    const rad = 40;
+
+    // Node placement on the road (per your reference layout)
+    const pts = {
+      milk:      { x: road.A.x, y: road.A.y }, // start
+      // Receiving: shift ~30% left on the top line
+      receiving: { x: Math.round(road.A.x + 0.35 * (road.B.x - road.A.x)), y: road.A.y },
+      // VAS: shift ~30% right on the middle line
+      vas:       { x: Math.round(road.D.x + 0.65 * (road.C.x - road.D.x)), y: road.C.y },
+      // Transit & Clearing: shift ~25% left on the bottom line
+      intl:      { x: Math.round((road.D.x + rad) + 0.20 * (road.F.x - (road.D.x + rad))), y: road.E.y },
+      lastmile:  { x: road.F.x, y: road.F.y }, // end
+    };
+
+    const order = ['milk','receiving','vas','intl','lastmile'];
+
+    // Road path (inverted S; straight segments with rounded joins)
+    // Road path (inverted S with rounded corners)
+    const roadPath = `
+  M ${road.A.x} ${road.A.y}
+  H ${road.B.x - rad}
+  A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
+  V ${road.C.y - rad}
+  A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
+  H ${road.D.x + rad}
+  A ${rad} ${rad} 0 0 0 ${road.D.x} ${road.C.y + rad}
+  V ${road.E.y - rad}
+  A ${rad} ${rad} 0 0 0 ${road.D.x + rad} ${road.E.y}
+  H ${road.F.x}
+`;
+
+// Colored segments along the road between milestones (keeps visuals consistent with the path)
+    let segs = '';
+    const segPathBetween = (fromId, toId) => {
+      // Paths follow the same rounded road geometry so colors sit on the “asphalt”.
+      if (fromId === 'milk' && toId === 'receiving') {
+        return `M ${pts.milk.x} ${pts.milk.y} L ${pts.receiving.x} ${pts.receiving.y}`;
+      }
+      if (fromId === 'receiving' && toId === 'vas') {
+        return `
+          M ${pts.receiving.x} ${pts.receiving.y}
+          L ${road.B.x - rad} ${road.A.y}
+          A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
+          L ${road.B.x} ${road.C.y - rad}
+          A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
+          L ${pts.vas.x} ${road.C.y}
+        `;
+      }
+      if (fromId === 'vas' && toId === 'intl') {
+        // second straight -> left curve -> bottom straight to Transit & Clearing (mid of bottom line)
+        const x1 = road.D.x + rad;
+        return `
+          M ${pts.vas.x} ${road.C.y}
+          L ${x1} ${road.C.y}
+          A ${rad} ${rad} 0 0 0 ${road.D.x} ${road.C.y + rad}
+          L ${road.D.x} ${road.E.y - rad}
+          A ${rad} ${rad} 0 0 0 ${x1} ${road.E.y}
+          L ${pts.intl.x} ${pts.intl.y}
+        `;
+      }
+      if (fromId === 'intl' && toId === 'lastmile') {
+        // bottom line straight to Last Mile
+        return `
+          M ${pts.intl.x} ${pts.intl.y}
+          L ${pts.lastmile.x} ${pts.lastmile.y}
+        `;
+      }
+      // Fallback: straight
+      const a = pts[fromId], b = pts[toId];
+      if (!a || !b) return '';
+      return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+    };
+
+    for (let i = 0; i < order.length - 1; i++) {
+      const fromId = order[i];
+      const toId = order[i+1];
+      // Segment color follows the destination node status, except Milk Run → Receiving which is always "future" (gray road).
+      const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
+      const d = segPathBetween(fromId, toId);
+      if (!d) continue;
+      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />`;
+    }
+
+    // Ghost/base road behind colored segments (thicker, subtle)
+    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />`;
+
+    // Center dashed line
+    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
+
+    // Milestones (icons in white circles)
+    let milestones = '';
+    for (let i = 0; i < order.length; i++) {
+      const id = order[i];
+      const p = pts[id];
+      const n = nodes[i];
+      if (!p || !n) continue;
+      const icon = iconSvgFor(id);
+      const isOngoing = (i === ongoingIdx);
+      const ring = isOngoing ? 'rgba(17,24,39,0.25)' : 'rgba(17,24,39,0.12)';
+      const labelX = p.x;
+      const labelAnchor = 'middle';
+      // Node name above icon
+      const nameY = p.y - 46;
+
+      const st = statusText(n);
+      const stLevel = statusLevel(n);
+      const stBg = matte(levelColor(stLevel), 0.14);
+      const stFg = matte(levelColor(stLevel), 0.92);
+
+      // Status pill below icon
+      const pillW = Math.max(58, 14 + (String(st).length * 7));
+      const pillH = 18;
+      const pillY = p.y + 42;
+      const pillX = p.x - (pillW / 2);
+      const pillTextX = p.x;
+
+      const pa = plannedActual(id);
+      const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
+const done = (id === 'receiving')
+  ? !!(receiving?.signoff?.receivingComplete)
+  : (id === 'vas')
+    ? !!(vas?.signoff?.vasComplete)
+    : false;
+const nameLabel = done ? `${n.label} ✓` : n.label;
+
+
+      milestones += `
+        <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
+          <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
+          ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
+                   `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
+          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${nameLabel}</text>
+          ${paText}
+          <g>
+            <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
+            <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
+          </g>
+        </g>
+      `;
+    }
+
+    const ongoingId = order[Math.max(0, Math.min(order.length - 1, ongoingIdx))];
+    const op = pts[ongoingId];
+    const ongoing = (!op) ? '' : `
+      <g>
+        <line x1="${op.x}" y1="${op.y + 28}" x2="${op.x}" y2="${op.y + 70}" stroke="rgba(17,24,39,0.25)" stroke-width="1" />
+        <text x="${op.x}" y="${op.y + 86}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
+      </g>
+    `;
+
+    // Compact stats blocks under the journey (wow factor but stable)
+    const stat = (title, a, b, n) => {
+      const st = statusText(n);
+      const stLevel = statusLevel(n);
+      const bg = matte(levelColor(stLevel), 0.14);
+      const fg = matte(levelColor(stLevel), 0.92);
+      return `
+        <div class="rounded-xl border bg-white p-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-xs font-semibold text-gray-700">${title}</div>
+            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-[11px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
+          ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
+        </div>
+      `;
+    };
+
+    // Use existing computed values; never assume presence
+    const recA = `${(receiving.receivedPOs||0)}/${(receiving.plannedPOs||0)} POs`;
+    const recB = `${(receiving.cartonsOutTotal||0)} out • ${(receiving.latePOs||0)} late`;
+    const vasA = `${Math.round((vas.completion||0)*100)}% complete`;
+    const vasB = `${(vas.appliedUnits||0)}/${(vas.plannedUnits||0)} units`;
+    const intlA = `${(intl.lanes||[]).length} lanes`;
+    const intlB = `${(intl.missingDocs||0)} docs missing • ${(intl.holds||0)} hold`;
+    const lmA = `${(manual.manual?.last_mile_open||0)}/${(manual.manual?.last_mile_total||0)} open`;
+    const lmB = manual.manual?.delivered_at ? `Delivered set` : `Delivered (set)`;
+
+    root.innerHTML = `
+      <div class="w-full overflow-hidden">
+        <svg viewBox="-180 0 1250 560" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:520px; width:100%;">
+
+          <!-- road shadow (subtle) -->
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
+          <!-- road base -->
+          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" />
+          ${baseRoad}
+          ${segs}
+          ${dashed}
+          ${milestones}
+          ${ongoing}
+        </svg>
+      </div>
+    `;
+
+    // Click handlers (use existing selection + detail render; never assume)
+    try {
+      root.querySelectorAll('[data-journey-node]').forEach(el => {
+        el.addEventListener('click', () => {
+          const node = el.getAttribute('data-node');
+          UI.selection = { node, sub: null };
+          renderDetail(ws, tz, receiving, vas, intl, manual);
+          renderRightTile(ws, tz, receiving, vas, intl, manual);
+          highlightSelection();
+        });
+      });
+    } catch {}
+  }
+
+  // ------------------------- Right tile (context panel) -------------------------
+  // Default shows week plan vs actual totals; clicking a node switches to exceptions/deadlines for that node.
+  function renderRightTile(ws, tz, receiving, vas, intl, manual) {
+    const el = document.getElementById('flow-footer');
+    if (!el) return;
+
+    const selNode = (UI.selection && UI.selection.node) ? UI.selection.node : null;
+
+    const weekContainers = loadIntlWeekContainers(ws);
+    const containers = Array.isArray(weekContainers?.containers) ? weekContainers.containers : [];
+    const totalContainers = containers.length;
+    const vesselsSet = new Set(containers.map(c => String(c?.vessel || '').trim()).filter(Boolean));
+    const totalVessels = vesselsSet.size;
+
+    const lanesTotal = Array.isArray(intl?.lanes) ? intl.lanes.length : 0;
+
+    const appliedUnits = num(vas?.appliedUnits || 0);
+    const plannedUnits = num(vas?.plannedUnits || 0);
+    const cbm = appliedUnits * 0.00375;
+
+    // Receiving CBM is derived from planned units (plan rows) * 0.00375
+    const receivingCbmPlanned = plannedUnits * 0.00375;
+
+    const recPlannedPOs = num(receiving?.plannedPOs || 0);
+    const recReceivedPOs = num(receiving?.receivedPOs || 0);
+
+    const cartonsIn = num(receiving?.cartonsInTotal || 0);
+    const cartonsOut = num(receiving?.cartonsOutTotal || 0);
+
+    const prebook = loadPrebook(ws);
+    const signoff = loadWeekSignoff(ws);
+
+    const icon = {
+      po: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h6"/></svg>',
+      units: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 17l9 4 9-4"/><path d="M3 12l9 4 9-4"/></svg>',
+      cartons: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
+      lane: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v16"/><path d="M20 4v16"/><path d="M4 12h16"/></svg>',
+      ship: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18"/><path d="M5 18l2-6h10l2 6"/><path d="M7 12V6l5-2 5 2v6"/></svg>',
+      cont: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7v13M11 7v13M15 7v13M19 7v13"/></svg>',
+      box: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M12 13v8"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
+      warn: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 4.3l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3l-8-14a2 2 0 0 0-3.4 0z"/></svg>',
+      time: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>',
+    };
+
+    const hRow = (ic, label, value) => `
+      <div class="flex items-center justify-between gap-3 py-2">
+        <div class="flex items-center gap-2 text-gray-700">
+          <span class="text-gray-500">${ic}</span>
+          <span class="text-sm font-semibold">${label}</span>
+        </div>
+        <div class="text-sm font-semibold text-gray-900">${value}</div>
+      </div>
+    `;
+
+    const pairRow = (leftHtml, rightHtml) => `
+      <div class="grid grid-cols-2 gap-3">
+        <div class="rounded-xl border bg-white px-3 py-2">${leftHtml}</div>
+        <div class="rounded-xl border bg-white px-3 py-2">${rightHtml}</div>
+      </div>
+    `;
+
+    const header = (title, subtitle) => `
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <div class="text-sm font-semibold text-gray-800">${title}</div>
+          ${subtitle ? `<div class="text-xs text-gray-500 mt-0.5">${subtitle}</div>` : ''}
+        </div>
+        ${selNode ? `<button id="rt-back" class="text-xs px-2 py-1 rounded-md border bg-white hover:bg-gray-50">Week totals</button>` : ''}
+      </div>
+    `;
+
+    const fmt2 = (n) => {
+      const v = Number(n) || 0;
+      return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    };
+
+    const lvlColor = (lvl) => (lvl === 'red' ? '#ef4444' : (lvl === 'yellow' ? '#f59e0b' : (lvl === 'green' ? '#10b981' : '#9ca3af')));
+
+    const health = (() => {
+      const worst = [
+        { label: 'Receiving', color: receiving?.color || lvlColor(receiving?.level) || '#10b981' },
+        { label: 'VAS', color: vas?.color || lvlColor(vas?.level) || '#10b981' },
+        { label: 'Transit', color: intl?.color || lvlColor(intl?.level) || '#10b981' },
+        { label: 'Last Mile', color: lvlColor(manual?.levels?.lastMile) || '#10b981' },
+      ].reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc);
+      const band = _bandFromColor(worst.color);
+      const label = (band === 'green') ? 'On Track' : (band === 'yellow') ? 'At Risk' : (band === 'red') ? 'Delayed' : 'Upcoming';
+      return { color: worst.color, label };
+    })();
+
+
+const signoffSection = (context) => {
+  const recMet = receiving.planMet ?? ((receiving.plannedPOs || 0) > 0 ? (receiving.receivedPOs || 0) >= (receiving.plannedPOs || 0) : true);
+  const vasMet = vas.planMet ?? ((vas.plannedUnits || 0) > 0 ? (vas.appliedUnits || 0) >= ((vas.plannedUnits || 0) * 0.98) : true);
+
+  const hintRec = signoff.receivingComplete
+    ? (recMet ? '<span class="text-green-700 font-semibold">Plan met</span>' : '<span class="text-amber-700 font-semibold">Signed off but incomplete</span>')
+    : (recMet ? '<span class="text-gray-600">Plan met</span>' : '<span class="text-gray-600">Not yet complete</span>');
+
+  const hintVas = signoff.vasComplete
+    ? (vasMet ? '<span class="text-green-700 font-semibold">Plan met</span>' : '<span class="text-amber-700 font-semibold">Signed off but incomplete</span>')
+    : (vasMet ? '<span class="text-gray-600">Plan met</span>' : '<span class="text-gray-600">Not yet complete</span>');
+
+  const title = (context === 'node') ? 'Week sign-off' : 'Week sign-off (master ticks)';
+  return `
+    <div class="rounded-2xl border bg-white p-3">
+      <div class="text-xs font-semibold text-gray-700">${title}</div>
+      <div class="text-[11px] text-gray-500 mt-0.5">Use these only when the week is operationally complete. Does not create fake timestamps.</div>
+
+      <div class="mt-3 space-y-3">
+        <label class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-800">Receiving complete</div>
+            <div class="text-[11px] mt-0.5">${hintRec}</div>
+          </div>
+          <input id="signoff-receiving" type="checkbox" class="h-5 w-5 rounded border-gray-300" ${signoff.receivingComplete ? 'checked' : ''} />
+        </label>
+
+        <label class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-800">VAS complete</div>
+            <div class="text-[11px] mt-0.5">${hintVas}</div>
+          </div>
+          <input id="signoff-vas" type="checkbox" class="h-5 w-5 rounded border-gray-300" ${signoff.vasComplete ? 'checked' : ''} />
+        </label>
+      </div>
+    </div>
+  `;
+};
+
+    const weekTotalsView = () => {
+      return `
+        ${header('Week plan vs actual', `Week of ${ws}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.po, 'POs planned – received', `${fmtInt(recPlannedPOs)} – ${fmtInt(recReceivedPOs)}`)}
+            ${hRow(icon.units, 'Units planned – applied', `${fmtInt(plannedUnits)} – ${fmtInt(appliedUnits)}`)}
+            ${hRow(icon.cartons, 'Cartons in – cartons out', `${fmtInt(cartonsIn)} – ${fmtInt(cartonsOut)}`)}
+          </div>
+
+          ${pairRow(
+            hRow(icon.lane, 'Total lanes', fmtInt(lanesTotal)),
+            hRow(icon.ship, 'Total vessels', fmtInt(totalVessels))
+          )}
+
+          ${pairRow(
+            hRow(icon.cont, 'Total containers', fmtInt(totalContainers)),
+            hRow(icon.box, 'Total CBM', fmt2(cbm))
+          )}
+
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Pre-booked containers</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">Plan inputs for this week (local only)</div>
+            <div class="grid grid-cols-2 gap-3 mt-3">
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">20 ft</div>
+                <input id="prebook-20" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c20)}" />
+              </label>
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">40 ft</div>
+                <input id="prebook-40" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c40)}" />
+              </label>
+            </div>
+          </div>
+
+          
+
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                  style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
+              <span class="inline-block h-2 w-2 rounded-full" style="background:${health.color};"></span>
+              <span class="font-semibold">Health</span>
+              <span>${health.label}</span>
+            </span>
+            <span class="text-xs text-gray-600">Deadlines & exceptions on node click</span>
+          </div>
+          
+        </div>
+      `;
+    };
+
+    const milkRunView = () => {
+      // Milk Run is a planning checkpoint. Keep this view focused on plan inputs.
+      return `
+        ${header('Milk Run — planning', `Week of ${ws}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.po, 'POs planned', fmtInt(recPlannedPOs))}
+            ${hRow(icon.units, 'Units planned', fmtInt(plannedUnits))}
+            ${hRow(icon.box, 'Planned CBM', fmt2(receivingCbmPlanned))}
+          </div>
+
+          ${pairRow(
+            hRow(icon.lane, 'Total lanes', fmtInt(lanesTotal)),
+            hRow(icon.ship, 'Total vessels', fmtInt(totalVessels))
+          )}
+
+          ${pairRow(
+            hRow(icon.cont, 'Total containers', fmtInt(totalContainers)),
+            hRow(icon.box, 'Total CBM', fmt2(cbm))
+          )}
+
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Pre-booked containers</div>
+            <div class="text-[11px] text-gray-500 mt-0.5">Enter committed capacity for this week (local only)</div>
+            <div class="grid grid-cols-2 gap-3 mt-3">
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">20 ft</div>
+                <input id="prebook-20" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c20)}" />
+              </label>
+              <label class="block">
+                <div class="text-xs font-semibold text-gray-700">40 ft</div>
+                <input id="prebook-40" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c40)}" />
+              </label>
+            </div>
+          </div>
+
+          
+
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
+                  style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
+              <span class="inline-block h-2 w-2 rounded-full" style="background:${health.color};"></span>
+              <span class="font-semibold">Health</span>
+              <span>${health.label}</span>
+            </span>
+            <span class="text-xs text-gray-600">Click nodes for exceptions</span>
+          </div>
+          
+        </div>
+      `;
+    };
+
+    const receivingView = () => {
+      const due = receiving?.due ? fmtInTZ(receiving.due, tz) : '—';
+      const last = receiving?.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—';
+      const late = num(receiving?.latePOs || 0);
+      const missing = num(receiving?.missingPOs || 0);
+      const remaining = Math.max(0, recPlannedPOs - recReceivedPOs);
+
+      return `
+        ${header('Receiving — deadlines & exceptions', `Due ${due}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.time, 'Last received', last)}
+            ${hRow(icon.po, 'Remaining POs', fmtInt(remaining))}
+            ${hRow(icon.box, 'Receiving CBM (planned)', fmt2(receivingCbmPlanned))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            ${hRow(icon.warn, 'Late POs', late ? `<span class="text-red-700">${fmtInt(late)}</span>` : fmtInt(late))}
+            ${hRow(icon.warn, 'Missing POs', missing ? `<span class="text-red-700">${fmtInt(missing)}</span>` : fmtInt(missing))}
+            <div class="text-[11px] text-gray-500 mt-2">Tip: use the Receiving page for the full list; this panel is the headline view.</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const vasView = () => {
+      const due = vas?.due ? fmtInTZ(vas.due, tz) : '—';
+      const pctDone = plannedUnits ? Math.round((appliedUnits / plannedUnits) * 100) : 0;
+      const remainingUnits = Math.max(0, plannedUnits - appliedUnits);
+      const remainingCbm = Math.max(0, remainingUnits) * 0.00375;
+      const appliedCbm = appliedUnits * 0.00375;
+
+      // Pace / deadline helper (UI-only)
+      const pace = (() => {
+        const d = vas?.due instanceof Date ? vas.due : (vas?.due ? new Date(vas.due) : null);
+        if (!d || isNaN(d)) return null;
+        const now = new Date();
+        const ms = d.getTime() - now.getTime();
+        const daysLeft = Math.ceil(ms / (1000 * 60 * 60 * 24));
+        if (daysLeft <= 0) return { label: 'Past due', value: `${fmtInt(Math.max(0, Math.round((-ms) / (1000 * 60 * 60))))}h` };
+        const perDay = remainingUnits / Math.max(1, daysLeft);
+        return { label: 'Pace needed', value: `${fmtInt(Math.ceil(perDay))} units/day` };
+      })();
+
+      const lateBy = (() => {
+        if (!vas?.due) return null;
+        const now = new Date();
+        const d = vas.due instanceof Date ? vas.due : new Date(vas.due);
+        if (isNaN(d)) return null;
+        const diffH = Math.round((now.getTime() - d.getTime()) / (1000 * 60 * 60));
+        return diffH > 0 ? diffH : 0;
+      })();
+
+      return `
+        ${header('VAS — plan vs actual', `Due ${due}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.units, 'Applied / Planned', `${fmtInt(appliedUnits)} / ${fmtInt(plannedUnits)} (${pctDone}%)`)}
+            ${hRow(icon.warn, 'Units remaining', fmtInt(remainingUnits))}
+            ${hRow(icon.box, 'CBM applied', fmt2(appliedCbm))}
+            ${hRow(icon.box, 'CBM remaining', fmt2(remainingCbm))}
+            ${pace ? hRow(icon.time, pace.label, pace.value) : ''}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Focus</div>
+            <div class="text-sm text-gray-800 mt-1">Watch remaining units vs the due window${lateBy ? ` (now ${fmtInt(lateBy)}h past due)` : ''}. Use the bottom tile for supplier/PO detail.</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const intlView = () => {
+      const windowText = (intl?.originMin && intl?.originMax)
+        ? `${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`
+        : '—';
+      const holds = num(intl?.holds || 0);
+      const docs = num(intl?.missingDocs || 0);
+      const notCleared = num(intl?.missingOriginClear || 0);
+      const onTime = Array.isArray(intl?.lanes)
+        ? intl.lanes.filter(l => (l?.level === 'green') || (_bandFromColor(l?.color || '') === 'green')).length
+        : 0;
+
+      return `
+        ${header('Transit & Clearing — exceptions', `Origin window ${windowText}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.lane, 'Lanes', fmtInt(lanesTotal))}
+            ${hRow(icon.ship, 'Vessels', fmtInt(totalVessels))}
+            ${hRow(icon.cont, 'Containers', fmtInt(totalContainers))}
+            ${hRow(icon.time, 'On-time lanes', fmtInt(onTime))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            ${hRow(icon.warn, 'Customs holds', holds ? `<span class="text-red-700">${fmtInt(holds)}</span>` : fmtInt(holds))}
+            ${hRow(icon.warn, 'Missing docs', docs ? `<span class="text-amber-700">${fmtInt(docs)}</span>` : fmtInt(docs))}
+            ${hRow(icon.warn, 'Not origin-cleared', notCleared ? `<span class="text-amber-700">${fmtInt(notCleared)}</span>` : fmtInt(notCleared))}
+          </div>
+        </div>
+      `;
+    };
+
+    const lastMileView = () => {
+      const receipts = loadLastMileReceipts(ws) || {};
+      const r = receipts?.receipts || receipts || {};
+      const vals = Object.values(r).filter(Boolean);
+      const isDelivered = (x) => !!(x && (x.status === 'Delivered' || x.status === 'Complete' || x.delivered_local || x.delivered_at));
+      const isScheduled = (x) => !!(x && (x.status === 'Scheduled' || x.scheduled_local));
+
+      const delivered = vals.filter(isDelivered).length;
+      // Scheduled should exclude delivered (two-step workflow: scheduled → delivered)
+      const scheduled = vals.filter(x => isScheduled(x) && !isDelivered(x)).length;
+      const open = Math.max(0, totalContainers - delivered);
+
+      return `
+        ${header('Last Mile — exceptions', `Open ${fmtInt(open)} / ${fmtInt(totalContainers)}`)}
+        <div class="mt-3 space-y-3">
+          <div class="rounded-2xl border bg-gray-50 p-3">
+            ${hRow(icon.cont, 'Scheduled', fmtInt(scheduled))}
+            ${hRow(icon.cont, 'Delivered', fmtInt(delivered))}
+          </div>
+          <div class="rounded-2xl border bg-white p-3">
+            <div class="text-xs font-semibold text-gray-700">Focus</div>
+            <div class="text-sm text-gray-800 mt-1">Oldest open containers and delivery notes live in the bottom tile. This panel highlights weekly risk.</div>
+          </div>
+        </div>
+      `;
+    };
+
+    const view = (() => {
+      if (selNode === 'milk') return milkRunView();
+      if (selNode === 'receiving') return receivingView();
+      if (selNode === 'vas') return vasView();
+      if (selNode === 'intl') return intlView();
+      if (selNode === 'lastmile') return lastMileView();
+      return weekTotalsView();
+    })();
+
+    el.innerHTML = `<div class="min-h-[320px]">${view}${signoffSection(selNode ? 'node' : 'week')}</div>`;
+
+    // Bind back button
+    const back = document.getElementById('rt-back');
+    if (back && !back.dataset.bound) {
+      back.dataset.bound = '1';
+      back.onclick = () => {
+        UI.selection = { node: null, sub: null };
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        highlightSelection();
+      };
+    }
+
+    // Bind prebook inputs (week totals view only)
+    const i20 = document.getElementById('prebook-20');
+    const i40 = document.getElementById('prebook-40');
+    const bindPre = (inp, key) => {
+      if (!inp || inp.dataset.bound) return;
+      inp.dataset.bound = '1';
+      inp.addEventListener('input', () => {
+        const next = loadPrebook(ws);
+        next[key] = num(inp.value || 0);
+        savePrebook(ws, next);
+      });
+    };
+    bindPre(i20, 'c20');
+    bindPre(i40, 'c40');
+
+// Bind week sign-off ticks (available in week + node views)
+const sRec = document.getElementById('signoff-receiving');
+const sVas = document.getElementById('signoff-vas');
+const bindSign = (inp, key) => {
+  if (!inp || inp.dataset.bound) return;
+  inp.dataset.bound = '1';
+  inp.addEventListener('change', () => {
+    const next = loadWeekSignoff(ws);
+    const checked = !!inp.checked;
+    next[key] = checked;
+    // Capture sign-off timestamp for journey 'Actual' display.
+    if (key === 'receivingComplete') {
+      next.receivingAt = checked ? (next.receivingAt || new Date().toISOString()) : null;
+    }
+    if (key === 'vasComplete') {
+      next.vasAt = checked ? (next.vasAt || new Date().toISOString()) : null;
+    }
+    saveWeekSignoff(ws, next);
+
+    // Recompute local node levels immediately (no backend changes).
+    // Refresh will reload data but this ensures instant UI feedback.
+    try { refresh(); } catch {}
+  });
+};
+bindSign(sRec, 'receivingComplete');
+bindSign(sVas, 'vasComplete');
+
+
+  }
+
+
+
+
+
+
   // ------------------------------
-  // Receiving — Full screen modal
+  // Receiving — Full screen modal (units-based grouped table)
   // ------------------------------
   function ensureReceivingFullModal() {
     let root = document.getElementById('flow-receiving-fullscreen-modal');
@@ -2054,953 +3452,6 @@ function computeManualNodeStatuses(ws, tz) {
     btn.addEventListener('click', () => openReceivingFullScreenModal());
   }
 
-  // Backwards-compatible alias (in case any existing handler references this name)
-  window.openReceivingFullscreenModal = openReceivingFullScreenModal;
-
-
-  function setSubheader(ws) {
-    const sub = document.getElementById('flow-sub');
-    if (!sub) return;
-    try {
-      const wsD = new Date(`${ws}T00:00:00Z`);
-      const weD = new Date(wsD.getTime());
-      weD.setUTCDate(weD.getUTCDate() + 6);
-      sub.textContent = `${ws} – ${isoDate(weD)}`;
-    } catch {
-      sub.textContent = ws;
-    }
-  }
-
-  function nodeCard({ id, title, subtitle, level, badges = [], disabled = false, upcoming = false }) {
-    const dis = disabled ? 'opacity-50 pointer-events-none' : '';
-    const badgeHtml = badges.map(b => {
-      const cls = b.level ? pill(b.level) : 'bg-gray-100 text-gray-700 border-gray-200';
-      return `<button data-sub="${b.sub || ''}" class="text-xs px-2 py-0.5 rounded-full border ${cls} hover:opacity-95">${b.label}</button>`;
-    }).join(' ');
-    return `
-      <div data-node="${id}" data-flow-node="${id}" class="rounded-xl border p-3 hover:bg-gray-50 cursor-pointer ${dis}">
-        <div class="flex items-start justify-between gap-2">
-          <div>
-            <div class="text-sm font-semibold flex items-center gap-2"><span class="inline-flex items-center justify-center w-8 h-8 rounded-full border bg-white text-gray-700">${iconSvg(id)}</span><span>${title}</span></div>
-            <div class="text-xs text-gray-500 mt-0.5">${subtitle || ''}</div>
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="dot ${dot(level, !!upcoming)}"></span>
-            <span class="text-xs px-2 py-0.5 rounded-full border ${pill(level, !!upcoming)} whitespace-nowrap">${statusLabel(level, !!upcoming)}</span>
-          </div>
-        </div>
-        <div class="mt-2 flex flex-wrap gap-1">${badgeHtml}</div>
-      </div>
-    `;
-  }
-
-  function setDayProgress(ws, tz) {
-    const el = document.getElementById('flow-day');
-    if (!el) return;
-    try {
-      const anchor = makeBizLocalDate(ws, BASELINE.receiving_due.time, tz); // Mon noon
-      const now = new Date();
-      const day = Math.floor(daysBetween(anchor, now)) + 1;
-      const pct = clamp(daysBetween(anchor, now) / 24, 0, 1);
-      el.textContent = `Day ${Math.max(1, day)} / 24 (baseline)`;
-    } catch {
-      el.textContent = '';
-    }
-  }
-
-  
-  function renderProcessRail(nodes, forcedCurrentIdx = null) {
-    const rail = document.getElementById('flow-rail');
-    if (!rail) return;
-
-    // Expect nodes: [{id, level, upcoming}]
-    const order = ['milk','receiving','vas','intl','lastmile'];
-    const nodeById = new Map((nodes || []).map(n => [n.id, n]));
-
-    // "Ongoing" marker = operational phase (NOT the selected node).
-    // If a forced index is provided, use that; else infer from upcoming flags.
-    let currentIdx = 0;
-    if (Number.isFinite(forcedCurrentIdx)) {
-      currentIdx = Math.max(0, Math.min(order.length - 1, forcedCurrentIdx));
-    } else {
-      for (let i = 0; i < order.length; i++) {
-        const n = nodeById.get(order[i]);
-        if (n && n.upcoming === false) currentIdx = i;
-      }
-    }
-
-    const draw = () => {
-      const root = document.getElementById('flow-nodes');
-      if (!root) return;
-
-      const cards = Array.from(root.querySelectorAll('[data-flow-node]'));
-      if (!cards.length) return;
-
-      const centers = new Map();
-      for (const el of cards) {
-        const id = el.getAttribute('data-flow-node');
-        const r = el.getBoundingClientRect();
-        centers.set(id, r.left + r.width / 2);
-      }
-
-      const rr = rail.getBoundingClientRect();
-
-      if (!rr || rr.width < 80) return;
-
-      const x = (id) => {
-        const c = centers.get(id);
-        if (typeof c !== 'number') return null;
-        return Math.max(8, Math.min(rr.width - 8, c - rr.left));
-      };
-
-      const matte = (hex, alpha) => {
-        // hex like #rrggbb
-        const h = (hex || '#9ca3af').replace('#','');
-        const r = parseInt(h.slice(0,2),16) || 156;
-        const g = parseInt(h.slice(2,4),16) || 163;
-        const b = parseInt(h.slice(4,6),16) || 175;
-        return `rgba(${r},${g},${b},${alpha})`;
-      };
-
-      const strokeForLevel = (level, upcoming) => {
-        // Matte palette
-        const map = {
-          green: '#10b981',
-          red:   '#ef4444',
-          gray:  '#9ca3af'
-        };
-        const base = map[level] || map.gray;
-        return upcoming ? matte(base, 0.35) : matte(base, 0.55);
-      };
-
-      const dotFillForLevel = (level, upcoming) => {
-        const map = {
-          green: '#10b981',
-          red:   '#ef4444',
-          gray:  '#9ca3af'
-        };
-        const base = map[level] || map.gray;
-        return upcoming ? matte(base, 0.20) : matte(base, 0.45);
-      };
-
-      const label = (id) => {
-        const map = { milk:'MR', receiving:'RCV', vas:'VAS', intl:'T&C', lastmile:'LM' };
-        return map[id] || '';
-      };
-
-      const spineIcon = (id) => {
-        try {
-          const raw = (typeof NODE_ICONS !== 'undefined' && NODE_ICONS && NODE_ICONS[id]) ? String(NODE_ICONS[id]) : '';
-          if (!raw) return '';
-          // Force an explicit size for use inside the spine SVG (ignore Tailwind classes)
-          // Keep original viewBox/path/stroke etc.
-          return raw
-            .replace(/class="[^"]*"/g, 'width="24" height="24"')
-            .replace('<svg ', '<svg x="0" y="0" ');
-        } catch (e) {
-          return '';
-        }
-      };
-      const USE_SPINE_ICONS = true;
-
-      // Build segments
-      let segs = '';
-      for (let i = 0; i < order.length - 1; i++) {
-        const a = order[i], b = order[i+1];
-        const xa = x(a), xb = x(b);
-        if (xa == null || xb == null) continue;
-        const nb = nodeById.get(b) || { level:'gray', upcoming:true };
-        segs += `<line x1="${xa}" y1="16" x2="${xb}" y2="16" stroke="${strokeForLevel(nb.level, nb.upcoming)}" stroke-width="6" stroke-linecap="round"></line>`;
-      }
-
-      // Dots + labels
-      let dots = '';
-      for (let i = 0; i < order.length; i++) {
-        const id = order[i];
-        const xi = x(id);
-        if (xi == null) continue;
-        const n = nodeById.get(id) || { level:'gray', upcoming:true };
-        dots += `
-          <g>
-            <!-- icon replaces connector marker (no dot) -->
-            ${(USE_SPINE_ICONS && spineIcon(id)) ? `<g transform="translate(${xi - 12},${-12})">${spineIcon(id)}</g>` : `<text x="${xi}" y="7" text-anchor="middle" font-size="12" font-weight="600" fill="rgba(55,65,81,0.70)">${label(id)}</text>`}
-          </g>
-        `;
-      }
-
-      // Ongoing marker aligned to current node center
-      const ongoingId = order[Math.max(0, Math.min(order.length-1, currentIdx))];
-      const xo = x(ongoingId);
-      const ongoing = (xo == null) ? '' : `
-        <g>
-          <line x1="${xo}" y1="2" x2="${xo}" y2="30" stroke="rgba(17,24,39,0.35)" stroke-width="1"></line>
-          <text x="${xo}" y="40" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.60)">ongoing</text>
-        </g>
-      `;
-
-      rail.innerHTML = `
-        <svg width="100%" height="48" viewBox="0 0 ${rr.width} 48" preserveAspectRatio="none">
-          ${segs}
-          ${dots}
-          ${ongoing}
-        </svg>`;
-    };
-
-    requestAnimationFrame(() => {
-      draw();
-      setTimeout(draw, 0);
-    });
-  }
-
-
-function renderJourneyTop(ws, tz, receiving, vas, intl, manual) {
-    const root = document.getElementById('flow-journey');
-    if (!root) return;
-
-    const now = new Date();
-
-    // Determine operational "ongoing" index (same logic as before)
-    let ongoingIdx = 2; // default VAS
-    if ((receiving.receivedPOs || 0) < (receiving.plannedPOs || 0)) {
-      ongoingIdx = 1;
-    } else {
-      const intlInWindow = (intl.originMin instanceof Date) ? (now >= intl.originMin) : false;
-      ongoingIdx = intlInWindow ? 3 : 2;
-    }
-
-    // Node model (milk disabled)
-    const nodes = [
-      { id:'milk', label:'Milk Run', short:'MR', level:'gray', upcoming:true, disabled:true },
-      { id:'receiving', label:'Receiving', short:'RCV', level: receiving.level, upcoming: now < receiving.due },
-      { id:'vas', label:'VAS', short:'VAS', level: vas.level, upcoming: now < vas.due },
-      { id:'intl', label:'Transit & Clearing', short:'T&C', level: intl.level, upcoming: now < intl.originMax },
-      { id:'lastmile', label:'Last Mile', short:'LM', level: manual.levels.lastMile, upcoming: false },
-    ];
-
-    // Planned vs Actual (display only; never persisted)
-    const plannedActual = (() => {
-      const planned = {
-        receiving: receiving.due,
-        vas: vas.due,
-        intl: intl.originMax,
-        lastmile: manual?.baselines?.lastMileMax,
-      };
-      const actual = {
-        receiving: (receiving?.signoff?.receivingAt || receiving.lastReceived),
-        vas: (vas?.signoff?.vasAt || vas.lastAppliedAt || null),
-        intl: intl.lastMilestoneAt || null,
-        lastmile: (manual?.dates?.deliveredAt || manual?.dates?.delivered_at || manual?.manual?.delivered_at) || null,
-      };
-
-      const fmt = (d) => (d ? fmtInTZ((d instanceof Date) ? d : new Date(d), tz) : '—');
-      return (id) => {
-        if (!planned[id] && !actual[id]) return '';
-        return `Planned ${fmt(planned[id])} • Actual ${fmt(actual[id])}`;
-      };
-    })();
-
-    const matte = (hex, alpha) => {
-      const h = (hex || '#9ca3af').replace('#','');
-      const r = parseInt(h.slice(0,2),16) || 156;
-      const g = parseInt(h.slice(2,4),16) || 163;
-      const b = parseInt(h.slice(4,6),16) || 175;
-      return `rgba(${r},${g},${b},${alpha})`;
-    };
-    // Journey/status color palette
-    // - green: on track
-    // - red: delayed
-    // - gray: At-Risk (yellow-ish tone per spec)
-    // - upcoming: distinct from At-Risk (cool neutral)
-    // - future: capability not yet live
-    const levelColor = (level) => ({
-      green: '#34d399',
-      red: '#fb7185',
-      upcoming: '#cbd5e1',
-      yellow: '#e6b800',
-      gray: '#f6d365',
-      future: '#e5e7eb',
-    }[level] || '#9ca3af');
-    const segStroke = (level, upcoming) => upcoming ? matte(levelColor(level), 0.28) : matte(levelColor(level), 0.50);
-    const statusText = (n) => {
-      if (!n) return '—';
-      if (n.disabled) return 'Future';
-      if (n.upcoming) return 'Upcoming';
-      if (n.level === 'green') return 'On Track';
-      if (n.level === 'red') return 'Delayed';
-      return 'At-Risk';
-    };
-    const statusLevel = (n) => {
-      if (!n) return 'gray';
-      if (n.disabled) return 'future';
-      if (n.upcoming) return 'upcoming';
-      return n.level || 'gray';
-    };
-
-
-    const iconSvgFor = (id) => {
-      try {
-        const raw = (typeof NODE_ICONS !== 'undefined' && NODE_ICONS && NODE_ICONS[id]) ? String(NODE_ICONS[id]) : '';
-        if (!raw) return '';
-        return raw
-          .replace(/class="[^"]*"/g, 'width="26" height="26"')
-          .replace('<svg ', '<svg x="0" y="0" ');
-      } catch { return ''; }
-    };
-
-    // Journey path geometry (viewBox units) - inverted S road
-    const road = {
-      A: { x: 80,  y: 70 },   // start
-      B: { x: 920, y: 70 },   // top-right corner
-      C: { x: 920, y: 235 },  // mid-right corner  // mid-right corner
-      D: { x: 120, y: 235 },  // mid-left corner  // mid-left corner
-      E: { x: 120, y: 400 },  // bottom-left corner  // bottom-left corner
-      F: { x: 920, y: 400 },  // end  // end
-    };
-    const rad = 40;
-
-    // Node placement on the road (per your reference layout)
-    const pts = {
-      milk:      { x: road.A.x, y: road.A.y }, // start
-      // Receiving: shift ~30% left on the top line
-      receiving: { x: Math.round(road.A.x + 0.35 * (road.B.x - road.A.x)), y: road.A.y },
-      // VAS: shift ~30% right on the middle line
-      vas:       { x: Math.round(road.D.x + 0.65 * (road.C.x - road.D.x)), y: road.C.y },
-      // Transit & Clearing: shift ~25% left on the bottom line
-      intl:      { x: Math.round((road.D.x + rad) + 0.20 * (road.F.x - (road.D.x + rad))), y: road.E.y },
-      lastmile:  { x: road.F.x, y: road.F.y }, // end
-    };
-
-    const order = ['milk','receiving','vas','intl','lastmile'];
-
-    // Road path (inverted S; straight segments with rounded joins)
-    // Road path (inverted S with rounded corners)
-    const roadPath = `
-  M ${road.A.x} ${road.A.y}
-  H ${road.B.x - rad}
-  A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
-  V ${road.C.y - rad}
-  A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
-  H ${road.D.x + rad}
-  A ${rad} ${rad} 0 0 0 ${road.D.x} ${road.C.y + rad}
-  V ${road.E.y - rad}
-  A ${rad} ${rad} 0 0 0 ${road.D.x + rad} ${road.E.y}
-  H ${road.F.x}
-`;
-
-// Colored segments along the road between milestones (keeps visuals consistent with the path)
-    let segs = '';
-    const segPathBetween = (fromId, toId) => {
-      // Paths follow the same rounded road geometry so colors sit on the “asphalt”.
-      if (fromId === 'milk' && toId === 'receiving') {
-        return `M ${pts.milk.x} ${pts.milk.y} L ${pts.receiving.x} ${pts.receiving.y}`;
-      }
-      if (fromId === 'receiving' && toId === 'vas') {
-        return `
-          M ${pts.receiving.x} ${pts.receiving.y}
-          L ${road.B.x - rad} ${road.A.y}
-          A ${rad} ${rad} 0 0 1 ${road.B.x} ${road.A.y + rad}
-          L ${road.B.x} ${road.C.y - rad}
-          A ${rad} ${rad} 0 0 1 ${road.B.x - rad} ${road.C.y}
-          L ${pts.vas.x} ${road.C.y}
-        `;
-      }
-      if (fromId === 'vas' && toId === 'intl') {
-        // second straight -> left curve -> bottom straight to Transit & Clearing (mid of bottom line)
-        const x1 = road.D.x + rad;
-        return `
-          M ${pts.vas.x} ${road.C.y}
-          L ${x1} ${road.C.y}
-          A ${rad} ${rad} 0 0 0 ${road.D.x} ${road.C.y + rad}
-          L ${road.D.x} ${road.E.y - rad}
-          A ${rad} ${rad} 0 0 0 ${x1} ${road.E.y}
-          L ${pts.intl.x} ${pts.intl.y}
-        `;
-      }
-      if (fromId === 'intl' && toId === 'lastmile') {
-        // bottom line straight to Last Mile
-        return `
-          M ${pts.intl.x} ${pts.intl.y}
-          L ${pts.lastmile.x} ${pts.lastmile.y}
-        `;
-      }
-      // Fallback: straight
-      const a = pts[fromId], b = pts[toId];
-      if (!a || !b) return '';
-      return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
-    };
-
-    for (let i = 0; i < order.length - 1; i++) {
-      const fromId = order[i];
-      const toId = order[i+1];
-      // Segment color follows the destination node status, except Milk Run → Receiving which is always "future" (gray road).
-      const nb = (fromId === 'milk') ? { level:'gray', upcoming:true } : (nodes[i+1] || { level:'gray', upcoming:true });
-      const d = segPathBetween(fromId, toId);
-      if (!d) continue;
-      segs += `<path d="${d}" fill="none" stroke="${segStroke(nb.level, nb.upcoming)}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" />`;
-    }
-
-    // Ghost/base road behind colored segments (thicker, subtle)
-    const baseRoad = `<path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="34" stroke-linecap="round" stroke-linejoin="round" />`;
-
-    // Center dashed line
-    const dashed = `<path d="${roadPath}" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="3" stroke-dasharray="7 7" stroke-linecap="round" stroke-linejoin="round" />`;
-
-    // Milestones (icons in white circles)
-    let milestones = '';
-    for (let i = 0; i < order.length; i++) {
-      const id = order[i];
-      const p = pts[id];
-      const n = nodes[i];
-      if (!p || !n) continue;
-      const icon = iconSvgFor(id);
-      const isOngoing = (i === ongoingIdx);
-      const ring = isOngoing ? 'rgba(17,24,39,0.25)' : 'rgba(17,24,39,0.12)';
-      const labelX = p.x;
-      const labelAnchor = 'middle';
-      // Node name above icon
-      const nameY = p.y - 46;
-
-      const st = statusText(n);
-      const stLevel = statusLevel(n);
-      const stBg = matte(levelColor(stLevel), 0.14);
-      const stFg = matte(levelColor(stLevel), 0.92);
-
-      // Status pill below icon
-      const pillW = Math.max(58, 14 + (String(st).length * 7));
-      const pillH = 18;
-      const pillY = p.y + 42;
-      const pillX = p.x - (pillW / 2);
-      const pillTextX = p.x;
-
-      const pa = plannedActual(id);
-      const paText = pa ? `<text x="${labelX}" y="${nameY - 16}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(17,24,39,0.55)">${pa}</text>` : '';
-const done = (id === 'receiving')
-  ? !!(receiving?.signoff?.receivingComplete)
-  : (id === 'vas')
-    ? !!(vas?.signoff?.vasComplete)
-    : false;
-const nameLabel = done ? `${n.label} ✓` : n.label;
-
-
-      milestones += `
-        <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
-          <circle cx="${p.x}" cy="${p.y}" r="24" fill="white" stroke="${ring}" stroke-width="${isOngoing ? 2 : 1.2}"></circle>
-          ${icon ? `<g transform="translate(${p.x - 13},${p.y - 13})">${icon}</g>` :
-                   `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
-          <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${nameLabel}</text>
-          ${paText}
-          <g>
-            <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
-            <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
-          </g>
-        </g>
-      `;
-    }
-
-    const ongoingId = order[Math.max(0, Math.min(order.length - 1, ongoingIdx))];
-    const op = pts[ongoingId];
-    const ongoing = (!op) ? '' : `
-      <g>
-        <line x1="${op.x}" y1="${op.y + 28}" x2="${op.x}" y2="${op.y + 70}" stroke="rgba(17,24,39,0.25)" stroke-width="1" />
-        <text x="${op.x}" y="${op.y + 86}" text-anchor="middle" font-size="11" font-weight="600" fill="rgba(17,24,39,0.55)">ongoing</text>
-      </g>
-    `;
-
-    // Compact stats blocks under the journey (wow factor but stable)
-    const stat = (title, a, b, n) => {
-      const st = statusText(n);
-      const stLevel = statusLevel(n);
-      const bg = matte(levelColor(stLevel), 0.14);
-      const fg = matte(levelColor(stLevel), 0.92);
-      return `
-        <div class="rounded-xl border bg-white p-2">
-          <div class="flex items-center justify-between gap-2">
-            <div class="text-xs font-semibold text-gray-700">${title}</div>
-            <span style="background:${bg};color:${fg};border:1px solid rgba(17,24,39,0.06);" class="text-[11px] font-bold px-2 py-[2px] rounded-full whitespace-nowrap">${st}</span>
-          </div>
-          <div class="text-xs text-gray-500 mt-0.5">${a || ''}</div>
-          ${b ? `<div class="text-xs text-gray-500">${b}</div>` : ''}
-        </div>
-      `;
-    };
-
-    // Use existing computed values; never assume presence
-    const recA = `${(receiving.receivedPOs||0)}/${(receiving.plannedPOs||0)} POs`;
-    const recB = `${(receiving.cartonsOutTotal||0)} out • ${(receiving.latePOs||0)} late`;
-    const vasA = `${Math.round((vas.completion||0)*100)}% complete`;
-    const vasB = `${(vas.appliedUnits||0)}/${(vas.plannedUnits||0)} units`;
-    const intlA = `${(intl.lanes||[]).length} lanes`;
-    const intlB = `${(intl.missingDocs||0)} docs missing • ${(intl.holds||0)} hold`;
-    const lmA = `${(manual.manual?.last_mile_open||0)}/${(manual.manual?.last_mile_total||0)} open`;
-    const lmB = manual.manual?.delivered_at ? `Delivered set` : `Delivered (set)`;
-
-    root.innerHTML = `
-      <div class="w-full overflow-hidden">
-        <svg viewBox="-180 0 1250 560" preserveAspectRatio="xMidYMid meet" aria-label="Journey map" style="height:520px; width:100%;">
-
-          <!-- road shadow (subtle) -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.25)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" transform="translate(2,3)"></path>
-          <!-- road base -->
-          <path d="${roadPath}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="52" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="${roadPath}" fill="none" stroke="rgba(107,114,128,0.20)" stroke-width="43" stroke-linecap="round" stroke-linejoin="round" />
-          ${baseRoad}
-          ${segs}
-          ${dashed}
-          ${milestones}
-          ${ongoing}
-        </svg>
-      </div>
-    `;
-
-    // Click handlers (use existing selection + detail render; never assume)
-    try {
-      root.querySelectorAll('[data-journey-node]').forEach(el => {
-        el.addEventListener('click', () => {
-          const node = el.getAttribute('data-node');
-          UI.selection = { node, sub: null };
-          renderDetail(ws, tz, receiving, vas, intl, manual);
-          renderRightTile(ws, tz, receiving, vas, intl, manual);
-          highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
-        });
-      });
-    } catch {}
-  }
-
-  // ------------------------- Right tile (context panel) -------------------------
-  // Default shows week plan vs actual totals; clicking a node switches to exceptions/deadlines for that node.
-  function renderRightTile(ws, tz, receiving, vas, intl, manual) {
-    const el = document.getElementById('flow-footer');
-    if (!el) return;
-
-    const selNode = (UI.selection && UI.selection.node) ? UI.selection.node : null;
-
-    const weekContainers = loadIntlWeekContainers(ws);
-    const containers = Array.isArray(weekContainers?.containers) ? weekContainers.containers : [];
-    const totalContainers = containers.length;
-    const vesselsSet = new Set(containers.map(c => String(c?.vessel || '').trim()).filter(Boolean));
-    const totalVessels = vesselsSet.size;
-
-    const lanesTotal = Array.isArray(intl?.lanes) ? intl.lanes.length : 0;
-
-    const appliedUnits = num(vas?.appliedUnits || 0);
-    const plannedUnits = num(vas?.plannedUnits || 0);
-    const cbm = appliedUnits * 0.00375;
-
-    // Receiving CBM is derived from planned units (plan rows) * 0.00375
-    const receivingCbmPlanned = plannedUnits * 0.00375;
-
-    const recPlannedPOs = num(receiving?.plannedPOs || 0);
-    const recReceivedPOs = num(receiving?.receivedPOs || 0);
-
-    const cartonsIn = num(receiving?.cartonsInTotal || 0);
-    const cartonsOut = num(receiving?.cartonsOutTotal || 0);
-
-    const prebook = loadPrebook(ws);
-    const signoff = loadWeekSignoff(ws);
-
-    const icon = {
-      po: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h6"/></svg>',
-      units: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 17l9 4 9-4"/><path d="M3 12l9 4 9-4"/></svg>',
-      cartons: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
-      lane: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v16"/><path d="M20 4v16"/><path d="M4 12h16"/></svg>',
-      ship: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h18"/><path d="M5 18l2-6h10l2 6"/><path d="M7 12V6l5-2 5 2v6"/></svg>',
-      cont: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M7 7v13M11 7v13M15 7v13M19 7v13"/></svg>',
-      box: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M12 13v8"/><path d="M3 8v8l9 5 9-5V8"/></svg>',
-      warn: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 4.3l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3l-8-14a2 2 0 0 0-3.4 0z"/></svg>',
-      time: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg>',
-    };
-
-    const hRow = (ic, label, value) => `
-      <div class="flex items-center justify-between gap-3 py-2">
-        <div class="flex items-center gap-2 text-gray-700">
-          <span class="text-gray-500">${ic}</span>
-          <span class="text-sm font-semibold">${label}</span>
-        </div>
-        <div class="text-sm font-semibold text-gray-900">${value}</div>
-      </div>
-    `;
-
-    const pairRow = (leftHtml, rightHtml) => `
-      <div class="grid grid-cols-2 gap-3">
-        <div class="rounded-xl border bg-white px-3 py-2">${leftHtml}</div>
-        <div class="rounded-xl border bg-white px-3 py-2">${rightHtml}</div>
-      </div>
-    `;
-
-    const header = (title, subtitle) => `
-      <div class="flex items-start justify-between gap-2">
-        <div>
-          <div class="text-sm font-semibold text-gray-800">${title}</div>
-          ${subtitle ? `<div class="text-xs text-gray-500 mt-0.5">${subtitle}</div>` : ''}
-        </div>
-        ${selNode ? `<button id="rt-back" class="text-xs px-2 py-1 rounded-md border bg-white hover:bg-gray-50">Week totals</button>` : ''}
-      </div>
-    `;
-
-    const fmt2 = (n) => {
-      const v = Number(n) || 0;
-      return v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-    };
-
-    const lvlColor = (lvl) => (lvl === 'red' ? '#ef4444' : (lvl === 'yellow' ? '#f59e0b' : (lvl === 'green' ? '#10b981' : '#9ca3af')));
-
-    const health = (() => {
-      const worst = [
-        { label: 'Receiving', color: receiving?.color || lvlColor(receiving?.level) || '#10b981' },
-        { label: 'VAS', color: vas?.color || lvlColor(vas?.level) || '#10b981' },
-        { label: 'Transit', color: intl?.color || lvlColor(intl?.level) || '#10b981' },
-        { label: 'Last Mile', color: lvlColor(manual?.levels?.lastMile) || '#10b981' },
-      ].reduce((acc, n) => severityRank(n.color) > severityRank(acc.color) ? n : acc);
-      const band = _bandFromColor(worst.color);
-      const label = (band === 'green') ? 'On Track' : (band === 'yellow') ? 'At Risk' : (band === 'red') ? 'Delayed' : 'Upcoming';
-      return { color: worst.color, label };
-    })();
-
-
-const signoffSection = (context) => {
-  const recMet = receiving.planMet ?? ((receiving.plannedPOs || 0) > 0 ? (receiving.receivedPOs || 0) >= (receiving.plannedPOs || 0) : true);
-  const vasMet = vas.planMet ?? ((vas.plannedUnits || 0) > 0 ? (vas.appliedUnits || 0) >= ((vas.plannedUnits || 0) * 0.98) : true);
-
-  const hintRec = signoff.receivingComplete
-    ? (recMet ? '<span class="text-green-700 font-semibold">Plan met</span>' : '<span class="text-amber-700 font-semibold">Signed off but incomplete</span>')
-    : (recMet ? '<span class="text-gray-600">Plan met</span>' : '<span class="text-gray-600">Not yet complete</span>');
-
-  const hintVas = signoff.vasComplete
-    ? (vasMet ? '<span class="text-green-700 font-semibold">Plan met</span>' : '<span class="text-amber-700 font-semibold">Signed off but incomplete</span>')
-    : (vasMet ? '<span class="text-gray-600">Plan met</span>' : '<span class="text-gray-600">Not yet complete</span>');
-
-  const title = (context === 'node') ? 'Week sign-off' : 'Week sign-off (master ticks)';
-  return `
-    <div class="rounded-2xl border bg-white p-3">
-      <div class="text-xs font-semibold text-gray-700">${title}</div>
-      <div class="text-[11px] text-gray-500 mt-0.5">Use these only when the week is operationally complete. Does not create fake timestamps.</div>
-
-      <div class="mt-3 space-y-3">
-        <label class="flex items-start justify-between gap-3">
-          <div>
-            <div class="text-sm font-semibold text-gray-800">Receiving complete</div>
-            <div class="text-[11px] mt-0.5">${hintRec}</div>
-          </div>
-          <input id="signoff-receiving" type="checkbox" class="h-5 w-5 rounded border-gray-300" ${signoff.receivingComplete ? 'checked' : ''} />
-        </label>
-
-        <label class="flex items-start justify-between gap-3">
-          <div>
-            <div class="text-sm font-semibold text-gray-800">VAS complete</div>
-            <div class="text-[11px] mt-0.5">${hintVas}</div>
-          </div>
-          <input id="signoff-vas" type="checkbox" class="h-5 w-5 rounded border-gray-300" ${signoff.vasComplete ? 'checked' : ''} />
-        </label>
-      </div>
-    </div>
-  `;
-};
-
-    const weekTotalsView = () => {
-      return `
-        ${header('Week plan vs actual', `Week of ${ws}`)}
-        <div class="mt-3 space-y-3">
-          <div class="rounded-2xl border bg-gray-50 p-3">
-            ${hRow(icon.po, 'POs planned – received', `${fmtInt(recPlannedPOs)} – ${fmtInt(recReceivedPOs)}`)}
-            ${hRow(icon.units, 'Units planned – applied', `${fmtInt(plannedUnits)} – ${fmtInt(appliedUnits)}`)}
-            ${hRow(icon.cartons, 'Cartons in – cartons out', `${fmtInt(cartonsIn)} – ${fmtInt(cartonsOut)}`)}
-          </div>
-
-          ${pairRow(
-            hRow(icon.lane, 'Total lanes', fmtInt(lanesTotal)),
-            hRow(icon.ship, 'Total vessels', fmtInt(totalVessels))
-          )}
-
-          ${pairRow(
-            hRow(icon.cont, 'Total containers', fmtInt(totalContainers)),
-            hRow(icon.box, 'Total CBM', fmt2(cbm))
-          )}
-
-          <div class="rounded-2xl border bg-white p-3">
-            <div class="text-xs font-semibold text-gray-700">Pre-booked containers</div>
-            <div class="text-[11px] text-gray-500 mt-0.5">Plan inputs for this week (local only)</div>
-            <div class="grid grid-cols-2 gap-3 mt-3">
-              <label class="block">
-                <div class="text-xs font-semibold text-gray-700">20 ft</div>
-                <input id="prebook-20" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c20)}" />
-              </label>
-              <label class="block">
-                <div class="text-xs font-semibold text-gray-700">40 ft</div>
-                <input id="prebook-40" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c40)}" />
-              </label>
-            </div>
-          </div>
-
-          
-
-          <div class="flex items-center justify-between">
-            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
-                  style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
-              <span class="inline-block h-2 w-2 rounded-full" style="background:${health.color};"></span>
-              <span class="font-semibold">Health</span>
-              <span>${health.label}</span>
-            </span>
-            <span class="text-xs text-gray-600">Deadlines & exceptions on node click</span>
-          </div>
-          
-        </div>
-      `;
-    };
-
-    const milkRunView = () => {
-      // Milk Run is a planning checkpoint. Keep this view focused on plan inputs.
-      return `
-        ${header('Milk Run — planning', `Week of ${ws}`)}
-        <div class="mt-3 space-y-3">
-          <div class="rounded-2xl border bg-gray-50 p-3">
-            ${hRow(icon.po, 'POs planned', fmtInt(recPlannedPOs))}
-            ${hRow(icon.units, 'Units planned', fmtInt(plannedUnits))}
-            ${hRow(icon.box, 'Planned CBM', fmt2(receivingCbmPlanned))}
-          </div>
-
-          ${pairRow(
-            hRow(icon.lane, 'Total lanes', fmtInt(lanesTotal)),
-            hRow(icon.ship, 'Total vessels', fmtInt(totalVessels))
-          )}
-
-          ${pairRow(
-            hRow(icon.cont, 'Total containers', fmtInt(totalContainers)),
-            hRow(icon.box, 'Total CBM', fmt2(cbm))
-          )}
-
-          <div class="rounded-2xl border bg-white p-3">
-            <div class="text-xs font-semibold text-gray-700">Pre-booked containers</div>
-            <div class="text-[11px] text-gray-500 mt-0.5">Enter committed capacity for this week (local only)</div>
-            <div class="grid grid-cols-2 gap-3 mt-3">
-              <label class="block">
-                <div class="text-xs font-semibold text-gray-700">20 ft</div>
-                <input id="prebook-20" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c20)}" />
-              </label>
-              <label class="block">
-                <div class="text-xs font-semibold text-gray-700">40 ft</div>
-                <input id="prebook-40" type="number" min="0" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" value="${fmtInt(prebook.c40)}" />
-              </label>
-            </div>
-          </div>
-
-          
-
-          <div class="flex items-center justify-between">
-            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs"
-                  style="background:${statusBg(health.color)}; border-color:${statusStroke(health.color)};">
-              <span class="inline-block h-2 w-2 rounded-full" style="background:${health.color};"></span>
-              <span class="font-semibold">Health</span>
-              <span>${health.label}</span>
-            </span>
-            <span class="text-xs text-gray-600">Click nodes for exceptions</span>
-          </div>
-          
-        </div>
-      `;
-    };
-
-    const receivingView = () => {
-      const due = receiving?.due ? fmtInTZ(receiving.due, tz) : '—';
-      const last = receiving?.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—';
-      const late = num(receiving?.latePOs || 0);
-      const missing = num(receiving?.missingPOs || 0);
-      const remaining = Math.max(0, recPlannedPOs - recReceivedPOs);
-
-      return `
-        ${header('Receiving — deadlines & exceptions', `Due ${due}`)}
-        <div class="mt-3 space-y-3">
-          <div class="rounded-2xl border bg-gray-50 p-3">
-            ${hRow(icon.time, 'Last received', last)}
-            ${hRow(icon.po, 'Remaining POs', fmtInt(remaining))}
-            ${hRow(icon.box, 'Receiving CBM (planned)', fmt2(receivingCbmPlanned))}
-          </div>
-          <div class="rounded-2xl border bg-white p-3">
-            ${hRow(icon.warn, 'Late POs', late ? `<span class="text-red-700">${fmtInt(late)}</span>` : fmtInt(late))}
-            ${hRow(icon.warn, 'Missing POs', missing ? `<span class="text-red-700">${fmtInt(missing)}</span>` : fmtInt(missing))}
-            <div class="text-[11px] text-gray-500 mt-2">Tip: use the Receiving page for the full list; this panel is the headline view.</div>
-          </div>
-        </div>
-      `;
-    };
-
-    const vasView = () => {
-      const due = vas?.due ? fmtInTZ(vas.due, tz) : '—';
-      const pctDone = plannedUnits ? Math.round((appliedUnits / plannedUnits) * 100) : 0;
-      const remainingUnits = Math.max(0, plannedUnits - appliedUnits);
-      const remainingCbm = Math.max(0, remainingUnits) * 0.00375;
-      const appliedCbm = appliedUnits * 0.00375;
-
-      // Pace / deadline helper (UI-only)
-      const pace = (() => {
-        const d = vas?.due instanceof Date ? vas.due : (vas?.due ? new Date(vas.due) : null);
-        if (!d || isNaN(d)) return null;
-        const now = new Date();
-        const ms = d.getTime() - now.getTime();
-        const daysLeft = Math.ceil(ms / (1000 * 60 * 60 * 24));
-        if (daysLeft <= 0) return { label: 'Past due', value: `${fmtInt(Math.max(0, Math.round((-ms) / (1000 * 60 * 60))))}h` };
-        const perDay = remainingUnits / Math.max(1, daysLeft);
-        return { label: 'Pace needed', value: `${fmtInt(Math.ceil(perDay))} units/day` };
-      })();
-
-      const lateBy = (() => {
-        if (!vas?.due) return null;
-        const now = new Date();
-        const d = vas.due instanceof Date ? vas.due : new Date(vas.due);
-        if (isNaN(d)) return null;
-        const diffH = Math.round((now.getTime() - d.getTime()) / (1000 * 60 * 60));
-        return diffH > 0 ? diffH : 0;
-      })();
-
-      return `
-        ${header('VAS — plan vs actual', `Due ${due}`)}
-        <div class="mt-3 space-y-3">
-          <div class="rounded-2xl border bg-gray-50 p-3">
-            ${hRow(icon.units, 'Applied / Planned', `${fmtInt(appliedUnits)} / ${fmtInt(plannedUnits)} (${pctDone}%)`)}
-            ${hRow(icon.warn, 'Units remaining', fmtInt(remainingUnits))}
-            ${hRow(icon.box, 'CBM applied', fmt2(appliedCbm))}
-            ${hRow(icon.box, 'CBM remaining', fmt2(remainingCbm))}
-            ${pace ? hRow(icon.time, pace.label, pace.value) : ''}
-          </div>
-          <div class="rounded-2xl border bg-white p-3">
-            <div class="text-xs font-semibold text-gray-700">Focus</div>
-            <div class="text-sm text-gray-800 mt-1">Watch remaining units vs the due window${lateBy ? ` (now ${fmtInt(lateBy)}h past due)` : ''}. Use the bottom tile for supplier/PO detail.</div>
-          </div>
-        </div>
-      `;
-    };
-
-    const intlView = () => {
-      const windowText = (intl?.originMin && intl?.originMax)
-        ? `${fmtInTZ(intl.originMin, tz)} – ${fmtInTZ(intl.originMax, tz)}`
-        : '—';
-      const holds = num(intl?.holds || 0);
-      const docs = num(intl?.missingDocs || 0);
-      const notCleared = num(intl?.missingOriginClear || 0);
-      const onTime = Array.isArray(intl?.lanes)
-        ? intl.lanes.filter(l => (l?.level === 'green') || (_bandFromColor(l?.color || '') === 'green')).length
-        : 0;
-
-      return `
-        ${header('Transit & Clearing — exceptions', `Origin window ${windowText}`)}
-        <div class="mt-3 space-y-3">
-          <div class="rounded-2xl border bg-gray-50 p-3">
-            ${hRow(icon.lane, 'Lanes', fmtInt(lanesTotal))}
-            ${hRow(icon.ship, 'Vessels', fmtInt(totalVessels))}
-            ${hRow(icon.cont, 'Containers', fmtInt(totalContainers))}
-            ${hRow(icon.time, 'On-time lanes', fmtInt(onTime))}
-          </div>
-          <div class="rounded-2xl border bg-white p-3">
-            ${hRow(icon.warn, 'Customs holds', holds ? `<span class="text-red-700">${fmtInt(holds)}</span>` : fmtInt(holds))}
-            ${hRow(icon.warn, 'Missing docs', docs ? `<span class="text-amber-700">${fmtInt(docs)}</span>` : fmtInt(docs))}
-            ${hRow(icon.warn, 'Not origin-cleared', notCleared ? `<span class="text-amber-700">${fmtInt(notCleared)}</span>` : fmtInt(notCleared))}
-          </div>
-        </div>
-      `;
-    };
-
-    const lastMileView = () => {
-      const receipts = loadLastMileReceipts(ws) || {};
-      const r = receipts?.receipts || receipts || {};
-      const vals = Object.values(r).filter(Boolean);
-      const isDelivered = (x) => !!(x && (x.status === 'Delivered' || x.status === 'Complete' || x.delivered_local || x.delivered_at));
-      const isScheduled = (x) => !!(x && (x.status === 'Scheduled' || x.scheduled_local));
-
-      const delivered = vals.filter(isDelivered).length;
-      // Scheduled should exclude delivered (two-step workflow: scheduled → delivered)
-      const scheduled = vals.filter(x => isScheduled(x) && !isDelivered(x)).length;
-      const open = Math.max(0, totalContainers - delivered);
-
-      return `
-        ${header('Last Mile — exceptions', `Open ${fmtInt(open)} / ${fmtInt(totalContainers)}`)}
-        <div class="mt-3 space-y-3">
-          <div class="rounded-2xl border bg-gray-50 p-3">
-            ${hRow(icon.cont, 'Scheduled', fmtInt(scheduled))}
-            ${hRow(icon.cont, 'Delivered', fmtInt(delivered))}
-          </div>
-          <div class="rounded-2xl border bg-white p-3">
-            <div class="text-xs font-semibold text-gray-700">Focus</div>
-            <div class="text-sm text-gray-800 mt-1">Oldest open containers and delivery notes live in the bottom tile. This panel highlights weekly risk.</div>
-          </div>
-        </div>
-      `;
-    };
-
-    const view = (() => {
-      if (selNode === 'milk') return milkRunView();
-      if (selNode === 'receiving') return receivingView();
-      if (selNode === 'vas') return vasView();
-      if (selNode === 'intl') return intlView();
-      if (selNode === 'lastmile') return lastMileView();
-      return weekTotalsView();
-    })();
-
-    el.innerHTML = `<div class="min-h-[320px]">${view}${signoffSection(selNode ? 'node' : 'week')}</div>`;
-
-    // Bind back button
-    const back = document.getElementById('rt-back');
-    if (back && !back.dataset.bound) {
-      back.dataset.bound = '1';
-      back.onclick = () => {
-        UI.selection = { node: null, sub: null };
-        renderRightTile(ws, tz, receiving, vas, intl, manual);
-        highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
-      };
-    }
-
-    // Bind prebook inputs (week totals view only)
-    const i20 = document.getElementById('prebook-20');
-    const i40 = document.getElementById('prebook-40');
-    const bindPre = (inp, key) => {
-      if (!inp || inp.dataset.bound) return;
-      inp.dataset.bound = '1';
-      inp.addEventListener('input', () => {
-        const next = loadPrebook(ws);
-        next[key] = num(inp.value || 0);
-        savePrebook(ws, next);
-      });
-    };
-    bindPre(i20, 'c20');
-    bindPre(i40, 'c40');
-
-// Bind week sign-off ticks (available in week + node views)
-const sRec = document.getElementById('signoff-receiving');
-const sVas = document.getElementById('signoff-vas');
-const bindSign = (inp, key) => {
-  if (!inp || inp.dataset.bound) return;
-  inp.dataset.bound = '1';
-  inp.addEventListener('change', () => {
-    const next = loadWeekSignoff(ws);
-    const checked = !!inp.checked;
-    next[key] = checked;
-    // Capture sign-off timestamp for journey 'Actual' display.
-    if (key === 'receivingComplete') {
-      next.receivingAt = checked ? (next.receivingAt || new Date().toISOString()) : null;
-    }
-    if (key === 'vasComplete') {
-      next.vasAt = checked ? (next.vasAt || new Date().toISOString()) : null;
-    }
-    saveWeekSignoff(ws, next);
-
-    // Recompute local node levels immediately (no backend changes).
-    // Refresh will reload data but this ensures instant UI feedback.
-    try { refresh(); } catch {}
-  });
-};
-bindSign(sRec, 'receivingComplete');
-bindSign(sVas, 'vasComplete');
-
-
-  }
-
-
-
-
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     // use a single 'now' reference for all upcoming/past comparisons
     const now = new Date();
@@ -3112,9 +3563,6 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
         renderDetail(ws, tz, receiving, vas, intl, manual);
         renderRightTile(ws, tz, receiving, vas, intl, manual);
         highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
       });
     });
   }
@@ -3186,7 +3634,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     // ---------------- Node-specific details ----------------
     if (sel.node === 'receiving') {
-  const title = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const overallPct = (num(receiving.plannedPOs) || 0) ? (num(receiving.receivedPOs || 0) / num(receiving.plannedPOs || 1)) * 100 : 0;
+  const titleBase = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const title = `${titleBase} <span class="inline-flex align-middle ml-2">${progressBar(overallPct, { w: 'w-36', h: 'h-2' })}</span>`;
   const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
 
   const insights = [
@@ -3214,21 +3664,25 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
   const supRows = (receiving.suppliers || [])
     .sort((a, b) => (b.cartonsOut || 0) - (a.cartonsOut || 0))
     .slice(0, 30)
-    .map(s => [
-      s.supplier,
-      `${s.receivedPOs}/${s.poCount}`,
-      `${Math.round(s.units)}`,
-      `${s.cartonsIn || 0}`,
-      `${s.cartonsOut || 0}`,
-    ]);
+    .map(s => {
+      const denom = num(s.poCount || 0) || 0;
+      const pct = denom ? (num(s.receivedPOs || 0) / denom) * 100 : 0;
+      return [
+        s.supplier,
+        progressBar(pct, { w: 'w-28', h: 'h-2' }),
+        `${s.receivedPOs}/${s.poCount}`,
+        `${Math.round(s.units)}`,
+        `${s.cartonsIn || 0}`,
+        `${s.cartonsOut || 0}`,
+      ];
+    });
 
   detail.innerHTML = [
     header(title, receiving.level, subtitle),
-    `<div class="flex justify-end mb-2"><button id="flow-receiving-fullscreen" class="px-3 py-1.5 text-xs rounded-md border hover:bg-gray-50">Full view</button></div>`,
-
+    `<div class="mt-2 flex justify-end"><button type="button" id="flow-receiving-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button></div>`,
     bullets(insights),
     kpis,
-    table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
+    table(['Supplier', 'Progress', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
   ].join('');
   return;
 }
@@ -3270,16 +3724,21 @@ const vasMixHtml = (vasObj) => {
     : `<div class="mt-3 text-xs text-gray-500">No remaining POs — on track.</div>`;
   return bar + legend + tbl;
 };
-const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN(x.planned), fmtN(x.applied), `${x.pct}%`]);
+const supRows = (vas.supplierRows || []).slice(0, 12).map(x => {
+  const planned = num(x.planned || 0) || 0;
+  const applied = num(x.applied || 0) || 0;
+  const pct = planned ? (applied / planned) * 100 : 0;
+  return [x.supplier, progressBar(pct, { w: 'w-28', h: 'h-2' }), fmtN(planned), fmtN(applied), `${Math.round(pct)}%`];
+});
 
 
       detail.innerHTML = [
-        header('VAS Processing', vas.level, subtitle),
+        header(`VAS Processing <span class="inline-flex align-middle ml-2">${progressBar((num(vas.completion)||0)*100, { w: 'w-36', h: 'h-2' })}</span>`, vas.level, subtitle),
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
-            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
+            ${table(['Supplier', 'Progress', 'Planned', 'Applied', '%'], supRows)}
           </div>
           
 <div class="rounded-xl border p-3">
@@ -3363,12 +3822,18 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No lanes found in the uploaded Plan for this week.</div>
       `;
 
-      detail.innerHTML = [
+            // Expose latest Intl context for UI handlers (modal, etc.)
+      try { window.__FLOW_INTL_CTX__ = { ws, tz, lanes, weekContainers, intl }; } catch {}
+
+detail.innerHTML = [
         header('Transit & Clearing', intl.level, subtitle),
         bullets(insights),
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
-          <div class="text-sm font-semibold text-gray-700">Lanes</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-sm font-semibold text-gray-700">Lanes</div>
+            <button type="button" id="flow-lanes-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button>
+          </div>
           ${table(['Supplier', 'Zendesk', 'Freight', 'Applied', 'Cartons Out', 'Containers', 'Status'], rows)}
         </div>`,
         editor,
@@ -3507,7 +3972,11 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
     // default
     detail.innerHTML = header('Flow', 'gray', 'Click a node above to see details.');
-  }
+  
+
+    // Best-effort bind for Receiving full-screen button (only exists in Receiving view).
+    try { wireReceivingFullScreen(); } catch {}
+}
 
   
   function escapeAttr(s) {
@@ -3631,12 +4100,15 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button type="button" id="flow-lane-collapse" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Collapse</button>
             <span class="dot ${dot(lane.level)}"></span>
             <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap">${statusLabel(lane.level)}</span>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+
+        <div id="flow-lane-editor-body" class="mt-3">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
@@ -3651,6 +4123,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-pack" data-val="${basePack}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+                <input id="flow-intl-shipment" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
@@ -3659,6 +4137,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-originclr" data-val="${baseOriginClr}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">HBL</div>
+                <input id="flow-intl-hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
@@ -3667,6 +4151,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-departed" data-val="${baseDeparted}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">MBL</div>
+                <input id="flow-intl-mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
@@ -3675,6 +4165,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-arrived" data-val="${baseArrived}">Copy</button>
                 </div>
               </label>
+
+              <div class="hidden md:block"></div>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
@@ -3683,16 +4176,16 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-destclr" data-val="${baseDestClr}">Copy</button>
                 </div>
               </label>
+
+              <div class="flex items-center gap-3 md:pt-6">
+                <label class="text-sm flex items-center gap-2">
+                  <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
+                  <span>Customs hold</span>
+                </label>
+              </div>
             </div>
 
-            <div class="flex items-center gap-3 mt-3">
-              <label class="text-sm flex items-center gap-2">
-                <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
-                <span>Customs hold</span>
-              </label>
-            </div>
-
-            <label class="text-sm mt-3 block">
+<label class="text-sm mt-3 block">
               <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
               <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
             </label>
@@ -3721,6 +4214,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               One container can map to multiple lanes. These containers feed Last Mile immediately.
             </div>
           </div>
+          </div>
         </div>
       </div>
     `;
@@ -3747,6 +4241,59 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     });
 
 
+
+
+    // Lane details collapse/expand (UI-only)
+    const collapseBtn = detail.querySelector('#flow-lane-collapse');
+    const bodyWrap = detail.querySelector('#flow-lane-editor-body');
+    if (collapseBtn && bodyWrap && !collapseBtn.dataset.bound) {
+      collapseBtn.dataset.bound = '1';
+      collapseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const collapsed = bodyWrap.classList.toggle('hidden');
+        collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+      });
+    }
+
+    // Full screen overview for all lanes (table)
+    const lanesFullBtn = detail.querySelector('#flow-lanes-fullscreen');
+    if (lanesFullBtn && !lanesFullBtn.dataset.bound) {
+      lanesFullBtn.dataset.bound = '1';
+      lanesFullBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openIntlOverviewModal(ws, getBizTZ());
+      });
+    }
+
+
+    // Background persistence for lane identifiers (Shipment/HBL/MBL)
+    const idMap = [
+      ['#flow-intl-shipment', 'shipmentNumber'],
+      ['#flow-intl-hbl', 'hbl'],
+      ['#flow-intl-mbl', 'mbl'],
+    ];
+    for (const [sel, field] of idMap) {
+      const el = detail.querySelector(sel);
+      if (!el || el.dataset.bound) continue;
+      el.dataset.bound = '1';
+      const saveOne = () => {
+        const key = selectedKey || (UI.selection && UI.selection.sub) || null;
+        if (!key) return;
+        const v = String(el.value || '').trim();
+        const patch = {}; patch[field] = v;
+        saveIntlLaneManual(ws, key, patch);
+      };
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveOne();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => saveOne());
+    }
 
     // Baseline helpers (UI-only; no persistence)
     const copyAll = detail.querySelector('#flow-intl-copy-all');
@@ -4487,171 +5034,490 @@ function renderFooterTrends(el, nodes, weekKey) {
     } catch { return String(ws || ''); }
   }
 
-  function buildReportHTML(cache) {
-    const ws = cache?.ws || '';
-    const tz = cache?.tz || getBizTZ();
-    const receiving = cache?.receiving || {};
-    const vas = cache?.vas || {};
-    const intl = cache?.intl || {};
-    const manual = cache?.manual || {};
-
-    const suppliers = Array.isArray(receiving.suppliers) ? receiving.suppliers : [];
-
-    const execRows = [
-      ['Week', escHtml(String(ws))],
-      ['Receiving', `${escHtml(pct(receiving.receivedPOs, receiving.plannedPOs))} (${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)} POs)`],
-      ['Cartons out', escHtml(receiving.cartonsOutTotal ?? 0)],
-      ['VAS applied', `${escHtml(pct(vas.appliedUnits, vas.plannedUnits))} (${escHtml(vas.appliedUnits ?? 0)}/${escHtml(vas.plannedUnits ?? 0)} units)`],
-      ['Transit lanes', escHtml(intl.lanesTotal ?? (manual?.intl?.lanes ?? 0) ?? 0)],
-      ['Docs missing', escHtml(intl.docsMissing ?? (manual?.intl?.docsMissing ?? 0) ?? 0)],
-      ['Last Mile open', `${escHtml(manual?.lastmile?.open ?? manual?.lastMile?.open ?? 0)}/${escHtml(manual?.lastmile?.total ?? manual?.lastMile?.total ?? 0)}`],
-    ];
-
-    const supplierTable = suppliers.length ? `
-      <table>
-        <thead>
-          <tr><th>Supplier</th><th>POs received</th><th>Planned units</th><th>Cartons in</th><th>Cartons out</th></tr>
-        </thead>
-        <tbody>
-          ${suppliers.map(s => `
-            <tr>
-              <td>${escHtml(s.supplier)}</td>
-              <td>${escHtml(s.receivedPOs)}/${escHtml(s.poCount)}</td>
-              <td>${escHtml(s.units)}</td>
-              <td>${escHtml(s.cartonsIn)}</td>
-              <td>${escHtml(s.cartonsOut)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    ` : `<div class="muted">No supplier breakdown available for this week.</div>`;
-
-    const nodePage = (title, bodyHtml) => `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">${escHtml(title)}</div>
-          <div class="muted">Week start: ${escHtml(ws)} • Generated: ${escHtml(new Date().toLocaleString())}</div>
-        </div>
-        ${bodyHtml}
-      </section>
-    `;
-
-    const execPage = `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">Flow — Executive summary</div>
-          <div class="muted">${escHtml(weekRangeText(ws, tz))} • Week start: ${escHtml(ws)}</div>
-        </div>
-
-        <div class="grid2">
-          ${execRows.map(([k,v]) => `<div class="kv"><div class="k">${escHtml(k)}</div><div class="v">${v}</div></div>`).join('')}
-        </div>
-
-        <div class="spacer"></div>
-        <div class="h2">Notes</div>
-        <div class="muted">Ongoing state is based on the current process node (not date math).</div>
-      </section>
-    `;
-
-    const receivingPage = nodePage('Receiving', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(receiving.due, tz))}</div></div>
-        <div class="kv"><div class="k">Last received</div><div class="v">${escHtml(fmtDateLocal(receiving.lastReceived, tz))}</div></div>
-        <div class="kv"><div class="k">POs received</div><div class="v">${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)}</div></div>
-        <div class="kv"><div class="k">Late POs</div><div class="v">${escHtml(receiving.latePOs ?? 0)}</div></div>
-        <div class="kv"><div class="k">Cartons in</div><div class="v">${escHtml(receiving.cartonsInTotal ?? 0)}</div></div>
-        <div class="kv"><div class="k">Cartons out</div><div class="v">${escHtml(receiving.cartonsOutTotal ?? 0)}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="h2">Supplier breakdown</div>
-      ${supplierTable}
-    `);
-
-    const vasPage = nodePage('VAS Processing', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(vas.due, tz))}</div></div>
-        <div class="kv"><div class="k">Applied</div><div class="v">${escHtml(vas.appliedUnits ?? 0)} / ${escHtml(vas.plannedUnits ?? 0)} units (${escHtml(pct(vas.appliedUnits, vas.plannedUnits))})</div></div>
-        <div class="kv"><div class="k">Completion</div><div class="v">${escHtml(pct(vas.completedPOs, vas.plannedPOs))} (${escHtml(vas.completedPOs ?? 0)}/${escHtml(vas.plannedPOs ?? 0)} POs)</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">Source: completed production records aggregated for the selected week.</div>
-    `);
-
-    const intlPage = nodePage('Transit & Clearing', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Origin window</div><div class="v">${escHtml(intl.windowText ?? '—')}</div></div>
-        <div class="kv"><div class="k">Lanes</div><div class="v">${escHtml(intl.lanesTotal ?? 0)}</div></div>
-        <div class="kv"><div class="k">Mode split</div><div class="v">${escHtml(intl.modeText ?? '—')}</div></div>
-        <div class="kv"><div class="k">Docs missing</div><div class="v">${escHtml(intl.docsMissing ?? 0)}</div></div>
-        <div class="kv"><div class="k">Holds</div><div class="v">${escHtml(intl.holds ?? 0)}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">International Transit is lightweight manual data stored locally per week (unless data-driven fields are present).</div>
-    `);
-
-    const lm = manual?.lastmile || manual?.lastMile || {};
-    const lastMilePage = nodePage('Last Mile', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Delivery window</div><div class="v">${escHtml((intl && intl.lastMileWindowText) || lm.windowText || '—')}</div></div>
-        <div class="kv"><div class="k">Open</div><div class="v">${escHtml(lm.open ?? 0)}</div></div>
-        <div class="kv"><div class="k">Total</div><div class="v">${escHtml(lm.total ?? 0)}</div></div>
-        <div class="kv"><div class="k">Status</div><div class="v">${escHtml(lm.statusText || '—')}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">Last Mile is lightweight manual data stored locally per week.</div>
-    `);
-
-    const style = `
-      <style>
-        :root { color-scheme: light; }
-        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; padding: 0; color: #111827; }
-        .page { padding: 24px 28px; page-break-after: always; }
-        .page:last-child { page-break-after: auto; }
-        .hdr { margin-bottom: 14px; }
-        .h1 { font-size: 18px; font-weight: 700; }
-        .h2 { font-size: 13px; font-weight: 700; margin: 10px 0 8px; }
-        .muted { color: rgba(17,24,39,0.65); font-size: 11px; }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .kv { border: 1px solid rgba(17,24,39,0.10); border-radius: 10px; padding: 10px; }
-        .k { font-size: 10px; color: rgba(17,24,39,0.60); margin-bottom: 4px; }
-        .v { font-size: 12px; font-weight: 600; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
-        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(17,24,39,0.10); }
-        th { font-size: 10px; color: rgba(17,24,39,0.60); font-weight: 700; }
-        .spacer { height: 10px; }
-        @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      </style>
-    `;
-
-    return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
-      ${execPage}
-      ${receivingPage}
-      ${vasPage}
-      ${intlPage}
-      ${lastMilePage}
-    </body></html>`;
+  
+function buildReportHTML(cache) {
+    // Kept for backward compatibility (older callers). We now generate a
+    // print-ready report by capturing the live Flow DOM (no backend mutations).
+    // This function returns a minimal shell used by downloadFlowReportPdf().
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Flow report</title></head><body></body></html>`;
   }
 
   function downloadFlowReportPdf(cache) {
+    // SAFETY: do not touch refresh(), API base resolution, or backend patch calls.
+    // PDF generation is isolated to DOM capture + a separate print window.
+    const cap = cache || (window.UI && UI.reportCache) || {};
+    const ws = cap.ws || (window.UI && UI.currentWs) || (window.state && window.state.weekStart) || '';
+    const tz = cap.tz || getBizTZ();
+
+    const prevSel = (window.UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
+
+    const pageFlow = document.getElementById('page-flow');
+
+    const escape = (s) => escapeHtml(String(s ?? ''));
+
+    const addDaysLocal = (isoDateStr, days) => {
+      try {
+        const d = new Date(`${isoDateStr}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + days);
+        return d;
+      } catch { return null; }
+    };
+
+    const fmtDateRange = (wsISO) => {
+      const mon = addDaysLocal(wsISO, 0);
+      const sun = addDaysLocal(wsISO, 6);
+      if (!mon || !sun || isNaN(mon) || isNaN(sun)) return '—';
+      const fmt = (d) => new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit', year: 'numeric' }).format(d);
+      return `${fmt(mon)} – ${fmt(sun)}`;
+    };
+
+    // ISO week number (Monday-based)
+    const isoWeekNum = (wsISO) => {
+      try {
+        const d = new Date(`${wsISO}T00:00:00Z`);
+        // Thursday in current week decides the year.
+        const day = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+        d.setUTCDate(d.getUTCDate() - day + 3); // Thu
+        const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+        const firstDay = (firstThu.getUTCDay() + 6) % 7;
+        firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
+        const diff = d - firstThu;
+        return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
+      } catch { return null; }
+    };
+
+    const weekLabel = (() => {
+      const n = isoWeekNum(ws);
+      return n ? `Week ${String(n).padStart(2, '0')}` : 'Week —';
+    })();
+
+    const createdAt = (() => {
+      try {
+        const now = new Date();
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          year: 'numeric', month: 'short', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        }).format(now);
+      } catch {
+        return String(new Date());
+      }
+    })();
+
+    const captureHTML = (el) => {
+      if (!el) return '';
+      // Clone to avoid mutating live DOM
+      const c = el.cloneNode(true);
+      // Remove any buttons/controls that don't make sense in print
+      c.querySelectorAll('button, input, select, textarea').forEach(x => {
+        // Preserve textual buttons (e.g., lane supplier links) by converting to spans
+        if (x.tagName === 'BUTTON') {
+          const t = (x.textContent || '').trim();
+          if (t) {
+            const s = document.createElement('span');
+            s.textContent = t;
+            s.style.fontSize = '12px';
+            s.style.fontWeight = '600';
+            x.replaceWith(s);
+          } else {
+            x.remove();
+          }
+          return;
+        }
+        // Keep input values readable by converting to text spans
+        if (x.tagName === 'INPUT' && (x.type === 'text' || x.type === 'datetime-local')) {
+          const v = (x.value || '').trim();
+          const s = document.createElement('span');
+          s.textContent = v || '—';
+          s.style.fontSize = '12px';
+          s.style.fontWeight = '600';
+          x.replaceWith(s);
+          return;
+        }
+        if (x.tagName === 'INPUT' && x.type === 'checkbox') {
+          const s = document.createElement('span');
+          s.textContent = x.checked ? '✓' : '—';
+          s.style.fontWeight = '700';
+          x.replaceWith(s);
+          return;
+        }
+        if (x.tagName === 'TEXTAREA') {
+          const v = (x.value || x.textContent || '').trim();
+          const s = document.createElement('div');
+          s.textContent = v || '—';
+          s.style.whiteSpace = 'pre-wrap';
+          s.style.fontSize = '11px';
+          x.replaceWith(s);
+          return;
+        }
+        // Buttons etc become nothing
+        x.remove();
+      });
+      return c.innerHTML;
+    };
+
+    const stripIntlLaneDetailsFromDetailHTML = (html) => {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Remove lane editor (Lane details) section
+        const laneEditorBody = tmp.querySelector('#flow-lane-editor-body');
+        if (laneEditorBody) {
+          const wrap = laneEditorBody.closest('.rounded-xl.border.p-3') || laneEditorBody.closest('.rounded-xl') || laneEditorBody.parentElement;
+          if (wrap) wrap.remove();
+        }
+        return tmp.innerHTML;
+      } catch { return html; }
+    };
+
+    const extractIntlContainersTileHTML = (html) => {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Find the week-level containers editor section by known ids/classes
+        const wcList = tmp.querySelector('#flow-wc-list');
+        if (!wcList) return '';
+        const wrap = wcList.closest('.rounded-xl.border.p-3') || wcList.closest('.rounded-xl') || wcList.parentElement;
+        return wrap ? wrap.outerHTML : '';
+      } catch { return ''; }
+    };
+
+    const stripSelectedContainerFromHTML = (html) => {
+      // PDF-only: remove the "Selected Container" panel from Last Mile pages.
+      // Keeps the live UI untouched.
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const needles = ['selected container', 'selected-container'];
+
+        // Try common patterns: a card/section that contains a title matching the needle.
+        const all = Array.from(tmp.querySelectorAll('*'));
+        for (const el of all) {
+          const t = (el.textContent || '').trim().toLowerCase();
+          if (!t) continue;
+          if (!needles.some(n => t === n || t.includes(n))) continue;
+
+          // Prefer removing the nearest card wrapper.
+          const wrap = el.closest('.rounded-xl') || el.closest('.rounded-2xl') || el.closest('.border') || el.closest('.box') || el.parentElement;
+          if (wrap) {
+            wrap.remove();
+            break;
+          }
+        }
+        return tmp.innerHTML;
+      } catch {
+        return html;
+      }
+    };
+
+    const hideDuringCapture = () => {
+      try {
+        if (!document.getElementById('flow-pdf-export-style')) {
+          const st = document.createElement('style');
+          st.id = 'flow-pdf-export-style';
+          st.textContent = `
+            body.flow-pdf-exporting #page-flow { visibility: hidden !important; }
+            body.flow-pdf-exporting #flow-lane-modal-root { visibility: hidden !important; }
+          `;
+          document.head.appendChild(st);
+        }
+        document.body.classList.add('flow-pdf-exporting');
+      } catch {}
+    };
+
+    const showAfterCapture = () => {
+      try { document.body.classList.remove('flow-pdf-exporting'); } catch {}
+    };
+
+    const safeRenderForNode = (nodeKey) => {
+      try {
+        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+        UI.selection = { node: nodeKey, sub: null };
+        renderDetail(ws, tz, receiving, vas, intl, manual);
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        highlightSelection();
+      } catch (e) {
+        console.warn('[flow] pdf render node failed', nodeKey, e);
+      }
+    };
+
+    const nodePageHTML = (pageTitle, rightTitle, rightHTML, bottomTitle, detailHTML) => {
+      return `
+        <div class="page">
+          <div class="pageTitle">${escape(pageTitle)}</div>
+          <div class="pageGrid">
+            <div class="box">
+              <div class="boxTitle">${escape(rightTitle || 'Summary')}</div>
+              <div class="boxBody">${rightHTML || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">${escape(bottomTitle || 'Details')}</div>
+              <div class="boxBody">${detailHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
     try {
-      const html = buildReportHTML(cache || {});
+      // Ensure we have a rendered Flow DOM to capture
+      if (!pageFlow || pageFlow.classList.contains('hidden')) {
+        // If Flow isn't visible, still attempt: render once.
+        try { refresh(); } catch {}
+      }
+
+      hideDuringCapture();
+
+      const pages = [];
+
+      // Page 1: Cover
+      pages.push(`
+        <div class="page cover">
+          <div class="coverBlock">
+            <div class="coverBrand"><span class="brandAccent">VelOzity</span> <span class="brandAccent">Pinpoint</span> <span class="brandPin">📍</span></div>
+            <div class="coverWeek">${escape(weekLabel)}</div>
+            <div class="coverRange">${escape(fmtDateRange(ws))}</div>
+          </div>
+        </div>
+      `);
+
+
+      // Page 2: Overview (S-curve + Week totals)
+      const journeyHTML = captureHTML(document.getElementById('flow-journey'));
+      // IMPORTANT (PDF-only): Overview should always show Week totals (no node context).
+      // We temporarily render the right tile in "week totals" mode by clearing selection,
+      // capture the DOM, then continue with node-specific pages. Live UI is restored in finally.
+      let weekTotalsHTML = '';
+      try {
+        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+        const prev = (UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
+        UI.selection = { node: null, sub: null };
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+        if (prev) UI.selection = { node: prev.node, sub: prev.sub || null };
+      } catch (e) {
+        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+      }
+      pages.push(`
+        <div class="page">
+          <div class="pageTitle">Overview</div>
+          <div class="overviewGrid">
+            <div class="box">
+              <div class="boxTitle">Inverted S-curve</div>
+              <div class="boxBody">${journeyHTML || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Week totals</div>
+              <div class="boxBody">${weekTotalsHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Receiving
+      safeRenderForNode('receiving');
+      pages.push(nodePageHTML('Receiving', 'Receiving summary', captureHTML(document.getElementById('flow-footer')), 'Receiving detail', captureHTML(document.getElementById('flow-detail'))));
+
+      // VAS
+      safeRenderForNode('vas');
+      pages.push(nodePageHTML('VAS Processing', 'VAS summary', captureHTML(document.getElementById('flow-footer')), 'VAS detail', captureHTML(document.getElementById('flow-detail'))));
+
+      // Transit & Clearing special: (A) right tile + lanes tile (no lane details)
+      safeRenderForNode('intl');
+      const intlRight = captureHTML(document.getElementById('flow-footer'));
+      const intlDetailRaw = captureHTML(document.getElementById('flow-detail'));
+      const intlDetailNoEditor = stripIntlLaneDetailsFromDetailHTML(intlDetailRaw);
+      pages.push(`
+        <div class="page">
+          <div class="pageTitle">Transit &amp; Clearing</div>
+          <div class="pageGrid">
+            <div class="box">
+              <div class="boxTitle">Transit &amp; Clearing summary</div>
+              <div class="boxBody">${intlRight || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Lanes</div>
+              <div class="boxBody">${intlDetailNoEditor || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Transit & Clearing special: (B) lanes full screen table
+      try {
+        // Build the modal content (hidden during capture), then capture its body.
+        openIntlOverviewModal(ws, tz);
+        const modalBody = document.querySelector('#flow-lane-modal-body');
+        const modalTitle = document.querySelector('#flow-lane-modal-title')?.textContent || 'Transit & Clearing — Lanes (Full screen)';
+        const lanesFullHTML = captureHTML(modalBody);
+        // close modal safely
+        const root = document.getElementById('flow-lane-modal-root');
+        if (root) root.classList.add('hidden');
+        pages.push(`
+          <div class="page">
+            <div class="pageTitle">${escape(modalTitle)}</div>
+            <div class="box">
+              <div class="boxBody">${lanesFullHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        `);
+      } catch (e) {
+        console.warn('[flow] pdf lanes fullscreen capture failed', e);
+      }
+      // Transit & Clearing containers pages intentionally omitted in PDF.
+// Last Mile
+      safeRenderForNode('lastmile');
+      {
+        const lmRightRaw = captureHTML(document.getElementById('flow-footer'));
+        const lmDetailRaw = captureHTML(document.getElementById('flow-detail'));
+        const lmRight = stripSelectedContainerFromHTML(lmRightRaw);
+        const lmDetail = stripSelectedContainerFromHTML(lmDetailRaw);
+        pages.push(nodePageHTML('Last Mile', 'Last Mile summary', lmRight, 'Last Mile detail', lmDetail));
+      }
+
+      // Final timestamp page
+      pages.push(`
+        <div class="page cover">
+          <div class="coverBlock">
+            <div class="coverBrand"><span class="brandAccent">Report created</span></div>
+            <div class="coverRange">${escape(createdAt)}</div>
+          </div>
+        </div>
+      `);
+
+
+      // Restore selection
+      try {
+        // Best effort restore to original selection
+        // (we used UI.selection directly; keep stable afterwards)
+      } catch {}
+
+      // Add per-page footer text (avoid relying on print page counters, which vary by browser/PDF driver)
+      const totalPages = pages.length;
+      const pagesWithFooter = pages.map((p, i) => {
+        try {
+          return String(p).replace(/<\/div>\s*$/, `<div class="pageFooter">VelOzity Pinpoint • Page ${i+1} of ${totalPages}</div></div>`);
+        } catch { return p; }
+      });
+
+      // Build print window
+      const style = `
+        <style>
+          :root { color-scheme: light; }
+          @page { size: letter landscape; margin: 0.5in; }
+          html, body { margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: #111827; }
+          .page { position: relative; page-break-after: always; }
+          .page:last-child { page-break-after: auto; }
+          .pageTitle { font-size: 18px; font-weight: 800; margin: 0 0 10px 0; }
+          .box { border: 1px solid rgba(17,24,39,0.12); border-radius: 14px; padding: 12px; background: #fff; }
+          .boxTitle { font-size: 12px; font-weight: 700; color: rgba(17,24,39,0.70); margin-bottom: 8px; }
+          .boxBody { font-size: 12px; }
+          .muted { color: rgba(17,24,39,0.55); font-size: 12px; }
+          .overviewGrid { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 14px; align-items: start; }
+          .pageGrid { display: grid; grid-template-columns: 0.9fr 1.4fr; gap: 14px; align-items: start; }
+          .cover { display:flex; align-items:center; justify-content:center; min-height: 7.0in; }
+          .coverBlock { width: 100%; padding-left: 0.8in; text-align: left; }
+          .coverBrand { font-size: 40px; font-weight: 900; letter-spacing: 0.02em; line-height: 1.05; }
+          .brandAccent { color: #990033; }
+          .brandPin { color: #990033; font-size: 34px; margin-left: 6px; }
+          .coverWeek { font-size: 22px; font-weight: 800; margin-top: 10px; color: #111827; }
+          .coverRange { font-size: 14px; color: rgba(17,24,39,0.65); margin-top: 6px; }
+          /* Make tables print nicely */
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border-bottom: 1px solid rgba(17,24,39,0.10); padding: 6px 8px; vertical-align: top; }
+          th { color: rgba(17,24,39,0.65); font-size: 11px; font-weight: 800; }
+
+          /* PDF-only utility styles (avoid importing Tailwind; keep minimal + targeted)
+             Fixes: (1) metric label/value wrapping in Week totals, (2) progress bars visibility. */
+          .flex { display:flex; }
+          .inline-flex { display:inline-flex; }
+          .items-center { align-items:center; }
+          .items-start { align-items:flex-start; }
+          .justify-between { justify-content:space-between; }
+          .gap-2 { gap: 8px; }
+          .gap-3 { gap: 12px; }
+          .py-2 { padding-top: 8px; padding-bottom: 8px; }
+          .px-3 { padding-left: 12px; padding-right: 12px; }
+          .py-1 { padding-top: 4px; padding-bottom: 4px; }
+          .p-3 { padding: 12px; }
+          .mt-0\.5 { margin-top: 2px; }
+          .mt-1 { margin-top: 4px; }
+          .mt-2 { margin-top: 8px; }
+          .mt-3 { margin-top: 12px; }
+          .space-y-3 > * + * { margin-top: 12px; }
+          .rounded-xl { border-radius: 12px; }
+          .rounded-2xl { border-radius: 16px; }
+          .rounded-full { border-radius: 9999px; }
+          .border { border: 1px solid rgba(17,24,39,0.12); }
+          .overflow-hidden { overflow: hidden; }
+          .text-xs { font-size: 11px; }
+          .text-sm { font-size: 12px; }
+          .font-semibold { font-weight: 700; }
+          .text-gray-500 { color: rgba(17,24,39,0.55); }
+          .text-gray-600 { color: rgba(17,24,39,0.60); }
+          .text-gray-700 { color: rgba(17,24,39,0.70); }
+          .text-gray-800 { color: rgba(17,24,39,0.85); }
+          .text-gray-900 { color: rgba(17,24,39,0.95); }
+          .bg-white { background: #fff; }
+          .bg-gray-50 { background: rgba(17,24,39,0.03); }
+          .bg-gray-100 { background: rgba(17,24,39,0.06); }
+
+          /* Progress bars (used in Receiving/VAS tiles) */
+          .w-36 { width: 144px; }
+          .w-32 { width: 128px; }
+          .w-28 { width: 112px; }
+          .h-2 { height: 8px; }
+          .h-full { height: 100%; }
+          .bg-emerald-400 { background: #34d399; }
+
+          /* Keep metric rows on a single line in PDF (Week totals) */
+          .flex.items-center.justify-between > div:last-child { white-space: nowrap; }
+
+          /* Keep KPI cards (label + value) on one line across nodes (Transit KPIs, Last Mile KPIs, etc.) */
+          .rounded-lg.border.p-2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+          .rounded-lg.border.p-2 > div:first-child { white-space: nowrap; }
+          .rounded-lg.border.p-2 > div:last-child { white-space: nowrap; }
+
+          /* Keep compact stat pills (Sea/Air/Delayed/At risk) on one line in PDF */
+          .rounded-lg.border.px-2.py-1.bg-white { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+          /* If grid layout utilities are missing, still keep pills aligned */
+          .grid.grid-cols-2.sm\:grid-cols-4.gap-2.text-xs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+          /* Footer */
+          .pageFooter { position: absolute; right: 0; bottom: 0; font-size: 10px; color: rgba(17,24,39,0.70); }
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      `;
+
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>VelOzity Pinpoint — ${escape(weekLabel)}</title>${style}</head>
+        <body>
+          ${pagesWithFooter.join('\n')}
+        </body></html>`;
+
       const w = window.open('', '_blank');
-      if (!w) return;
+      if (!w) { showAfterCapture(); return; }
       w.document.open();
       w.document.write(html);
       w.document.close();
-      // Give the browser a moment to render before printing.
       w.focus();
-      setTimeout(() => {
-        try { w.print(); } catch(e) {}
-      }, 250);
+      setTimeout(() => { try { w.print(); } catch {} }, 300);
     } catch (e) {
-      console.warn('[flow] report build failed', e);
+      console.warn('[flow] pdf export failed', e);
+    } finally {
+      try {
+        if (prevSel) UI.selection = { node: prevSel.node, sub: prevSel.sub || null };
+        // Re-render once to restore the UI (best-effort; no backend writes)
+        try {
+          const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+          renderDetail(ws, tz, receiving, vas, intl, manual);
+          renderRightTile(ws, tz, receiving, vas, intl, manual);
+          highlightSelection();
+        } catch {}
+      } catch {}
+      try { showAfterCapture(); } catch {}
     }
   }
-
 async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
@@ -4772,13 +5638,19 @@ async function refresh() {
       planRows = asArray(planRows);
       receivingRows = asArray(receivingRows);
       records = asArray(records);
+
+    // Receiving full-screen (units-based table) uses existing data only (no new endpoints).
+    // Store a lightweight context snapshot for the modal to render instantly.
+    try {
+      window.__FLOW_RECEIVING_FS_CTX__ = { ws, tz, planRows, receivingRows, records };
+    } catch {}
+
     } catch (e) {
       console.warn('[flow] load error', e);
     }
 
     const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows, records);
-    
-    window.__FLOW_RECEIVING_FS_CTX__ = { ws, tz, planRows, receivingRows, receiving, records };const vas = computeVASStatus(ws, tz, planRows, records);
+    const vas = computeVASStatus(ws, tz, planRows, records);
     const intl = computeInternationalTransit(ws, tz, planRows, records, vas.due);
     const manual = computeManualNodeStatuses(ws, tz);
 
@@ -4818,9 +5690,6 @@ if (signoff.vasComplete) {
     renderDetail(ws, tz, receiving, vas, intl, manual);
     renderRightTile(ws, tz, receiving, vas, intl, manual);
     highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
     } catch (e) {
       console.warn('[flow] refresh failed', e);
       const detail = document.getElementById('flow-detail');
