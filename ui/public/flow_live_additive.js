@@ -496,16 +496,8 @@ async function primeFlowWeekFromBackend(ws) {
 
     // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
     // Prefer complete for performance, but fall back to all if API supports.
-    // NOTE: some backends store `date_local` as YYYY-MM-DD (no time). If we pass full ISO timestamps,
-    // the query can return 0 rows due to string comparisons. So we try timestamp range first, then
-    // fall back to date-only range.
     try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); return asArray(r); } catch {}
     try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); return asArray(r); } catch {}
-
-    const fromDate = ws;
-    const toDate = isoDate(weD);
-    try { const r = await api(`/records?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}&status=complete&limit=50000`); return asArray(r); } catch {}
-    try { const r = await api(`/records?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}&limit=50000`); return asArray(r); } catch {}
     return [];
   }
 
@@ -1492,6 +1484,285 @@ function computeManualNodeStatuses(ws, tz) {
     } catch {}
   }
 
+  
+  // ------------------------------
+  // Receiving — Full screen modal
+  // ------------------------------
+  function ensureReceivingFullModal() {
+    let root = document.getElementById('flow-receiving-fullscreen-modal');
+    if (root) return root;
+
+    root = document.createElement('div');
+    root.id = 'flow-receiving-fullscreen-modal';
+    root.className = 'fixed inset-0 z-[9999] hidden';
+    root.innerHTML = `
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full h-full overflow-hidden flex flex-col">
+          <div class="flex items-center justify-between px-4 py-3 border-b">
+            <div>
+              <div class="text-base font-semibold">Receiving — Full screen</div>
+              <div id="flow-recvfs-sub" class="text-xs text-gray-500">Supplier drilldown • Approximate received units (planned units for received POs).</div>
+            </div>
+            <button data-flow-recvfs-close class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Close</button>
+          </div>
+
+          <div class="flex-1 overflow-auto p-4">
+            <div id="flow-recvfs-kpis" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"></div>
+
+            <div class="flex flex-col lg:flex-row gap-4">
+              <div class="lg:w-1/2">
+                <div class="text-sm font-semibold mb-2">Suppliers</div>
+                <div class="rounded-lg border overflow-hidden">
+                  <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="text-left px-3 py-2">Supplier</th>
+                        <th class="text-right px-3 py-2">POs received</th>
+                        <th class="text-right px-3 py-2">Approx received units</th>
+                      </tr>
+                    </thead>
+                    <tbody id="flow-recvfs-sup-rows"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="lg:w-1/2">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-sm font-semibold">Received POs</div>
+                  <div class="flex gap-2">
+                    <button id="flow-recvfs-dl-selected" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download selected</button>
+                    <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download all</button>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 mb-2">
+                  <label class="text-xs text-gray-600">Supplier</label>
+                  <select id="flow-recvfs-sel" class="text-sm border rounded-md px-2 py-1 bg-white"></select>
+                </div>
+
+                <div class="rounded-lg border overflow-hidden">
+                  <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="text-left px-3 py-2">PO</th>
+                        <th class="text-right px-3 py-2">Planned units</th>
+                        <th class="text-left px-3 py-2">Received at</th>
+                      </tr>
+                    </thead>
+                    <tbody id="flow-recvfs-po-rows"></tbody>
+                  </table>
+                </div>
+
+                <div id="flow-recvfs-note" class="text-xs text-gray-500 mt-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    root.querySelector('[data-flow-recvfs-close]')?.addEventListener('click', () => {
+      root.classList.add('hidden');
+    });
+    root.addEventListener('click', (e) => {
+      if (e.target === root) root.classList.add('hidden');
+      // Click outside panel
+      if (e.target && e.target.classList && e.target.classList.contains('bg-black/40')) root.classList.add('hidden');
+    });
+
+    return root;
+  }
+
+  function _csvDownload(filename, rows) {
+    const esc = (v) => {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const csv = rows.map(r => r.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function openReceivingFullScreenModal() {
+    const ctx = window.__FLOW_RECEIVING_FS_CTX__;
+    if (!ctx || !ctx.planRows || !ctx.receivingRows) {
+      alert('Receiving data not available yet. Please refresh the page and try again.');
+      return;
+    }
+
+    const { ws, tz, planRows, receivingRows } = ctx;
+
+    // Build received PO set with timestamps
+    const receivedByPO = new Map();
+    for (const r of (receivingRows || [])) {
+      const po = r.po || r.PO || r.po_number || r.PO_Number || r.PO_Number?.toString?.();
+      const receivedAt = r.receivedAt || r.received_at || r.received_at_utc || r.received;
+      if (!po) continue;
+      if (receivedAt) receivedByPO.set(String(po), receivedAt);
+    }
+
+    // Planned units by PO + supplier by PO
+    const plannedUnitsByPO = new Map();
+    const supplierByPO = new Map();
+    for (const row of (planRows || [])) {
+      const po = row.po || row.PO || row.po_number || row.poNumber;
+      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name;
+      const units = Number(row.units || row.Units || row.planned_units || row.PlannedUnits || row.plannedUnits || 0) || 0;
+      if (!po) continue;
+      const k = String(po);
+      plannedUnitsByPO.set(k, (plannedUnitsByPO.get(k) || 0) + units);
+      if (supplier && !supplierByPO.has(k)) supplierByPO.set(k, String(supplier));
+    }
+
+    // Received PO details grouped by supplier
+    const bySupplier = new Map(); // supplier -> [{po, units, receivedAt}]
+    for (const [po, receivedAt] of receivedByPO.entries()) {
+      const supplier = supplierByPO.get(po) || '—';
+      const units = plannedUnitsByPO.get(po) || 0;
+      if (!bySupplier.has(supplier)) bySupplier.set(supplier, []);
+      bySupplier.get(supplier).push({ po, units, receivedAt });
+    }
+
+    // Sort suppliers and POs
+    const suppliers = Array.from(bySupplier.keys()).sort((a,b)=>a.localeCompare(b));
+    for (const s of suppliers) {
+      bySupplier.get(s).sort((a,b)=>String(a.po).localeCompare(String(b.po)));
+    }
+
+    // Totals
+    const totalReceivedPOs = Array.from(receivedByPO.keys()).length;
+    const totalApproxUnits = Array.from(receivedByPO.keys()).reduce((acc, po) => acc + (plannedUnitsByPO.get(po) || 0), 0);
+
+    const root = ensureReceivingFullModal();
+    root.classList.remove('hidden');
+
+    // KPIs
+    const kpi = root.querySelector('#flow-recvfs-kpis');
+    if (kpi) {
+      kpi.innerHTML = `
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">POs received</div>
+          <div class="text-xl font-semibold">${fmtNum(totalReceivedPOs)}</div>
+        </div>
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">Approx received units</div>
+          <div class="text-xl font-semibold">${fmtNum(totalApproxUnits)}</div>
+          <div class="text-[11px] text-gray-500 mt-1">Sum of planned units for received POs</div>
+        </div>
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">Suppliers with receipts</div>
+          <div class="text-xl font-semibold">${fmtNum(suppliers.length)}</div>
+        </div>
+      `;
+    }
+
+    // Supplier rows
+    const supBody = root.querySelector('#flow-recvfs-sup-rows');
+    if (supBody) {
+      supBody.innerHTML = suppliers.map(s => {
+        const list = bySupplier.get(s) || [];
+        const pos = list.length;
+        const units = list.reduce((a,x)=>a+(x.units||0),0);
+        return `
+          <tr class="hover:bg-gray-50 cursor-pointer" data-recvfs-supplier="${escapeHtml(s)}">
+            <td class="px-3 py-2">${escapeHtml(s)}</td>
+            <td class="px-3 py-2 text-right">${fmtNum(pos)}</td>
+            <td class="px-3 py-2 text-right">${fmtNum(units)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Supplier dropdown
+    const sel = root.querySelector('#flow-recvfs-sel');
+    if (sel) {
+      sel.innerHTML = suppliers.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+    }
+
+    function renderSupplierDetail(supplier) {
+      const rows = bySupplier.get(supplier) || [];
+      const poBody = root.querySelector('#flow-recvfs-po-rows');
+      if (poBody) {
+        poBody.innerHTML = rows.length ? rows.map(r => `
+          <tr>
+            <td class="px-3 py-2">${escapeHtml(r.po)}</td>
+            <td class="px-3 py-2 text-right">${fmtNum(r.units || 0)}</td>
+            <td class="px-3 py-2">${escapeHtml(fmtDateTimeLocal(tz, r.receivedAt) || '')}</td>
+          </tr>
+        `).join('') : `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="3">No received POs for this supplier</td></tr>`;
+      }
+      const note = root.querySelector('#flow-recvfs-note');
+      if (note) {
+        const totalU = rows.reduce((a,x)=>a+(x.units||0),0);
+        note.textContent = supplier + ' • ' + fmtNum(rows.length) + ' POs • ' + fmtNum(totalU) + ' approx units';
+      }
+
+      // download selected handler
+      const dlSel = root.querySelector('#flow-recvfs-dl-selected');
+      if (dlSel) {
+        dlSel.onclick = () => {
+          const out = [
+            ['week_start', ws, '', ''],
+            ['supplier', 'po', 'planned_units', 'received_at'],
+            ...rows.map(r => [supplier, r.po, r.units || 0, r.receivedAt || ''])
+          ];
+          _csvDownload(`Receiving_${ws}_${supplier.replace(/[^a-z0-9]+/gi,'_')}.csv`, out);
+        };
+      }
+    }
+
+    // Default select first supplier
+    if (suppliers.length && sel) renderSupplierDetail(sel.value || suppliers[0]);
+
+    // Click rows to select
+    supBody?.querySelectorAll('[data-recvfs-supplier]')?.forEach(tr => {
+      tr.addEventListener('click', () => {
+        const s = tr.getAttribute('data-recvfs-supplier');
+        if (sel) sel.value = s;
+        renderSupplierDetail(s);
+      });
+    });
+
+    sel?.addEventListener('change', () => renderSupplierDetail(sel.value));
+
+    // Download all
+    const dlAll = root.querySelector('#flow-recvfs-dl-all');
+    if (dlAll) {
+      dlAll.onclick = () => {
+        const allRows = [];
+        for (const s of suppliers) {
+          for (const r of (bySupplier.get(s) || [])) {
+            allRows.push([s, r.po, r.units || 0, r.receivedAt || '']);
+          }
+        }
+        const out = [
+          ['week_start', ws, '', ''],
+          ['supplier', 'po', 'planned_units', 'received_at'],
+          ...allRows
+        ];
+        _csvDownload(`Receiving_${ws}_ALL.csv`, out);
+      };
+    }
+  }
+
+  function wireReceivingFullScreen() {
+    const btn = document.getElementById('flow-receiving-fullscreen');
+    if (!btn || btn.__bound) return;
+    btn.__bound = true;
+    btn.addEventListener('click', () => openReceivingFullScreenModal());
+  }
+
+
   function setSubheader(ws) {
     const sub = document.getElementById('flow-sub');
     if (!sub) return;
@@ -1995,6 +2266,9 @@ const nameLabel = done ? `${n.label} ✓` : n.label;
           renderDetail(ws, tz, receiving, vas, intl, manual);
           renderRightTile(ws, tz, receiving, vas, intl, manual);
           highlightSelection();
+
+    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
+    wireReceivingFullScreen();
         });
       });
     } catch {}
@@ -2378,6 +2652,9 @@ const signoffSection = (context) => {
         UI.selection = { node: null, sub: null };
         renderRightTile(ws, tz, receiving, vas, intl, manual);
         highlightSelection();
+
+    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
+    wireReceivingFullScreen();
       };
     }
 
@@ -2540,6 +2817,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
         renderDetail(ws, tz, receiving, vas, intl, manual);
         renderRightTile(ws, tz, receiving, vas, intl, manual);
         highlightSelection();
+
+    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
+    wireReceivingFullScreen();
       });
     });
   }
@@ -2649,6 +2929,8 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
   detail.innerHTML = [
     header(title, receiving.level, subtitle),
+    `<div class="flex justify-end mb-2"><button id="flow-receiving-fullscreen" class="px-3 py-1.5 text-xs rounded-md border hover:bg-gray-50">Full view</button></div>`,
+
     bullets(insights),
     kpis,
     table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
@@ -4200,7 +4482,8 @@ async function refresh() {
     }
 
     const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows, records);
-    const vas = computeVASStatus(ws, tz, planRows, records);
+    
+    window.__FLOW_RECEIVING_FS_CTX__ = { ws, tz, planRows, receivingRows, receiving };const vas = computeVASStatus(ws, tz, planRows, records);
     const intl = computeInternationalTransit(ws, tz, planRows, records, vas.due);
     const manual = computeManualNodeStatuses(ws, tz);
 
@@ -4240,6 +4523,9 @@ if (signoff.vasComplete) {
     renderDetail(ws, tz, receiving, vas, intl, manual);
     renderRightTile(ws, tz, receiving, vas, intl, manual);
     highlightSelection();
+
+    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
+    wireReceivingFullScreen();
     } catch (e) {
       console.warn('[flow] refresh failed', e);
       const detail = document.getElementById('flow-detail');
