@@ -3019,20 +3019,6 @@ bindSign(sVas, 'vasComplete');
         const d = (ts instanceof Date) ? ts : new Date(ts);
         if (!Number.isFinite(d.getTime())) return String(ts);
         const opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
-
-    const fmtDateOnlyLocal = (tz, ts) => {
-      try {
-        if (!ts) return '';
-        // Accept already-formatted dates (MM/DD/YYYY or YYYY-MM-DD)
-        const s0 = String(ts).trim();
-        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s0)) return s0;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(s0)) {
-          const [y,m,d] = s0.split('-');
-          return `${m}/${d}/${y}`;
-        }
-        const d = (ts instanceof Date) ? ts : new Date(ts);
-        if (!Number.isFinite(d.getTime())) return s0;
-        const opt = { year: 'numeric', month: '2-digit', day: '2-digit' };
         try {
           return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
         } catch {
@@ -3042,6 +3028,21 @@ bindSign(sVas, 'vasComplete');
         return '';
       }
     };
+
+    // Date-only formatter for table columns (no time)
+    const fmtDateOnlyLocal = (tz, ts) => {
+      try {
+        if (!ts) return '';
+        // Accept already-formatted dates (MM/DD/YYYY or YYYY-MM-DD)
+        const s0 = String(ts).trim();
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s0)) return s0;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s0)) {
+          const [y, m, d] = s0.split('-');
+          return `${m}/${d}/${y}`;
+        }
+        const d = (ts instanceof Date) ? ts : new Date(ts);
+        if (!Number.isFinite(d.getTime())) return s0;
+        const opt = { year: 'numeric', month: '2-digit', day: '2-digit' };
         try {
           return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
         } catch {
