@@ -1606,7 +1606,6 @@ function computeManualNodeStatuses(ws, tz) {
         if (!ts) return '';
         const d = (ts instanceof Date) ? ts : new Date(ts);
         if (!Number.isFinite(d.getTime())) return String(ts);
-        // Render in the app's configured tz, but fall back gracefully.
         const opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
         try {
           return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
@@ -1631,39 +1630,38 @@ function computeManualNodeStatuses(ws, tz) {
       return Number.isFinite(n) ? n : 0;
     };
 
-    // 1) Received POs (timestamp)
+    // -------------------- Build PO-level facts (units-only) --------------------
+
+    // 1) Received timestamps by PO
     const receivedByPO = new Map();
-    const metaByPO = new Map();
     for (const r of (receivingRows || [])) {
       const po = normalizePO(r.po ?? r.PO ?? r.po_number ?? r.PO_Number ?? r.poNumber ?? r.po_no ?? r.poNo);
       const receivedAt = r.receivedAt || r.received_at || r.received_at_utc || r.received;
       if (!po) continue;
       if (receivedAt) receivedByPO.set(po, receivedAt);
-      const supplier = r.supplier || r.Supplier || r.vendor || r.Vendor || r.supplier_name || r.supplierName;
-      const zendesk = r.zendesk || r.zendesk_ticket || r.ticket || r.ticket_id || r.zendeskTicket;
-      const freight = r.freight || r.mode || r.ship_mode || r.shipMode || r.Freight;
-      if (!metaByPO.has(po)) metaByPO.set(po, {
-        supplier: supplier ? String(supplier) : undefined,
-        zendesk: (zendesk !== null && zendesk !== undefined && zendesk !== '') ? String(zendesk) : undefined,
-        freight: freight ? String(freight) : undefined,
-      });
     }
 
-    // 2) Planned units by PO (+ supplier / zendesk / freight when available)
+    // 2) Planned units + metadata by PO (prefer planRows for supplier / zendesk / freight)
     const getPO = (r) => normalizePO(
       r.po_number ?? r.poNumber ?? r.PO_Number ?? r.PO ?? r.po ?? r.po_no ?? r.poNo ?? r.supplier_po ?? r.supplierPO ?? ''
     );
     const getPlannedUnits = (r) => (
       toNum(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.planned_units ?? r.plannedUnits ?? r.PlannedUnits ?? r.units ?? r.Units ?? r.qty ?? r.Qty)
     );
+
     const plannedUnitsByPO = new Map();
+    const metaByPO = new Map(); // {supplier, zendesk, freight}
     for (const row of (planRows || [])) {
       const po = getPO(row);
       if (!po) continue;
+
       plannedUnitsByPO.set(po, (plannedUnitsByPO.get(po) || 0) + getPlannedUnits(row));
-      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name || row.supplierName;
-      const zendesk = row.zendesk || row.zendesk_ticket || row.ticket || row.ticket_id || row.zendeskTicket;
-      const freight = row.freight || row.mode || row.ship_mode || row.shipMode || row.Freight;
+
+      // Try several likely field names (keep additive + non-breaking)
+      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name || row.supplierName || row.factory || row.Factory;
+      const zendesk = row.zendesk || row.zendesk_ticket || row.ticket || row.ticket_id || row.zendeskTicket || row.zendesk_no || row.zendeskNo;
+      const freight = row.freight || row.mode || row.ship_mode || row.shipMode || row.Freight || row.transport || row.Transport;
+
       const prev = metaByPO.get(po) || {};
       metaByPO.set(po, {
         supplier: prev.supplier || (supplier ? String(supplier) : undefined),
@@ -1672,7 +1670,25 @@ function computeManualNodeStatuses(ws, tz) {
       });
     }
 
-    // 3) Applied units (VAS actuals) by PO from records (units-based)
+    // 2b) Back-fill metadata from receivingRows if planRows did not carry it
+    for (const r of (receivingRows || [])) {
+      const po = normalizePO(r.po ?? r.PO ?? r.po_number ?? r.PO_Number ?? r.poNumber ?? r.po_no ?? r.poNo);
+      if (!po) continue;
+      if (!metaByPO.has(po)) metaByPO.set(po, {});
+      const prev = metaByPO.get(po) || {};
+
+      const supplier = r.supplier || r.Supplier || r.vendor || r.Vendor || r.supplier_name || r.supplierName;
+      const zendesk = r.zendesk || r.zendesk_ticket || r.ticket || r.ticket_id || r.zendeskTicket;
+      const freight = r.freight || r.mode || r.ship_mode || r.shipMode || r.Freight;
+
+      metaByPO.set(po, {
+        supplier: prev.supplier || (supplier ? String(supplier) : undefined),
+        zendesk: prev.zendesk || ((zendesk !== null && zendesk !== undefined && zendesk !== '') ? String(zendesk) : undefined),
+        freight: prev.freight || (freight ? String(freight) : undefined),
+      });
+    }
+
+    // 3) Applied units (VAS actuals) by PO from records (status=complete)
     const appliedUnitsByPO = new Map();
     for (const rec of (records || [])) {
       const status = String(rec.status ?? rec.Status ?? '').toLowerCase();
@@ -1684,16 +1700,17 @@ function computeManualNodeStatuses(ws, tz) {
       appliedUnitsByPO.set(po, (appliedUnitsByPO.get(po) || 0) + qty);
     }
 
-    // Build flat rows for the table (received POs only)
+    // 4) Build PO-level rows for ALL planned POs (not only received)
     const rows = [];
-    for (const [po, receivedAt] of receivedByPO.entries()) {
+    for (const [po, plannedUnits] of plannedUnitsByPO.entries()) {
       const meta = metaByPO.get(po) || {};
       const supplier = meta.supplier || '—';
       const zendesk = meta.zendesk || '—';
       const freight = meta.freight || '—';
-      const plannedUnits = plannedUnitsByPO.get(po) || 0;
-      const approxReceivedUnits = plannedUnits; // definition: planned units for received POs
+      const receivedAt = receivedByPO.get(po) || '';
+      const approxReceivedUnits = receivedAt ? plannedUnits : 0; // definition: planned units for received POs
       const appliedUnits = appliedUnitsByPO.get(po) || 0;
+
       rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, receivedAt });
     }
     rows.sort((a,b) =>
@@ -1703,36 +1720,39 @@ function computeManualNodeStatuses(ws, tz) {
       String(a.po).localeCompare(String(b.po))
     );
 
-    // Totals
-    const totalReceivedPOs = rows.length;
-    const totalApproxUnits = rows.reduce((a,r)=>a+(r.approxReceivedUnits||0),0);
+    // -------------------- KPIs (keep the ones you already like) --------------------
+    const receivedOnly = rows.filter(r => !!r.receivedAt);
+    const totalReceivedPOs = receivedOnly.length;
+    const totalApproxUnits = receivedOnly.reduce((a,r)=>a+(r.approxReceivedUnits||0),0);
     const totalAppliedUnits = rows.reduce((a,r)=>a+(r.appliedUnits||0),0);
-    const suppliersWithReceipts = new Set(rows.map(r=>r.supplier)).size;
+    const suppliersWithReceipts = new Set(receivedOnly.map(r=>r.supplier)).size;
 
     const root = ensureReceivingFullModal();
     root.classList.remove('hidden');
 
-    // Replace the body content with a single, always-visible table (no dropdown).
+    // Replace the body content with a unified grouped table (no dropdown dependency).
     const body = root.querySelector('#flow-recvfs-body');
     if (body) {
       body.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4" id="flow-recvfs-kpis"></div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4" id="flow-recvfs-kpis"></div>
 
         <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-semibold">Received POs (units-based)</div>
+          <div>
+            <div class="text-sm font-semibold">Receiving — Full screen (units-based)</div>
+            <div class="text-[11px] text-gray-500">Grouped: Supplier → Zendesk → Freight → PO</div>
+          </div>
           <div class="flex gap-2">
-            <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download table</button>
+            <button id="flow-recvfs-expandall" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Expand all</button>
+            <button id="flow-recvfs-collapseall" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Collapse all</button>
+            <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download (PO rows)</button>
           </div>
         </div>
 
-        <div class="rounded-lg border overflow-auto">
+        <div class="rounded-lg border overflow-auto" style="max-height:70vh">
           <table class="w-full text-sm">
-            <thead class="bg-gray-50 sticky top-0">
+            <thead class="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th class="text-left px-3 py-2">Supplier</th>
-                <th class="text-left px-3 py-2">Zendesk</th>
-                <th class="text-left px-3 py-2">Freight</th>
-                <th class="text-left px-3 py-2">PO</th>
+                <th class="text-left px-3 py-2">Supplier / Zendesk / Freight / PO</th>
                 <th class="text-right px-3 py-2">Planned units</th>
                 <th class="text-right px-3 py-2">Approx received units</th>
                 <th class="text-right px-3 py-2">UID applied units</th>
@@ -1763,72 +1783,246 @@ function computeManualNodeStatuses(ws, tz) {
           <div class="text-xl font-semibold">${fmtNum(totalAppliedUnits)}</div>
           <div class="text-[11px] text-gray-500 mt-1">From VAS records (status=complete)</div>
         </div>
-        <div class="rounded-lg border p-3 md:col-span-3">
+        <div class="rounded-lg border p-3">
           <div class="text-xs text-gray-500">Suppliers with receipts</div>
           <div class="text-xl font-semibold">${fmtNum(suppliersWithReceipts)}</div>
         </div>
       `;
     }
 
-    // Render rows with grouping (supplier -> zendesk -> freight)
-    const tb = root.querySelector('#flow-recvfs-rows');
-    if (tb) {
-      let html = '';
-      let lastSupplier = null;
-      let lastZendesk = null;
-      let lastFreight = null;
-      for (const r of rows) {
-        if (r.supplier !== lastSupplier) {
-          lastSupplier = r.supplier;
-          lastZendesk = null;
-          lastFreight = null;
-          html += `
-            <tr class="bg-white">
-              <td class="px-3 py-2 font-semibold" colspan="8">${escapeHtml(r.supplier)}</td>
-            </tr>
-          `;
-        }
-        const zfKey = `${r.zendesk}|||${r.freight}`;
-        const prevKey = `${lastZendesk}|||${lastFreight}`;
-        if (zfKey !== prevKey) {
-          lastZendesk = r.zendesk;
-          lastFreight = r.freight;
-          html += `
-            <tr class="bg-gray-50/60">
-              <td class="px-3 py-1.5 text-xs text-gray-600" colspan="8">
-                <span class="font-medium">Zendesk:</span> ${escapeHtml(r.zendesk)} &nbsp; <span class="font-medium">Freight:</span> ${escapeHtml(r.freight)}
-              </td>
-            </tr>
-          `;
-        }
-        html += `
-          <tr class="hover:bg-gray-50">
-            <td class="px-3 py-2">&nbsp;</td>
-            <td class="px-3 py-2">&nbsp;</td>
-            <td class="px-3 py-2">&nbsp;</td>
-            <td class="px-3 py-2">${escapeHtml(r.po)}</td>
-            <td class="px-3 py-2 text-right">${fmtNum(r.plannedUnits)}</td>
-            <td class="px-3 py-2 text-right">${fmtNum(r.approxReceivedUnits)}</td>
-            <td class="px-3 py-2 text-right">${fmtNum(r.appliedUnits)}</td>
-            <td class="px-3 py-2">${escapeHtml(fmtDateTimeLocal(tz, r.receivedAt))}</td>
-          </tr>
-        `;
-      }
-      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="8">No received POs found for this week</td></tr>`;
+    // -------------------- Grouped / expandable rendering --------------------
+    const state = window.__FLOW_RECVFS_EXPAND_STATE__ = window.__FLOW_RECVFS_EXPAND_STATE__ || {
+      collapsedSupplier: new Set(),
+      collapsedZendesk: new Set(),
+      collapsedFreight: new Set(),
+    };
+
+    const makeKey = (parts) => parts.map(p => String(p ?? '—')).join('|||');
+    const esc = (v) => (typeof escapeHtml === 'function') ? escapeHtml(String(v ?? '')) : String(v ?? '');
+
+    // Build nested grouping: supplier -> zendesk -> freight -> po rows
+    const groups = new Map();
+    for (const r of rows) {
+      const sKey = r.supplier || '—';
+      const zKey = r.zendesk || '—';
+      const fKey = r.freight || '—';
+
+      if (!groups.has(sKey)) groups.set(sKey, new Map());
+      const zg = groups.get(sKey);
+      if (!zg.has(zKey)) zg.set(zKey, new Map());
+      const fg = zg.get(zKey);
+      if (!fg.has(fKey)) fg.set(fKey, []);
+      fg.get(fKey).push(r);
     }
 
-    // Download full table (flat CSV)
+    const sum = (arr, fn) => arr.reduce((a, x) => a + (fn(x) || 0), 0);
+    const countReceived = (arr) => arr.reduce((a, x) => a + (x.receivedAt ? 1 : 0), 0);
+
+    const caret = (isCollapsed) => isCollapsed ? '▸' : '▾';
+
+    const render = () => {
+      const tb = root.querySelector('#flow-recvfs-rows');
+      if (!tb) return;
+
+      let html = '';
+      const suppliers = Array.from(groups.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+
+      for (const supplier of suppliers) {
+        const sId = 'S:' + supplier;
+        const zg = groups.get(supplier);
+        const allRowsS = [];
+        for (const fm of zg.values()) for (const arr of fm.values()) allRowsS.push(...arr);
+
+        const sPlanned = sum(allRowsS, x=>x.plannedUnits);
+        const sApprox = sum(allRowsS, x=>x.approxReceivedUnits);
+        const sApplied = sum(allRowsS, x=>x.appliedUnits);
+        const sPOs = allRowsS.length;
+        const sRecPOs = countReceived(allRowsS);
+
+        const sCollapsed = state.collapsedSupplier.has(sId);
+        html += `
+          <tr class="bg-white hover:bg-gray-50 cursor-pointer select-none" data-kind="supplier" data-id="${esc(sId)}">
+            <td class="px-3 py-2 font-semibold">
+              <span class="inline-block w-4">${caret(sCollapsed)}</span>
+              ${esc(supplier)}
+              <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(sRecPOs)}/${fmtNum(sPOs)} POs received)</span>
+            </td>
+            <td class="px-3 py-2 text-right font-semibold">${fmtNum(sPlanned)}</td>
+            <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApprox)}</td>
+            <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApplied)}</td>
+            <td class="px-3 py-2"></td>
+          </tr>
+        `;
+
+        if (sCollapsed) continue;
+
+        const zendeskKeys = Array.from(zg.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+        for (const zendesk of zendeskKeys) {
+          const zId = 'Z:' + makeKey([supplier, zendesk]);
+          const fg = zg.get(zendesk);
+
+          const allRowsZ = [];
+          for (const arr of fg.values()) allRowsZ.push(...arr);
+
+          const zPlanned = sum(allRowsZ, x=>x.plannedUnits);
+          const zApprox = sum(allRowsZ, x=>x.approxReceivedUnits);
+          const zApplied = sum(allRowsZ, x=>x.appliedUnits);
+          const zPOs = allRowsZ.length;
+          const zRecPOs = countReceived(allRowsZ);
+
+          const zCollapsed = state.collapsedZendesk.has(zId);
+          html += `
+            <tr class="bg-gray-50/70 hover:bg-gray-50 cursor-pointer select-none" data-kind="zendesk" data-id="${esc(zId)}">
+              <td class="px-3 py-2">
+                <span class="inline-block w-4"></span>
+                <span class="inline-block w-4">${caret(zCollapsed)}</span>
+                <span class="text-xs text-gray-600"><span class="font-medium">Zendesk:</span> ${esc(zendesk)}</span>
+                <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(zRecPOs)}/${fmtNum(zPOs)} POs received)</span>
+              </td>
+              <td class="px-3 py-2 text-right">${fmtNum(zPlanned)}</td>
+              <td class="px-3 py-2 text-right">${fmtNum(zApprox)}</td>
+              <td class="px-3 py-2 text-right">${fmtNum(zApplied)}</td>
+              <td class="px-3 py-2"></td>
+            </tr>
+          `;
+
+          if (zCollapsed) continue;
+
+          const freightKeys = Array.from(fg.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+          for (const freight of freightKeys) {
+            const fId = 'F:' + makeKey([supplier, zendesk, freight]);
+            const arr = fg.get(freight) || [];
+
+            const fPlanned = sum(arr, x=>x.plannedUnits);
+            const fApprox = sum(arr, x=>x.approxReceivedUnits);
+            const fApplied = sum(arr, x=>x.appliedUnits);
+            const fPOs = arr.length;
+            const fRecPOs = countReceived(arr);
+
+            const fCollapsed = state.collapsedFreight.has(fId);
+            html += `
+              <tr class="bg-gray-50 hover:bg-gray-50 cursor-pointer select-none" data-kind="freight" data-id="${esc(fId)}">
+                <td class="px-3 py-2">
+                  <span class="inline-block w-4"></span>
+                  <span class="inline-block w-4"></span>
+                  <span class="inline-block w-4">${caret(fCollapsed)}</span>
+                  <span class="text-xs text-gray-600"><span class="font-medium">Freight:</span> ${esc(freight)}</span>
+                  <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(fRecPOs)}/${fmtNum(fPOs)} POs received)</span>
+                </td>
+                <td class="px-3 py-2 text-right">${fmtNum(fPlanned)}</td>
+                <td class="px-3 py-2 text-right">${fmtNum(fApprox)}</td>
+                <td class="px-3 py-2 text-right">${fmtNum(fApplied)}</td>
+                <td class="px-3 py-2"></td>
+              </tr>
+            `;
+
+            if (fCollapsed) continue;
+
+            for (const r of arr) {
+              html += `
+                <tr class="hover:bg-gray-50" data-kind="po">
+                  <td class="px-3 py-2">
+                    <span class="inline-block w-4"></span>
+                    <span class="inline-block w-4"></span>
+                    <span class="inline-block w-4"></span>
+                    <span class="font-mono text-xs">${esc(r.po)}</span>
+                  </td>
+                  <td class="px-3 py-2 text-right">${fmtNum(r.plannedUnits)}</td>
+                  <td class="px-3 py-2 text-right">${fmtNum(r.approxReceivedUnits)}</td>
+                  <td class="px-3 py-2 text-right">${fmtNum(r.appliedUnits)}</td>
+                  <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.receivedAt))}</td>
+                </tr>
+              `;
+            }
+          }
+        }
+      }
+
+      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="5">No planned POs found for this week</td></tr>`;
+    };
+
+    // Toggle handlers (single delegated listener)
+    const tb = root.querySelector('#flow-recvfs-rows');
+    if (tb && !tb.__FLOW_RECVFS_BOUND__) {
+      tb.__FLOW_RECVFS_BOUND__ = true;
+      tb.addEventListener('click', (ev) => {
+        const tr = ev.target && ev.target.closest ? ev.target.closest('tr') : null;
+        if (!tr) return;
+        const kind = tr.getAttribute('data-kind');
+        const id = tr.getAttribute('data-id');
+        if (!kind || !id) return;
+
+        if (kind === 'supplier') {
+          if (state.collapsedSupplier.has(id)) state.collapsedSupplier.delete(id);
+          else state.collapsedSupplier.add(id);
+          render();
+        } else if (kind === 'zendesk') {
+          if (state.collapsedZendesk.has(id)) state.collapsedZendesk.delete(id);
+          else state.collapsedZendesk.add(id);
+          render();
+        } else if (kind === 'freight') {
+          if (state.collapsedFreight.has(id)) state.collapsedFreight.delete(id);
+          else state.collapsedFreight.add(id);
+          render();
+        }
+      });
+    }
+
+    // Expand / Collapse all
+    const btnExpand = root.querySelector('#flow-recvfs-expandall');
+    if (btnExpand) btnExpand.onclick = () => {
+      state.collapsedSupplier.clear();
+      state.collapsedZendesk.clear();
+      state.collapsedFreight.clear();
+      render();
+    };
+    const btnCollapse = root.querySelector('#flow-recvfs-collapseall');
+    if (btnCollapse) btnCollapse.onclick = () => {
+      // Collapse everything at supplier level is enough.
+      state.collapsedSupplier.clear();
+      for (const supplier of groups.keys()) state.collapsedSupplier.add('S:' + supplier);
+      state.collapsedZendesk.clear();
+      state.collapsedFreight.clear();
+      render();
+    };
+
+    // Download full table (flat CSV of PO-level rows)
     const dlAll = root.querySelector('#flow-recvfs-dl-all');
     if (dlAll) {
       dlAll.onclick = () => {
         const out = [
           ['week_start', ws],
-          ['supplier','zendesk','freight','po','planned_units','approx_received_units','uid_applied_units','received_at'],
-          ...rows.map(r => [r.supplier, r.zendesk, r.freight, r.po, r.plannedUnits, r.approxReceivedUnits, r.appliedUnits, r.receivedAt || ''])
+          ['supplier','zendesk','freight','po','planned_units','approx_received_units','uid_applied_units','received_at']
         ];
-        _csvDownload(`Receiving_${ws}_FULL_TABLE.csv`, out);
+        for (const r of rows) {
+          out.push([
+            r.supplier, r.zendesk, r.freight, r.po,
+            String(r.plannedUnits ?? 0),
+            String(r.approxReceivedUnits ?? 0),
+            String(r.appliedUnits ?? 0),
+            String(r.receivedAt ?? '')
+          ]);
+        }
+        const csv = out.map(line => line.map(x => {
+          const s = String(x ?? '');
+          if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+          return s;
+        }).join(',')).join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = `receiving_fullscreen_${(ws || 'week').toString().replace(/[:\s]/g,'_')}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url), 250);
       };
     }
+
+    // Initial render
+    render();
   }
 
   function wireReceivingFullScreen() {
