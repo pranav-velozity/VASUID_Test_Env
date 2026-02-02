@@ -1594,6 +1594,13 @@ function computeManualNodeStatuses(ws, tz) {
   }
 
   function openReceivingFullScreenModal() {
+    // Number formatting helper (Flow baseline does not define fmtNum)
+    const fmtNum = (v) => {
+      if (v === null || v === undefined || v === '') return '—';
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      return n.toLocaleString();
+    };
     const ctx = window.__FLOW_RECEIVING_FS_CTX__;
     if (!ctx || !ctx.planRows || !ctx.receivingRows) {
       alert('Receiving data not available yet. Please refresh the page and try again.');
@@ -1761,6 +1768,9 @@ function computeManualNodeStatuses(ws, tz) {
     btn.__bound = true;
     btn.addEventListener('click', () => openReceivingFullScreenModal());
   }
+
+  // Backwards-compatible alias (in case any existing handler references this name)
+  window.openReceivingFullscreenModal = openReceivingFullScreenModal;
 
 
   function setSubheader(ws) {
