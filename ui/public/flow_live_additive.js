@@ -509,7 +509,7 @@ async function primeFlowWeekFromBackend(ws) {
 
     // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
     // Prefer complete for performance, but fall back to all if API supports.
-    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); return asArray(r); } catch {}
+    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); const a = asArray(r); if (a && a.length) return a; } catch {}
     try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); return asArray(r); } catch {}
     return [];
   }
@@ -3684,6 +3684,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     kpis,
     table(['Supplier', 'Progress', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
   ].join('');
+    try { wireReceivingFullScreen(); } catch {}
   return;
 }
 
