@@ -226,19 +226,6 @@
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
-  // UI helper: compact progress bar (pct: 0..100)
-  function progressBar(pct, opts) {
-    const p = clamp(Number(pct) || 0, 0, 100);
-    const w = (opts && opts.w) ? opts.w : 'w-32';
-    const h = (opts && opts.h) ? opts.h : 'h-2';
-    const bg = (opts && opts.bg) ? opts.bg : 'bg-gray-100';
-    const fill = (opts && opts.fill) ? opts.fill : 'bg-emerald-400';
-    return `
-      <div class="${w} ${h} ${bg} rounded-full overflow-hidden border" title="${Math.round(p)}%">
-        <div class="h-full ${fill}" style="width:${p}%;"></div>
-      </div>
-    `;
-  }
   function statusFromDue(due, actual, now) {
     // Soft cutoffs:
     // - if actual exists, compare actual to due
@@ -509,8 +496,16 @@ async function primeFlowWeekFromBackend(ws) {
 
     // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
     // Prefer complete for performance, but fall back to all if API supports.
+    // NOTE: some backends store `date_local` as YYYY-MM-DD (no time). If we pass full ISO timestamps,
+    // the query can return 0 rows due to string comparisons. So we try timestamp range first, then
+    // fall back to date-only range.
     try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); return asArray(r); } catch {}
     try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); return asArray(r); } catch {}
+
+    const fromDate = ws;
+    const toDate = isoDate(weD);
+    try { const r = await api(`/records?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}&status=complete&limit=50000`); return asArray(r); } catch {}
+    try { const r = await api(`/records?from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(toDate)}&limit=50000`); return asArray(r); } catch {}
     return [];
   }
 
@@ -1404,453 +1399,6 @@ function computeManualNodeStatuses(ws, tz) {
     // Default focus on Milk Run on initial load (right tile + journey highlight)
     selection: { node: 'milk', sub: null },
   };
-
-  // ------------------------- Lane modal (Transit & Clearing) -------------------------
-  function ensureLaneModal() {
-    let root = document.getElementById('flow-lane-modal');
-    if (root) return root;
-
-    root = document.createElement('div');
-    root.id = 'flow-lane-modal';
-    root.className = 'fixed inset-0 z-[9999] hidden';
-
-    root.innerHTML = `
-      <div class="absolute inset-0 bg-black/40" data-flow-modal-close="1"></div>
-      <div class="absolute inset-3 md:inset-6 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col">
-        <div class="p-3 border-b flex items-center justify-between gap-3">
-          <div>
-            <div id="flow-lane-modal-title" class="text-base font-semibold text-gray-800"></div>
-            <div id="flow-lane-modal-sub" class="text-xs text-gray-500 mt-0.5"></div>
-          </div>
-          <div class="flex items-center gap-2">
-            <div id="flow-lane-modal-status"></div>
-            <button class="px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 text-sm" data-flow-modal-close="1">Close</button>
-          </div>
-        </div>
-        <div id="flow-lane-modal-body" class="p-3 overflow-auto flex-1"></div>
-      </div>
-    `;
-    document.body.appendChild(root);
-
-    // close handlers
-    root.querySelectorAll('[data-flow-modal-close]').forEach(el => {
-      el.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        closeLaneModal();
-      });
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const r = document.getElementById('flow-lane-modal');
-        if (r && !r.classList.contains('hidden')) closeLaneModal();
-      }
-    });
-
-    return root;
-  }
-
-  function closeLaneModal() {
-    const root = document.getElementById('flow-lane-modal');
-    if (!root) return;
-    root.classList.add('hidden');
-    root.setAttribute('aria-hidden', 'true');
-  }
-
-  function openLaneModal(ws, tz, laneKey) {
-    const ctx = window.__FLOW_INTL_CTX__ || null;
-    if (!ctx || !ctx.lanes || !ctx.weekContainers) return;
-
-    const lane = (ctx.lanes || []).find(l => l && l.key === laneKey);
-    if (!lane) return;
-
-    const manual = loadIntlLaneManual(ws, laneKey) || {};
-    const root = ensureLaneModal();
-
-    const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? String(lane.ticket) : '';
-    const title = `${lane.supplier} • ${lane.freight}${ticket ? ` • Zendesk ${ticket}` : ''}`;
-    const subtitle = `Lane key: ${lane.key}`;
-
-    const statusHtml = `
-      <span class="dot ${dot(lane.level)}"></span>
-      <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap ml-2">${statusLabel(lane.level)}</span>
-    `;
-
-    root.querySelector('#flow-lane-modal-title').textContent = title;
-    root.querySelector('#flow-lane-modal-sub').textContent = subtitle;
-    root.querySelector('#flow-lane-modal-status').innerHTML = statusHtml;
-
-    // Containers derived from week-level containers
-    const conts = (ctx.weekContainers || [])
-      .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(lane.key))
-      .filter(c => {
-        const cid = String(c?.container_id || c?.container || '').trim();
-        const ves = String(c?.vessel || '').trim();
-        const ft = String(c?.size_ft || '').trim();
-        return !!(cid || ves || ft);
-      });
-
-    const contRows = conts.length ? `
-      <div class="rounded-xl border p-3">
-        <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">${iconContainer()} <span>Containers</span></div>
-        <div class="mt-2 overflow-auto">
-          <table class="w-full text-sm">
-            <thead><tr>
-              <th class="th text-left py-2 pr-2">Container #</th>
-              <th class="th text-left py-2 pr-2">Size</th>
-              <th class="th text-left py-2 pr-2">Vessel</th>
-            </tr></thead>
-            <tbody>
-              ${(conts || []).map(c => {
-                const cid = escapeHtml(String(c.container_id || c.container || '').trim() || '—');
-                const ft = escapeHtml(String(c.size_ft || '').trim() ? (String(c.size_ft).trim() + 'ft') : '—');
-                const ves = escapeHtml(String(c.vessel || '').trim() || '—');
-                return `<tr class="border-t"><td class="py-3 pr-4">${cid}</td><td class="py-3 pr-4">${ft}</td><td class="py-3 pr-4">${ves}</td></tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    ` : `
-      <div class="rounded-xl border p-3 text-sm text-gray-500">
-        No containers mapped to this lane yet (week-level containers).
-      </div>
-    `;
-
-    const dateVal = (v) => String(v || '').trim();
-
-    // Modal body: reuse the same lane fields pattern + new IDs
-    root.querySelector('#flow-lane-modal-body').innerHTML = `
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div class="rounded-xl border p-3">
-          <div class="text-sm font-semibold text-gray-700">Lane dates & documents</div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
-              <input data-lm-field="pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.pack))}"/>
-            </label>
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
-              <input data-lm-field="originClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.originClr))}"/>
-            </label>
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">Departed origin</div>
-              <input data-lm-field="departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.departed))}"/>
-            </label>
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
-              <input data-lm-field="arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.arrived))}"/>
-            </label>
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
-              <input data-lm-field="destClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.destClr))}"/>
-            </label>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">Shipment #</div>
-              <input data-lm-field="shipmentNumber" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
-            </label>
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">HBL</div>
-              <input data-lm-field="hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
-            </label>
-            <label class="text-sm">
-              <div class="text-xs text-gray-500 mb-1">MBL</div>
-              <input data-lm-field="mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
-            </label>
-          </div>
-
-          <div class="flex items-center gap-3 mt-3">
-            <label class="text-sm flex items-center gap-2">
-              <input data-lm-field="hold" type="checkbox" class="h-4 w-4" ${manual.hold ? 'checked' : ''}/>
-              <span>Customs hold</span>
-            </label>
-          </div>
-
-          <label class="text-sm mt-3 block">
-            <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
-            <textarea data-lm-field="note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(String(manual.note || ''))}</textarea>
-          </label>
-
-          <div class="flex items-center justify-end mt-3">
-            <button id="flow-lane-modal-save" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
-          </div>
-          <div id="flow-lane-modal-msg" class="text-xs text-gray-500 mt-2"></div>
-        </div>
-
-        <div class="flex flex-col gap-3">
-          ${contRows}
-        </div>
-      </div>
-    `;
-
-    // Wire save button (dates + hold + note + ids)
-    const body = root.querySelector('#flow-lane-modal-body');
-    const saveBtn = body.querySelector('#flow-lane-modal-save');
-    const msg = body.querySelector('#flow-lane-modal-msg');
-
-    const readFields = () => {
-      const q = (sel) => body.querySelector(sel);
-      const get = (k) => {
-        const el = body.querySelector(`[data-lm-field="${k}"]`);
-        if (!el) return '';
-        if (el.type === 'checkbox') return !!el.checked;
-        return String(el.value || '').trim();
-      };
-      return {
-        pack: get('pack'),
-        originClr: get('originClr'),
-        departed: get('departed'),
-        arrived: get('arrived'),
-        destClr: get('destClr'),
-        hold: !!get('hold'),
-        note: get('note'),
-        shipmentNumber: get('shipmentNumber'),
-        hbl: get('hbl'),
-        mbl: get('mbl'),
-      };
-    };
-
-    const doSave = () => {
-      try {
-        const vals = readFields();
-        saveIntlLaneManual(ws, laneKey, vals);
-        if (msg) msg.textContent = 'Saved.';
-      } catch (e) {
-        if (msg) msg.textContent = 'Save failed.';
-      }
-    };
-
-    if (saveBtn) saveBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); doSave(); };
-
-    // Background persist for IDs only (blur/Enter)
-    const idKeys = new Set(['shipmentNumber','hbl','mbl']);
-    body.querySelectorAll('[data-lm-field]').forEach(el => {
-      const key = el.getAttribute('data-lm-field');
-      if (!idKeys.has(key)) return;
-
-      const saveOne = () => {
-        const v = (el.type === 'checkbox') ? !!el.checked : String(el.value || '').trim();
-        const patch = {};
-        patch[key] = v;
-        saveIntlLaneManual(ws, laneKey, patch);
-        if (msg) msg.textContent = 'Saved.';
-      };
-
-      el.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') {
-          ev.preventDefault();
-          saveOne();
-          el.blur();
-        }
-      });
-      el.addEventListener('blur', () => saveOne());
-    });
-
-    root.classList.remove('hidden');
-    root.setAttribute('aria-hidden', 'false');
-  }
-
-
-  function openIntlOverviewModal(ws, tz) {
-    const ctx = window.__FLOW_INTL_CTX__ || null;
-    if (!ctx || !ctx.lanes) return;
-
-    const lanes = Array.isArray(ctx.lanes) ? ctx.lanes.slice() : [];
-    const weekContainers = Array.isArray(ctx.weekContainers) ? ctx.weekContainers : [];
-    const intl = ctx.intl || null;
-
-    // Sort same as lanes tile: holds/red first, then highest remaining units
-    const rank = { red: 3, yellow: 2, green: 1, gray: 0 };
-    lanes.sort((a, b) => (rank[b.level] - rank[a.level]) || ((b.plannedUnits - b.appliedUnits) - (a.plannedUnits - a.appliedUnits)));
-
-    const root = ensureLaneModal();
-    root.querySelector('#flow-lane-modal-title').textContent = 'Transit & Clearing — Lanes (Full screen)';
-    root.querySelector('#flow-lane-modal-sub').textContent = 'All lanes for this week • Click a supplier to open the lane editor.';
-    root.querySelector('#flow-lane-modal-status').innerHTML = '';
-
-    const fmtDT = (v) => {
-      const s = String(v || '').trim();
-      if (!s) return '—';
-      try { return fmtInTZ(s, tz); } catch { return s; }
-    };
-
-    // Planned fallback baselines for a lane (derived from Intl window + freight mode).
-    // We intentionally do NOT store these in backend; UI recomputes them.
-    const plannedForLane = (lane) => {
-      const originMin = (intl && intl.originMin instanceof Date) ? intl.originMin : null;
-      const originMax = (intl && intl.originMax instanceof Date) ? intl.originMax : null;
-      if (!originMin || !originMax) return { pack: null, originClr: null, departed: null, arrived: null, destClr: null };
-      const pack = originMin;
-      const originClr = originMax;
-      const departed = addDays(originClr, 1);
-      const transitDays = (lane && lane.freight === 'Air') ? BASELINE.transit_days_air : BASELINE.transit_days_sea;
-      const arrived = addDays(departed, transitDays);
-      const destClr = addDays(arrived, 2);
-      return { pack, originClr, departed, arrived, destClr };
-    };
-
-    // Resolve actual lane dates from any known schema (backend-synced + back-compat), else planned.
-    const fmtDateOnly = (val) => {
-      try {
-        const d = (val instanceof Date) ? val : new Date(val);
-        if (!d || isNaN(d)) return '';
-        return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit' }).format(d);
-      } catch (e) { return ''; }
-    };
-
-    const laneDateCell = (manualObj, plannedDate, keys) => {
-      const tryKey = (k) => {
-        const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
-        return v ? v : '';
-      };
-      const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
-      if (actualRaw) {
-        const d = fmtDateOnly(actualRaw);
-        return d ? `<span class="whitespace-nowrap font-semibold" style="color:#334155">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
-      }
-      if (plannedDate && !isNaN(plannedDate)) {
-        const d = fmtDateOnly(plannedDate);
-        return d ? `<span class="whitespace-nowrap" style="color:#7a1f33">${escapeHtml(d)} <span class="text-[10px]" style="color:#7a1f33">planned</span></span>` : '<span class="text-gray-400">—</span>';
-      }
-      return '<span class="text-gray-400">—</span>';
-    };
-
-    const latestActualStatusText = (manualObj) => {
-      const getRaw = (keys) => {
-        for (const k of keys) {
-          const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
-          if (v) return v;
-        }
-        return '';
-      };
-      const stages = [
-        { label: 'Packing list ready', keys: ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'] },
-        { label: 'Origin customs cleared', keys: ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'] },
-        { label: 'Departed origin', keys: ['departed_at','departedAt','departed'] },
-        { label: 'Arrived destination', keys: ['arrived_at','arrivedAt','arrived'] },
-        { label: 'Destination customs cleared', keys: ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'] },
-      ];
-      let best = null;
-      for (const st of stages) {
-        const raw = getRaw(st.keys);
-        if (!raw) continue;
-        const d = new Date(raw);
-        if (!d || isNaN(d)) continue;
-        if (!best || d > best.date) best = { date: d, label: st.label };
-      }
-      return best ? best.label : '';
-    };
-
-    const contListForLane = (laneKey) => {
-      const ids = (weekContainers || [])
-        .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(laneKey))
-        .map(c => String(c?.container_id || c?.container || '').trim())
-        .filter(Boolean);
-      return uniqNonEmpty(ids);
-    };
-
-    // Summary strip for quick scan
-    const counts = lanes.reduce((acc, l) => {
-      acc.total++;
-      acc[l.level] = (acc[l.level] || 0) + 1;
-      const m = String(l.freight || '').toLowerCase();
-      if (m === 'air') acc.air++; else if (m === 'sea') acc.sea++;
-      return acc;
-    }, { total: 0, red: 0, yellow: 0, green: 0, gray: 0, sea: 0, air: 0 });
-
-    const rows = lanes.map(l => {
-      const manual = (l && l.manual && typeof l.manual === 'object') ? l.manual : (loadIntlLaneManual(ws, l.key) || {});
-      const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '—';
-      const containers = contListForLane(l.key);
-      const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
-      const pl = plannedForLane(l);
-      const freightLower = String(l.freight || '').toLowerCase();
-      const freightCls = freightLower === 'air' ? 'text-sky-700' : (freightLower === 'sea' ? 'text-emerald-700' : 'text-gray-700');
-      const stageTxt = latestActualStatusText(manual);
-      const holdFlag = !!(manual.hold || manual.customs_hold || manual.customsHold || manual.customsHoldFlag);
-      return `
-        <tr class="border-t align-top hover:bg-gray-50">
-          <td class="py-3 pr-4">
-            <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
-            <div class="text-xs font-medium mt-0.5 ${freightCls}">${escapeHtml(l.freight || '')}</div>
-            <div class="text-xs font-semibold mt-0.5 tracking-wide" style="color:#e90076; text-transform:uppercase">${escapeHtml(stageTxt || 'No actual updates')}</div>
-          </td>
-          <td class="py-3 px-4 text-center">${ticket}</td>
-          <td class="py-3 px-4 text-center">${st}</td>
-          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
-          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
-          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
-          <td class="py-3 px-4 text-center">${holdFlag ? '✓' : '—'}</td>
-          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
-          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
-          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
-          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
-          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
-          <td class="py-3 pl-4 pr-4 text-left">${containers.length ? containers.map(c=>escapeHtml(c)).join('<br/>') : '—'}</td>
-        </tr>
-      `;
-    }).join('');
-
-    root.querySelector('#flow-lane-modal-body').innerHTML = `
-      <div class="rounded-xl border p-3">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <div class="text-sm font-semibold text-gray-700">Lanes</div>
-            <div class="text-xs text-gray-500 mt-1">Dates show <b>Actual</b> when entered; otherwise fall back to <b>Planned</b>.</div>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Sea</span> <b>${counts.sea}</b></div>
-            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Air</span> <b>${counts.air}</b></div>
-            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Delayed</span> <b>${counts.red}</b></div>
-            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">At risk</span> <b>${counts.yellow}</b></div>
-          </div>
-        </div>
-        <div class="mt-5 overflow-auto">
-          <table class="w-full text-sm min-w-[1500px]">
-            <thead class="sticky top-0 bg-white">
-              <tr class="text-[13px] text-gray-600 border-b">
-                <th class="text-left py-3 pr-4">Supplier / Freight</th>
-                <th class="text-center py-3 px-4">Zendesk</th>
-                <th class="text-center py-3 px-4">Status</th>
-                <th class="text-center py-3 px-4">Shipment #</th>
-                <th class="text-center py-3 px-4">HBL</th>
-                <th class="text-center py-3 px-4">MBL</th>
-                <th class="text-center py-3 px-4">Hold</th>
-                <th class="text-center py-3 px-4">📄 Pack List</th>
-                <th class="text-center py-3 px-4">🛃 Origin Customs</th>
-                <th class="text-center py-3 px-4">🚚 Departed</th>
-                <th class="text-center py-3 px-4">📍 Arrived</th>
-                <th class="text-center py-3 px-4">🛃 Dest Customs</th>
-                <th class="text-left py-2 pr-2">Container #</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows || '<tr><td class="py-2 text-gray-500" colspan="13">No lanes found.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    root.querySelectorAll('[data-open-lane]').forEach(btn => {
-      if (btn.dataset.bound) return;
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const k = btn.getAttribute('data-open-lane');
-        if (!k) return;
-        openLaneModal(ws, tz, k);
-      });
-    });
-
-    root.classList.remove('hidden');
-    root.setAttribute('aria-hidden', 'false');
-  }
 
   function ensureFlowPageExists() {
     // 1) page section
@@ -3063,9 +2611,7 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     // ---------------- Node-specific details ----------------
     if (sel.node === 'receiving') {
-  const overallPct = (num(receiving.plannedPOs) || 0) ? (num(receiving.receivedPOs || 0) / num(receiving.plannedPOs || 1)) * 100 : 0;
-  const titleBase = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
-  const title = `${titleBase} <span class="inline-flex align-middle ml-2">${progressBar(overallPct, { w: 'w-36', h: 'h-2' })}</span>`;
+  const title = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
   const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
 
   const insights = [
@@ -3093,24 +2639,19 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
   const supRows = (receiving.suppliers || [])
     .sort((a, b) => (b.cartonsOut || 0) - (a.cartonsOut || 0))
     .slice(0, 30)
-    .map(s => {
-      const denom = num(s.poCount || 0) || 0;
-      const pct = denom ? (num(s.receivedPOs || 0) / denom) * 100 : 0;
-      return [
-        s.supplier,
-        progressBar(pct, { w: 'w-28', h: 'h-2' }),
-        `${s.receivedPOs}/${s.poCount}`,
-        `${Math.round(s.units)}`,
-        `${s.cartonsIn || 0}`,
-        `${s.cartonsOut || 0}`,
-      ];
-    });
+    .map(s => [
+      s.supplier,
+      `${s.receivedPOs}/${s.poCount}`,
+      `${Math.round(s.units)}`,
+      `${s.cartonsIn || 0}`,
+      `${s.cartonsOut || 0}`,
+    ]);
 
   detail.innerHTML = [
     header(title, receiving.level, subtitle),
     bullets(insights),
     kpis,
-    table(['Supplier', 'Progress', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
+    table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
   ].join('');
   return;
 }
@@ -3152,21 +2693,16 @@ const vasMixHtml = (vasObj) => {
     : `<div class="mt-3 text-xs text-gray-500">No remaining POs — on track.</div>`;
   return bar + legend + tbl;
 };
-const supRows = (vas.supplierRows || []).slice(0, 12).map(x => {
-  const planned = num(x.planned || 0) || 0;
-  const applied = num(x.applied || 0) || 0;
-  const pct = planned ? (applied / planned) * 100 : 0;
-  return [x.supplier, progressBar(pct, { w: 'w-28', h: 'h-2' }), fmtN(planned), fmtN(applied), `${Math.round(pct)}%`];
-});
+const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN(x.planned), fmtN(x.applied), `${x.pct}%`]);
 
 
       detail.innerHTML = [
-        header(`VAS Processing <span class="inline-flex align-middle ml-2">${progressBar((num(vas.completion)||0)*100, { w: 'w-36', h: 'h-2' })}</span>`, vas.level, subtitle),
+        header('VAS Processing', vas.level, subtitle),
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
-            ${table(['Supplier', 'Progress', 'Planned', 'Applied', '%'], supRows)}
+            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
           </div>
           
 <div class="rounded-xl border p-3">
@@ -3250,18 +2786,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => {
         <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No lanes found in the uploaded Plan for this week.</div>
       `;
 
-            // Expose latest Intl context for UI handlers (modal, etc.)
-      try { window.__FLOW_INTL_CTX__ = { ws, tz, lanes, weekContainers, intl }; } catch {}
-
-detail.innerHTML = [
+      detail.innerHTML = [
         header('Transit & Clearing', intl.level, subtitle),
         bullets(insights),
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
-          <div class="flex items-center justify-between gap-2">
-            <div class="text-sm font-semibold text-gray-700">Lanes</div>
-            <button type="button" id="flow-lanes-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button>
-          </div>
+          <div class="text-sm font-semibold text-gray-700">Lanes</div>
           ${table(['Supplier', 'Zendesk', 'Freight', 'Applied', 'Cartons Out', 'Containers', 'Status'], rows)}
         </div>`,
         editor,
@@ -3524,15 +3054,12 @@ detail.innerHTML = [
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <button type="button" id="flow-lane-collapse" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Collapse</button>
             <span class="dot ${dot(lane.level)}"></span>
             <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap">${statusLabel(lane.level)}</span>
           </div>
         </div>
 
-
-        <div id="flow-lane-editor-body" class="mt-3">
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
           <div class="rounded-xl border p-3">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
@@ -3547,12 +3074,6 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-pack" data-val="${basePack}">Copy</button>
                 </div>
               </label>
-
-              <label class="text-sm">
-                <div class="text-xs text-gray-500 mb-1">Shipment #</div>
-                <input id="flow-intl-shipment" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
-              </label>
-
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
@@ -3561,12 +3082,6 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-originclr" data-val="${baseOriginClr}">Copy</button>
                 </div>
               </label>
-
-              <label class="text-sm">
-                <div class="text-xs text-gray-500 mb-1">HBL</div>
-                <input id="flow-intl-hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
-              </label>
-
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
@@ -3575,12 +3090,6 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-departed" data-val="${baseDeparted}">Copy</button>
                 </div>
               </label>
-
-              <label class="text-sm">
-                <div class="text-xs text-gray-500 mb-1">MBL</div>
-                <input id="flow-intl-mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
-              </label>
-
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
@@ -3589,9 +3098,6 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-arrived" data-val="${baseArrived}">Copy</button>
                 </div>
               </label>
-
-              <div class="hidden md:block"></div>
-
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
@@ -3600,16 +3106,16 @@ detail.innerHTML = [
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-destclr" data-val="${baseDestClr}">Copy</button>
                 </div>
               </label>
-
-              <div class="flex items-center gap-3 md:pt-6">
-                <label class="text-sm flex items-center gap-2">
-                  <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
-                  <span>Customs hold</span>
-                </label>
-              </div>
             </div>
 
-<label class="text-sm mt-3 block">
+            <div class="flex items-center gap-3 mt-3">
+              <label class="text-sm flex items-center gap-2">
+                <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
+                <span>Customs hold</span>
+              </label>
+            </div>
+
+            <label class="text-sm mt-3 block">
               <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
               <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
             </label>
@@ -3638,7 +3144,6 @@ detail.innerHTML = [
               One container can map to multiple lanes. These containers feed Last Mile immediately.
             </div>
           </div>
-          </div>
         </div>
       </div>
     `;
@@ -3665,59 +3170,6 @@ detail.innerHTML = [
     });
 
 
-
-
-    // Lane details collapse/expand (UI-only)
-    const collapseBtn = detail.querySelector('#flow-lane-collapse');
-    const bodyWrap = detail.querySelector('#flow-lane-editor-body');
-    if (collapseBtn && bodyWrap && !collapseBtn.dataset.bound) {
-      collapseBtn.dataset.bound = '1';
-      collapseBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const collapsed = bodyWrap.classList.toggle('hidden');
-        collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
-      });
-    }
-
-    // Full screen overview for all lanes (table)
-    const lanesFullBtn = detail.querySelector('#flow-lanes-fullscreen');
-    if (lanesFullBtn && !lanesFullBtn.dataset.bound) {
-      lanesFullBtn.dataset.bound = '1';
-      lanesFullBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        openIntlOverviewModal(ws, getBizTZ());
-      });
-    }
-
-
-    // Background persistence for lane identifiers (Shipment/HBL/MBL)
-    const idMap = [
-      ['#flow-intl-shipment', 'shipmentNumber'],
-      ['#flow-intl-hbl', 'hbl'],
-      ['#flow-intl-mbl', 'mbl'],
-    ];
-    for (const [sel, field] of idMap) {
-      const el = detail.querySelector(sel);
-      if (!el || el.dataset.bound) continue;
-      el.dataset.bound = '1';
-      const saveOne = () => {
-        const key = selectedKey || (UI.selection && UI.selection.sub) || null;
-        if (!key) return;
-        const v = String(el.value || '').trim();
-        const patch = {}; patch[field] = v;
-        saveIntlLaneManual(ws, key, patch);
-      };
-      el.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') {
-          ev.preventDefault();
-          saveOne();
-          el.blur();
-        }
-      });
-      el.addEventListener('blur', () => saveOne());
-    }
 
     // Baseline helpers (UI-only; no persistence)
     const copyAll = detail.querySelector('#flow-intl-copy-all');
@@ -4458,490 +3910,171 @@ function renderFooterTrends(el, nodes, weekKey) {
     } catch { return String(ws || ''); }
   }
 
-  
-function buildReportHTML(cache) {
-    // Kept for backward compatibility (older callers). We now generate a
-    // print-ready report by capturing the live Flow DOM (no backend mutations).
-    // This function returns a minimal shell used by downloadFlowReportPdf().
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Flow report</title></head><body></body></html>`;
+  function buildReportHTML(cache) {
+    const ws = cache?.ws || '';
+    const tz = cache?.tz || getBizTZ();
+    const receiving = cache?.receiving || {};
+    const vas = cache?.vas || {};
+    const intl = cache?.intl || {};
+    const manual = cache?.manual || {};
+
+    const suppliers = Array.isArray(receiving.suppliers) ? receiving.suppliers : [];
+
+    const execRows = [
+      ['Week', escHtml(String(ws))],
+      ['Receiving', `${escHtml(pct(receiving.receivedPOs, receiving.plannedPOs))} (${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)} POs)`],
+      ['Cartons out', escHtml(receiving.cartonsOutTotal ?? 0)],
+      ['VAS applied', `${escHtml(pct(vas.appliedUnits, vas.plannedUnits))} (${escHtml(vas.appliedUnits ?? 0)}/${escHtml(vas.plannedUnits ?? 0)} units)`],
+      ['Transit lanes', escHtml(intl.lanesTotal ?? (manual?.intl?.lanes ?? 0) ?? 0)],
+      ['Docs missing', escHtml(intl.docsMissing ?? (manual?.intl?.docsMissing ?? 0) ?? 0)],
+      ['Last Mile open', `${escHtml(manual?.lastmile?.open ?? manual?.lastMile?.open ?? 0)}/${escHtml(manual?.lastmile?.total ?? manual?.lastMile?.total ?? 0)}`],
+    ];
+
+    const supplierTable = suppliers.length ? `
+      <table>
+        <thead>
+          <tr><th>Supplier</th><th>POs received</th><th>Planned units</th><th>Cartons in</th><th>Cartons out</th></tr>
+        </thead>
+        <tbody>
+          ${suppliers.map(s => `
+            <tr>
+              <td>${escHtml(s.supplier)}</td>
+              <td>${escHtml(s.receivedPOs)}/${escHtml(s.poCount)}</td>
+              <td>${escHtml(s.units)}</td>
+              <td>${escHtml(s.cartonsIn)}</td>
+              <td>${escHtml(s.cartonsOut)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    ` : `<div class="muted">No supplier breakdown available for this week.</div>`;
+
+    const nodePage = (title, bodyHtml) => `
+      <section class="page">
+        <div class="hdr">
+          <div class="h1">${escHtml(title)}</div>
+          <div class="muted">Week start: ${escHtml(ws)} • Generated: ${escHtml(new Date().toLocaleString())}</div>
+        </div>
+        ${bodyHtml}
+      </section>
+    `;
+
+    const execPage = `
+      <section class="page">
+        <div class="hdr">
+          <div class="h1">Flow — Executive summary</div>
+          <div class="muted">${escHtml(weekRangeText(ws, tz))} • Week start: ${escHtml(ws)}</div>
+        </div>
+
+        <div class="grid2">
+          ${execRows.map(([k,v]) => `<div class="kv"><div class="k">${escHtml(k)}</div><div class="v">${v}</div></div>`).join('')}
+        </div>
+
+        <div class="spacer"></div>
+        <div class="h2">Notes</div>
+        <div class="muted">Ongoing state is based on the current process node (not date math).</div>
+      </section>
+    `;
+
+    const receivingPage = nodePage('Receiving', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(receiving.due, tz))}</div></div>
+        <div class="kv"><div class="k">Last received</div><div class="v">${escHtml(fmtDateLocal(receiving.lastReceived, tz))}</div></div>
+        <div class="kv"><div class="k">POs received</div><div class="v">${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)}</div></div>
+        <div class="kv"><div class="k">Late POs</div><div class="v">${escHtml(receiving.latePOs ?? 0)}</div></div>
+        <div class="kv"><div class="k">Cartons in</div><div class="v">${escHtml(receiving.cartonsInTotal ?? 0)}</div></div>
+        <div class="kv"><div class="k">Cartons out</div><div class="v">${escHtml(receiving.cartonsOutTotal ?? 0)}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="h2">Supplier breakdown</div>
+      ${supplierTable}
+    `);
+
+    const vasPage = nodePage('VAS Processing', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(vas.due, tz))}</div></div>
+        <div class="kv"><div class="k">Applied</div><div class="v">${escHtml(vas.appliedUnits ?? 0)} / ${escHtml(vas.plannedUnits ?? 0)} units (${escHtml(pct(vas.appliedUnits, vas.plannedUnits))})</div></div>
+        <div class="kv"><div class="k">Completion</div><div class="v">${escHtml(pct(vas.completedPOs, vas.plannedPOs))} (${escHtml(vas.completedPOs ?? 0)}/${escHtml(vas.plannedPOs ?? 0)} POs)</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted">Source: completed production records aggregated for the selected week.</div>
+    `);
+
+    const intlPage = nodePage('Transit & Clearing', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Origin window</div><div class="v">${escHtml(intl.windowText ?? '—')}</div></div>
+        <div class="kv"><div class="k">Lanes</div><div class="v">${escHtml(intl.lanesTotal ?? 0)}</div></div>
+        <div class="kv"><div class="k">Mode split</div><div class="v">${escHtml(intl.modeText ?? '—')}</div></div>
+        <div class="kv"><div class="k">Docs missing</div><div class="v">${escHtml(intl.docsMissing ?? 0)}</div></div>
+        <div class="kv"><div class="k">Holds</div><div class="v">${escHtml(intl.holds ?? 0)}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted">International Transit is lightweight manual data stored locally per week (unless data-driven fields are present).</div>
+    `);
+
+    const lm = manual?.lastmile || manual?.lastMile || {};
+    const lastMilePage = nodePage('Last Mile', `
+      <div class="grid2">
+        <div class="kv"><div class="k">Delivery window</div><div class="v">${escHtml((intl && intl.lastMileWindowText) || lm.windowText || '—')}</div></div>
+        <div class="kv"><div class="k">Open</div><div class="v">${escHtml(lm.open ?? 0)}</div></div>
+        <div class="kv"><div class="k">Total</div><div class="v">${escHtml(lm.total ?? 0)}</div></div>
+        <div class="kv"><div class="k">Status</div><div class="v">${escHtml(lm.statusText || '—')}</div></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="muted">Last Mile is lightweight manual data stored locally per week.</div>
+    `);
+
+    const style = `
+      <style>
+        :root { color-scheme: light; }
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; padding: 0; color: #111827; }
+        .page { padding: 24px 28px; page-break-after: always; }
+        .page:last-child { page-break-after: auto; }
+        .hdr { margin-bottom: 14px; }
+        .h1 { font-size: 18px; font-weight: 700; }
+        .h2 { font-size: 13px; font-weight: 700; margin: 10px 0 8px; }
+        .muted { color: rgba(17,24,39,0.65); font-size: 11px; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .kv { border: 1px solid rgba(17,24,39,0.10); border-radius: 10px; padding: 10px; }
+        .k { font-size: 10px; color: rgba(17,24,39,0.60); margin-bottom: 4px; }
+        .v { font-size: 12px; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(17,24,39,0.10); }
+        th { font-size: 10px; color: rgba(17,24,39,0.60); font-weight: 700; }
+        .spacer { height: 10px; }
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      </style>
+    `;
+
+    return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
+      ${execPage}
+      ${receivingPage}
+      ${vasPage}
+      ${intlPage}
+      ${lastMilePage}
+    </body></html>`;
   }
 
   function downloadFlowReportPdf(cache) {
-    // SAFETY: do not touch refresh(), API base resolution, or backend patch calls.
-    // PDF generation is isolated to DOM capture + a separate print window.
-    const cap = cache || (window.UI && UI.reportCache) || {};
-    const ws = cap.ws || (window.UI && UI.currentWs) || (window.state && window.state.weekStart) || '';
-    const tz = cap.tz || getBizTZ();
-
-    const prevSel = (window.UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
-
-    const pageFlow = document.getElementById('page-flow');
-
-    const escape = (s) => escapeHtml(String(s ?? ''));
-
-    const addDaysLocal = (isoDateStr, days) => {
-      try {
-        const d = new Date(`${isoDateStr}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + days);
-        return d;
-      } catch { return null; }
-    };
-
-    const fmtDateRange = (wsISO) => {
-      const mon = addDaysLocal(wsISO, 0);
-      const sun = addDaysLocal(wsISO, 6);
-      if (!mon || !sun || isNaN(mon) || isNaN(sun)) return '—';
-      const fmt = (d) => new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit', year: 'numeric' }).format(d);
-      return `${fmt(mon)} – ${fmt(sun)}`;
-    };
-
-    // ISO week number (Monday-based)
-    const isoWeekNum = (wsISO) => {
-      try {
-        const d = new Date(`${wsISO}T00:00:00Z`);
-        // Thursday in current week decides the year.
-        const day = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-        d.setUTCDate(d.getUTCDate() - day + 3); // Thu
-        const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
-        const firstDay = (firstThu.getUTCDay() + 6) % 7;
-        firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
-        const diff = d - firstThu;
-        return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
-      } catch { return null; }
-    };
-
-    const weekLabel = (() => {
-      const n = isoWeekNum(ws);
-      return n ? `Week ${String(n).padStart(2, '0')}` : 'Week —';
-    })();
-
-    const createdAt = (() => {
-      try {
-        const now = new Date();
-        return new Intl.DateTimeFormat('en-US', {
-          timeZone: tz,
-          year: 'numeric', month: 'short', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
-        }).format(now);
-      } catch {
-        return String(new Date());
-      }
-    })();
-
-    const captureHTML = (el) => {
-      if (!el) return '';
-      // Clone to avoid mutating live DOM
-      const c = el.cloneNode(true);
-      // Remove any buttons/controls that don't make sense in print
-      c.querySelectorAll('button, input, select, textarea').forEach(x => {
-        // Preserve textual buttons (e.g., lane supplier links) by converting to spans
-        if (x.tagName === 'BUTTON') {
-          const t = (x.textContent || '').trim();
-          if (t) {
-            const s = document.createElement('span');
-            s.textContent = t;
-            s.style.fontSize = '12px';
-            s.style.fontWeight = '600';
-            x.replaceWith(s);
-          } else {
-            x.remove();
-          }
-          return;
-        }
-        // Keep input values readable by converting to text spans
-        if (x.tagName === 'INPUT' && (x.type === 'text' || x.type === 'datetime-local')) {
-          const v = (x.value || '').trim();
-          const s = document.createElement('span');
-          s.textContent = v || '—';
-          s.style.fontSize = '12px';
-          s.style.fontWeight = '600';
-          x.replaceWith(s);
-          return;
-        }
-        if (x.tagName === 'INPUT' && x.type === 'checkbox') {
-          const s = document.createElement('span');
-          s.textContent = x.checked ? '✓' : '—';
-          s.style.fontWeight = '700';
-          x.replaceWith(s);
-          return;
-        }
-        if (x.tagName === 'TEXTAREA') {
-          const v = (x.value || x.textContent || '').trim();
-          const s = document.createElement('div');
-          s.textContent = v || '—';
-          s.style.whiteSpace = 'pre-wrap';
-          s.style.fontSize = '11px';
-          x.replaceWith(s);
-          return;
-        }
-        // Buttons etc become nothing
-        x.remove();
-      });
-      return c.innerHTML;
-    };
-
-    const stripIntlLaneDetailsFromDetailHTML = (html) => {
-      try {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        // Remove lane editor (Lane details) section
-        const laneEditorBody = tmp.querySelector('#flow-lane-editor-body');
-        if (laneEditorBody) {
-          const wrap = laneEditorBody.closest('.rounded-xl.border.p-3') || laneEditorBody.closest('.rounded-xl') || laneEditorBody.parentElement;
-          if (wrap) wrap.remove();
-        }
-        return tmp.innerHTML;
-      } catch { return html; }
-    };
-
-    const extractIntlContainersTileHTML = (html) => {
-      try {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        // Find the week-level containers editor section by known ids/classes
-        const wcList = tmp.querySelector('#flow-wc-list');
-        if (!wcList) return '';
-        const wrap = wcList.closest('.rounded-xl.border.p-3') || wcList.closest('.rounded-xl') || wcList.parentElement;
-        return wrap ? wrap.outerHTML : '';
-      } catch { return ''; }
-    };
-
-    const stripSelectedContainerFromHTML = (html) => {
-      // PDF-only: remove the "Selected Container" panel from Last Mile pages.
-      // Keeps the live UI untouched.
-      try {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        const needles = ['selected container', 'selected-container'];
-
-        // Try common patterns: a card/section that contains a title matching the needle.
-        const all = Array.from(tmp.querySelectorAll('*'));
-        for (const el of all) {
-          const t = (el.textContent || '').trim().toLowerCase();
-          if (!t) continue;
-          if (!needles.some(n => t === n || t.includes(n))) continue;
-
-          // Prefer removing the nearest card wrapper.
-          const wrap = el.closest('.rounded-xl') || el.closest('.rounded-2xl') || el.closest('.border') || el.closest('.box') || el.parentElement;
-          if (wrap) {
-            wrap.remove();
-            break;
-          }
-        }
-        return tmp.innerHTML;
-      } catch {
-        return html;
-      }
-    };
-
-    const hideDuringCapture = () => {
-      try {
-        if (!document.getElementById('flow-pdf-export-style')) {
-          const st = document.createElement('style');
-          st.id = 'flow-pdf-export-style';
-          st.textContent = `
-            body.flow-pdf-exporting #page-flow { visibility: hidden !important; }
-            body.flow-pdf-exporting #flow-lane-modal-root { visibility: hidden !important; }
-          `;
-          document.head.appendChild(st);
-        }
-        document.body.classList.add('flow-pdf-exporting');
-      } catch {}
-    };
-
-    const showAfterCapture = () => {
-      try { document.body.classList.remove('flow-pdf-exporting'); } catch {}
-    };
-
-    const safeRenderForNode = (nodeKey) => {
-      try {
-        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
-        UI.selection = { node: nodeKey, sub: null };
-        renderDetail(ws, tz, receiving, vas, intl, manual);
-        renderRightTile(ws, tz, receiving, vas, intl, manual);
-        highlightSelection();
-      } catch (e) {
-        console.warn('[flow] pdf render node failed', nodeKey, e);
-      }
-    };
-
-    const nodePageHTML = (pageTitle, rightTitle, rightHTML, bottomTitle, detailHTML) => {
-      return `
-        <div class="page">
-          <div class="pageTitle">${escape(pageTitle)}</div>
-          <div class="pageGrid">
-            <div class="box">
-              <div class="boxTitle">${escape(rightTitle || 'Summary')}</div>
-              <div class="boxBody">${rightHTML || '<div class="muted">—</div>'}</div>
-            </div>
-            <div class="box">
-              <div class="boxTitle">${escape(bottomTitle || 'Details')}</div>
-              <div class="boxBody">${detailHTML || '<div class="muted">—</div>'}</div>
-            </div>
-          </div>
-        </div>
-      `;
-    };
-
     try {
-      // Ensure we have a rendered Flow DOM to capture
-      if (!pageFlow || pageFlow.classList.contains('hidden')) {
-        // If Flow isn't visible, still attempt: render once.
-        try { refresh(); } catch {}
-      }
-
-      hideDuringCapture();
-
-      const pages = [];
-
-      // Page 1: Cover
-      pages.push(`
-        <div class="page cover">
-          <div class="coverBlock">
-            <div class="coverBrand"><span class="brandAccent">VelOzity</span> <span class="brandAccent">Pinpoint</span> <span class="brandPin">📍</span></div>
-            <div class="coverWeek">${escape(weekLabel)}</div>
-            <div class="coverRange">${escape(fmtDateRange(ws))}</div>
-          </div>
-        </div>
-      `);
-
-
-      // Page 2: Overview (S-curve + Week totals)
-      const journeyHTML = captureHTML(document.getElementById('flow-journey'));
-      // IMPORTANT (PDF-only): Overview should always show Week totals (no node context).
-      // We temporarily render the right tile in "week totals" mode by clearing selection,
-      // capture the DOM, then continue with node-specific pages. Live UI is restored in finally.
-      let weekTotalsHTML = '';
-      try {
-        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
-        const prev = (UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
-        UI.selection = { node: null, sub: null };
-        renderRightTile(ws, tz, receiving, vas, intl, manual);
-        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
-        if (prev) UI.selection = { node: prev.node, sub: prev.sub || null };
-      } catch (e) {
-        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
-      }
-      pages.push(`
-        <div class="page">
-          <div class="pageTitle">Overview</div>
-          <div class="overviewGrid">
-            <div class="box">
-              <div class="boxTitle">Inverted S-curve</div>
-              <div class="boxBody">${journeyHTML || '<div class="muted">—</div>'}</div>
-            </div>
-            <div class="box">
-              <div class="boxTitle">Week totals</div>
-              <div class="boxBody">${weekTotalsHTML || '<div class="muted">—</div>'}</div>
-            </div>
-          </div>
-        </div>
-      `);
-
-      // Receiving
-      safeRenderForNode('receiving');
-      pages.push(nodePageHTML('Receiving', 'Receiving summary', captureHTML(document.getElementById('flow-footer')), 'Receiving detail', captureHTML(document.getElementById('flow-detail'))));
-
-      // VAS
-      safeRenderForNode('vas');
-      pages.push(nodePageHTML('VAS Processing', 'VAS summary', captureHTML(document.getElementById('flow-footer')), 'VAS detail', captureHTML(document.getElementById('flow-detail'))));
-
-      // Transit & Clearing special: (A) right tile + lanes tile (no lane details)
-      safeRenderForNode('intl');
-      const intlRight = captureHTML(document.getElementById('flow-footer'));
-      const intlDetailRaw = captureHTML(document.getElementById('flow-detail'));
-      const intlDetailNoEditor = stripIntlLaneDetailsFromDetailHTML(intlDetailRaw);
-      pages.push(`
-        <div class="page">
-          <div class="pageTitle">Transit &amp; Clearing</div>
-          <div class="pageGrid">
-            <div class="box">
-              <div class="boxTitle">Transit &amp; Clearing summary</div>
-              <div class="boxBody">${intlRight || '<div class="muted">—</div>'}</div>
-            </div>
-            <div class="box">
-              <div class="boxTitle">Lanes</div>
-              <div class="boxBody">${intlDetailNoEditor || '<div class="muted">—</div>'}</div>
-            </div>
-          </div>
-        </div>
-      `);
-
-      // Transit & Clearing special: (B) lanes full screen table
-      try {
-        // Build the modal content (hidden during capture), then capture its body.
-        openIntlOverviewModal(ws, tz);
-        const modalBody = document.querySelector('#flow-lane-modal-body');
-        const modalTitle = document.querySelector('#flow-lane-modal-title')?.textContent || 'Transit & Clearing — Lanes (Full screen)';
-        const lanesFullHTML = captureHTML(modalBody);
-        // close modal safely
-        const root = document.getElementById('flow-lane-modal-root');
-        if (root) root.classList.add('hidden');
-        pages.push(`
-          <div class="page">
-            <div class="pageTitle">${escape(modalTitle)}</div>
-            <div class="box">
-              <div class="boxBody">${lanesFullHTML || '<div class="muted">—</div>'}</div>
-            </div>
-          </div>
-        `);
-      } catch (e) {
-        console.warn('[flow] pdf lanes fullscreen capture failed', e);
-      }
-      // Transit & Clearing containers pages intentionally omitted in PDF.
-// Last Mile
-      safeRenderForNode('lastmile');
-      {
-        const lmRightRaw = captureHTML(document.getElementById('flow-footer'));
-        const lmDetailRaw = captureHTML(document.getElementById('flow-detail'));
-        const lmRight = stripSelectedContainerFromHTML(lmRightRaw);
-        const lmDetail = stripSelectedContainerFromHTML(lmDetailRaw);
-        pages.push(nodePageHTML('Last Mile', 'Last Mile summary', lmRight, 'Last Mile detail', lmDetail));
-      }
-
-      // Final timestamp page
-      pages.push(`
-        <div class="page cover">
-          <div class="coverBlock">
-            <div class="coverBrand"><span class="brandAccent">Report created</span></div>
-            <div class="coverRange">${escape(createdAt)}</div>
-          </div>
-        </div>
-      `);
-
-
-      // Restore selection
-      try {
-        // Best effort restore to original selection
-        // (we used UI.selection directly; keep stable afterwards)
-      } catch {}
-
-      // Add per-page footer text (avoid relying on print page counters, which vary by browser/PDF driver)
-      const totalPages = pages.length;
-      const pagesWithFooter = pages.map((p, i) => {
-        try {
-          return String(p).replace(/<\/div>\s*$/, `<div class="pageFooter">VelOzity Pinpoint • Page ${i+1} of ${totalPages}</div></div>`);
-        } catch { return p; }
-      });
-
-      // Build print window
-      const style = `
-        <style>
-          :root { color-scheme: light; }
-          @page { size: letter landscape; margin: 0.5in; }
-          html, body { margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: #111827; }
-          .page { position: relative; page-break-after: always; }
-          .page:last-child { page-break-after: auto; }
-          .pageTitle { font-size: 18px; font-weight: 800; margin: 0 0 10px 0; }
-          .box { border: 1px solid rgba(17,24,39,0.12); border-radius: 14px; padding: 12px; background: #fff; }
-          .boxTitle { font-size: 12px; font-weight: 700; color: rgba(17,24,39,0.70); margin-bottom: 8px; }
-          .boxBody { font-size: 12px; }
-          .muted { color: rgba(17,24,39,0.55); font-size: 12px; }
-          .overviewGrid { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 14px; align-items: start; }
-          .pageGrid { display: grid; grid-template-columns: 0.9fr 1.4fr; gap: 14px; align-items: start; }
-          .cover { display:flex; align-items:center; justify-content:center; min-height: 7.0in; }
-          .coverBlock { width: 100%; padding-left: 0.8in; text-align: left; }
-          .coverBrand { font-size: 40px; font-weight: 900; letter-spacing: 0.02em; line-height: 1.05; }
-          .brandAccent { color: #990033; }
-          .brandPin { color: #990033; font-size: 34px; margin-left: 6px; }
-          .coverWeek { font-size: 22px; font-weight: 800; margin-top: 10px; color: #111827; }
-          .coverRange { font-size: 14px; color: rgba(17,24,39,0.65); margin-top: 6px; }
-          /* Make tables print nicely */
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border-bottom: 1px solid rgba(17,24,39,0.10); padding: 6px 8px; vertical-align: top; }
-          th { color: rgba(17,24,39,0.65); font-size: 11px; font-weight: 800; }
-
-          /* PDF-only utility styles (avoid importing Tailwind; keep minimal + targeted)
-             Fixes: (1) metric label/value wrapping in Week totals, (2) progress bars visibility. */
-          .flex { display:flex; }
-          .inline-flex { display:inline-flex; }
-          .items-center { align-items:center; }
-          .items-start { align-items:flex-start; }
-          .justify-between { justify-content:space-between; }
-          .gap-2 { gap: 8px; }
-          .gap-3 { gap: 12px; }
-          .py-2 { padding-top: 8px; padding-bottom: 8px; }
-          .px-3 { padding-left: 12px; padding-right: 12px; }
-          .py-1 { padding-top: 4px; padding-bottom: 4px; }
-          .p-3 { padding: 12px; }
-          .mt-0\.5 { margin-top: 2px; }
-          .mt-1 { margin-top: 4px; }
-          .mt-2 { margin-top: 8px; }
-          .mt-3 { margin-top: 12px; }
-          .space-y-3 > * + * { margin-top: 12px; }
-          .rounded-xl { border-radius: 12px; }
-          .rounded-2xl { border-radius: 16px; }
-          .rounded-full { border-radius: 9999px; }
-          .border { border: 1px solid rgba(17,24,39,0.12); }
-          .overflow-hidden { overflow: hidden; }
-          .text-xs { font-size: 11px; }
-          .text-sm { font-size: 12px; }
-          .font-semibold { font-weight: 700; }
-          .text-gray-500 { color: rgba(17,24,39,0.55); }
-          .text-gray-600 { color: rgba(17,24,39,0.60); }
-          .text-gray-700 { color: rgba(17,24,39,0.70); }
-          .text-gray-800 { color: rgba(17,24,39,0.85); }
-          .text-gray-900 { color: rgba(17,24,39,0.95); }
-          .bg-white { background: #fff; }
-          .bg-gray-50 { background: rgba(17,24,39,0.03); }
-          .bg-gray-100 { background: rgba(17,24,39,0.06); }
-
-          /* Progress bars (used in Receiving/VAS tiles) */
-          .w-36 { width: 144px; }
-          .w-32 { width: 128px; }
-          .w-28 { width: 112px; }
-          .h-2 { height: 8px; }
-          .h-full { height: 100%; }
-          .bg-emerald-400 { background: #34d399; }
-
-          /* Keep metric rows on a single line in PDF (Week totals) */
-          .flex.items-center.justify-between > div:last-child { white-space: nowrap; }
-
-          /* Keep KPI cards (label + value) on one line across nodes (Transit KPIs, Last Mile KPIs, etc.) */
-          .rounded-lg.border.p-2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-          .rounded-lg.border.p-2 > div:first-child { white-space: nowrap; }
-          .rounded-lg.border.p-2 > div:last-child { white-space: nowrap; }
-
-          /* Keep compact stat pills (Sea/Air/Delayed/At risk) on one line in PDF */
-          .rounded-lg.border.px-2.py-1.bg-white { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-          /* If grid layout utilities are missing, still keep pills aligned */
-          .grid.grid-cols-2.sm\:grid-cols-4.gap-2.text-xs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-          /* Footer */
-          .pageFooter { position: absolute; right: 0; bottom: 0; font-size: 10px; color: rgba(17,24,39,0.70); }
-          @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          }
-        </style>
-      `;
-
-      const html = `<!doctype html><html><head><meta charset="utf-8"><title>VelOzity Pinpoint — ${escape(weekLabel)}</title>${style}</head>
-        <body>
-          ${pagesWithFooter.join('\n')}
-        </body></html>`;
-
+      const html = buildReportHTML(cache || {});
       const w = window.open('', '_blank');
-      if (!w) { showAfterCapture(); return; }
+      if (!w) return;
       w.document.open();
       w.document.write(html);
       w.document.close();
+      // Give the browser a moment to render before printing.
       w.focus();
-      setTimeout(() => { try { w.print(); } catch {} }, 300);
+      setTimeout(() => {
+        try { w.print(); } catch(e) {}
+      }, 250);
     } catch (e) {
-      console.warn('[flow] pdf export failed', e);
-    } finally {
-      try {
-        if (prevSel) UI.selection = { node: prevSel.node, sub: prevSel.sub || null };
-        // Re-render once to restore the UI (best-effort; no backend writes)
-        try {
-          const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
-          renderDetail(ws, tz, receiving, vas, intl, manual);
-          renderRightTile(ws, tz, receiving, vas, intl, manual);
-          highlightSelection();
-        } catch {}
-      } catch {}
-      try { showAfterCapture(); } catch {}
+      console.warn('[flow] report build failed', e);
     }
   }
+
 async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
