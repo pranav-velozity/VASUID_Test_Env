@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 4000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'; // set to your frontend origin(s) in prod
 const DB_DIR = process.env.DB_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DB_DIR, { recursive: true });
-const DB_FILE = process.env.DB_FILE || path.join(DB_DIR, 'uid_ops_testenv.sqlite');
+const DB_FILE = process.env.DB_FILE || path.join(DB_DIR, 'uid_ops.sqlite');
 
 // ---- App ----
 const app = express();
@@ -473,8 +473,12 @@ app.get('/records', (req, res) => {
   const fromQ     = req.query.from      ? String(req.query.from)      : '';
   const toQ       = req.query.to        ? String(req.query.to)        : '';
 
-  const from = fromQ || weekStart || '';
-  const to   = toQ   || weekEnd   || '';
+  const fromRaw = fromQ || weekStart || '';
+  const toRaw   = toQ   || weekEnd   || '';
+
+  // Normalize ISO timestamps (e.g. 2026-02-02T00:00:00.000Z) to YYYY-MM-DD for date_local filtering.
+  const from = fromRaw && fromRaw.includes('T') ? fromRaw.slice(0, 10) : fromRaw;
+  const to   = toRaw   && toRaw.includes('T')   ? toRaw.slice(0, 10)   : toRaw;
   const status = req.query.status ? String(req.query.status) : '';
   const limit  = req.query.limit  ? Number(req.query.limit)  : undefined;
 
@@ -899,11 +903,12 @@ app.get('/bins', (req, res) => {
 });
 /* ===== END: /bins alias ===== */
 
+
+
 // ---- Start ----
 app.listen(PORT, () => {
   console.log(`UID Ops backend listening on http://localhost:${PORT}`);
   console.log(`DB file: ${DB_FILE}`);
   console.log(`CORS origin(s): ${allowList.join(', ')}`);
 });
-
 
