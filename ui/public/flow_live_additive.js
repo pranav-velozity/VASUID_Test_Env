@@ -1609,26 +1609,43 @@ function computeManualNodeStatuses(ws, tz) {
 
     const { ws, tz, planRows, receivingRows } = ctx;
 
+    const normalizePO = (v) => String(v ?? '').trim().toUpperCase();
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
     // Build received PO set with timestamps
     const receivedByPO = new Map();
     for (const r of (receivingRows || [])) {
-      const po = r.po || r.PO || r.po_number || r.PO_Number || r.PO_Number?.toString?.();
+      const po = normalizePO(r.po ?? r.PO ?? r.po_number ?? r.PO_Number ?? r.poNumber);
       const receivedAt = r.receivedAt || r.received_at || r.received_at_utc || r.received;
       if (!po) continue;
-      if (receivedAt) receivedByPO.set(String(po), receivedAt);
+      if (receivedAt) receivedByPO.set(po, receivedAt);
     }
 
     // Planned units by PO + supplier by PO
+    // NOTE: plan row schemas differ by environment, so keep the extraction generous.
+    const getPO = (r) => normalizePO(
+      r.po_number ?? r.poNumber ?? r.PO_Number ?? r.PO ?? r.po ?? r.po_no ?? r.poNo ?? r.supplier_po ?? r.supplierPO ?? ''
+    );
+    const toNum = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const getPlannedUnits = (r) => (
+      toNum(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.planned_units ?? r.plannedUnits ?? r.PlannedUnits ?? r.units ?? r.Units ?? r.qty ?? r.Qty)
+    );
+
     const plannedUnitsByPO = new Map();
     const supplierByPO = new Map();
     for (const row of (planRows || [])) {
-      const po = row.po || row.PO || row.po_number || row.poNumber;
-      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name;
-      const units = Number(row.units || row.Units || row.planned_units || row.PlannedUnits || row.plannedUnits || 0) || 0;
+      const po = getPO(row);
       if (!po) continue;
-      const k = String(po);
-      plannedUnitsByPO.set(k, (plannedUnitsByPO.get(k) || 0) + units);
-      if (supplier && !supplierByPO.has(k)) supplierByPO.set(k, String(supplier));
+      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name || row.supplierName;
+      const units = getPlannedUnits(row);
+      plannedUnitsByPO.set(po, (plannedUnitsByPO.get(po) || 0) + units);
+      if (supplier && !supplierByPO.has(po)) supplierByPO.set(po, String(supplier));
     }
 
     // Received PO details grouped by supplier
@@ -1676,12 +1693,12 @@ function computeManualNodeStatuses(ws, tz) {
     // Supplier rows
     const supBody = root.querySelector('#flow-recvfs-sup-rows');
     if (supBody) {
-      supBody.innerHTML = suppliers.map(s => {
+      supBody.innerHTML = suppliers.map((s, i) => {
         const list = bySupplier.get(s) || [];
         const pos = list.length;
         const units = list.reduce((a,x)=>a+(x.units||0),0);
         return `
-          <tr class="hover:bg-gray-50 cursor-pointer" data-recvfs-supplier="${escapeHtml(s)}">
+          <tr class="hover:bg-gray-50 cursor-pointer" data-recvfs-idx="${i}">
             <td class="px-3 py-2">${escapeHtml(s)}</td>
             <td class="px-3 py-2 text-right">${fmtNum(pos)}</td>
             <td class="px-3 py-2 text-right">${fmtNum(units)}</td>
@@ -1693,10 +1710,12 @@ function computeManualNodeStatuses(ws, tz) {
     // Supplier dropdown
     const sel = root.querySelector('#flow-recvfs-sel');
     if (sel) {
-      sel.innerHTML = suppliers.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+      sel.innerHTML = suppliers.map((s, i) => `<option value="${i}">${escapeHtml(s)}</option>`).join('');
     }
 
-    function renderSupplierDetail(supplier) {
+    function renderSupplierDetail(supplierIdxOrName) {
+      const idx = Number(supplierIdxOrName);
+      const supplier = Number.isFinite(idx) ? (suppliers[idx] ?? String(supplierIdxOrName)) : String(supplierIdxOrName);
       const rows = bySupplier.get(supplier) || [];
       const poBody = root.querySelector('#flow-recvfs-po-rows');
       if (poBody) {
@@ -1729,14 +1748,14 @@ function computeManualNodeStatuses(ws, tz) {
     }
 
     // Default select first supplier
-    if (suppliers.length && sel) renderSupplierDetail(sel.value || suppliers[0]);
+    if (suppliers.length && sel) renderSupplierDetail(sel.value || 0);
 
     // Click rows to select
-    supBody?.querySelectorAll('[data-recvfs-supplier]')?.forEach(tr => {
+    supBody?.querySelectorAll('[data-recvfs-idx]')?.forEach(tr => {
       tr.addEventListener('click', () => {
-        const s = tr.getAttribute('data-recvfs-supplier');
-        if (sel) sel.value = s;
-        renderSupplierDetail(s);
+        const idx = tr.getAttribute('data-recvfs-idx');
+        if (sel) sel.value = idx;
+        renderSupplierDetail(idx);
       });
     });
 
