@@ -1731,7 +1731,8 @@ function computeManualNodeStatuses(ws, tz) {
     root.classList.remove('hidden');
 
     // Replace the body content with a unified grouped table (no dropdown dependency).
-    const body = root.querySelector('#flow-recvfs-body');
+    // Baseline modal markup doesn't always include a dedicated body id, so fall back to the main scroll container.
+    const body = root.querySelector('#flow-recvfs-body') || root.querySelector('.flex-1.overflow-auto.p-4');
     if (body) {
       body.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4" id="flow-recvfs-kpis"></div>
