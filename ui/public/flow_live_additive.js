@@ -3308,9 +3308,11 @@ bindSign(sVas, 'vasComplete');
 
       let html = '';
       let poRowIdx = 0;
+      let supplierIdx = 0;
       const suppliers = Array.from(groups.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
 
       for (const supplier of suppliers) {
+        const supZebra = (supplierIdx++ % 2) ? 'bg-[#990033]/5' : 'bg-white';
         const sId = 'S:' + supplier;
         const zg = groups.get(supplier);
         const allRowsS = [];
@@ -3325,7 +3327,7 @@ bindSign(sVas, 'vasComplete');
 
         const sCollapsed = state.collapsedSupplier.has(sId);
         html += `
-          <tr class="bg-white hover:bg-gray-50 cursor-pointer select-none" data-kind="supplier" data-id="${esc(sId)}">
+          <tr class="${supZebra} hover:bg-gray-50 cursor-pointer select-none" data-kind="supplier" data-id="${esc(sId)}">
             <td class="px-3 py-2 font-semibold text-[14px]">
               <span class="inline-block w-4">${caret(sCollapsed)}</span>
               ${esc(supplier)}
