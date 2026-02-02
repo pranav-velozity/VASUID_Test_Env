@@ -3326,6 +3326,9 @@ bindSign(sVas, 'vasComplete');
           const zRecPOs = countReceived(allRowsZ);
           const zPct = zPOs ? Math.round((zRecPOs / zPOs) * 100) : 0;
 
+          const zFreights = Array.from(fg.keys()).filter(x => String(x || '').trim());
+          const zFreightLabel = zFreights.length ? (zFreights.length === 1 ? zFreights[0] : zFreights.join(' / ')) : '—';
+
           const zCollapsed = state.collapsedZendesk.has(zId);
           html += `
             <tr class="bg-gray-50/70 hover:bg-gray-50 cursor-pointer select-none" data-kind="zendesk" data-id="${esc(zId)}">
@@ -3338,7 +3341,7 @@ bindSign(sVas, 'vasComplete');
                   <div class="h-1.5 rounded bg-emerald-500" style="width:${zPct}%"></div>
                 </div>
               </td>
-              <td class="px-3 py-2"></td>
+              <td class="px-3 py-2 text-xs text-gray-600">${esc(zFreightLabel)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zPlanned)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zApprox)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zApplied)}</td>
@@ -4047,6 +4050,9 @@ detail.innerHTML = [
     const arrived = v(manual.arrived_at);
     const destClr = v(manual.dest_customs_cleared_at);
 
+    const etaFC = v(manual.eta_fc || manual.etaFC || manual.eta_fc_at || manual.eta_fc_fc);
+    const latestArrivalDate = v(manual.latest_arrival_date || manual.latestArrivalDate || manual.latestArrival || manual.latest_arrival);
+
     // Baseline (reference-only): show expected milestone dates without persisting.
     const vasDueB = makeBizLocalDate(
       isoDate(addDays(new Date(`${ws}T00:00:00Z`), BASELINE.vas_complete_due.dayOffset)),
@@ -4226,6 +4232,16 @@ detail.innerHTML = [
                   <span>Baseline: <span class="font-mono">${baseDestClr}</span></span>
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-destclr" data-val="${baseDestClr}">Copy</button>
                 </div>
+              </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">ETA FC</div>
+                <input id="flow-intl-etafc" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${etaFC}"/>
+              </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Latest arrival date</div>
+                <input id="flow-intl-latestarrival" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${latestArrivalDate}"/>
               </label>
 
               <div class="flex items-center gap-3 md:pt-6">
@@ -4525,6 +4541,8 @@ detail.innerHTML = [
         const departed = detail.querySelector('#flow-intl-departed')?.value || '';
         const arrived = detail.querySelector('#flow-intl-arrived')?.value || '';
         const destClr = detail.querySelector('#flow-intl-destclr')?.value || '';
+        const etaFC = detail.querySelector('#flow-intl-etafc')?.value || '';
+        const latestArrivalDate = detail.querySelector('#flow-intl-latestarrival')?.value || '';
 
         const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
         const note = detail.querySelector('#flow-intl-note')?.value || '';
@@ -4534,6 +4552,8 @@ detail.innerHTML = [
           departed_at: safeISO(departed),
           arrived_at: safeISO(arrived),
           dest_customs_cleared_at: safeISO(destClr),
+          eta_fc: safeISO(etaFC),
+          latest_arrival_date: safeISO(latestArrivalDate),
           customs_hold: hold,
           note: String(note || ''),
         };
