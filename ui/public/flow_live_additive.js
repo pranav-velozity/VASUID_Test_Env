@@ -1546,6 +1546,14 @@ function computeManualNodeStatuses(ws, tz) {
               <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
               <input data-lm-field="destClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.destClr))}"/>
             </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">ETA FC</div>
+              <input data-lm-field="etaFC" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.etaFC || manual.eta_fc))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Latest arrival date</div>
+              <input data-lm-field="latestArrivalDate" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.latestArrivalDate || manual.latest_arrival_date || manual.latestArrival))}"/>
+            </label>
           </div>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
@@ -1606,6 +1614,8 @@ function computeManualNodeStatuses(ws, tz) {
         departed: get('departed'),
         arrived: get('arrived'),
         destClr: get('destClr'),
+        etaFC: get('etaFC'),
+        latestArrivalDate: get('latestArrivalDate'),
         hold: !!get('hold'),
         note: get('note'),
         shipmentNumber: get('shipmentNumber'),
@@ -1789,6 +1799,8 @@ function computeManualNodeStatuses(ws, tz) {
           <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
           <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
           <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
+                    <td class=\"py-3 px-4 text-center\">${laneDateCell(manual, null, ['eta_fc','etaFC','eta_fc_at','eta_fc_fc'])}</td>
+          <td class=\"py-3 px-4 text-center\">${laneDateCell(manual, null, ['latest_arrival_date','latestArrivalDate','latestArrival','latest_arrival'])}</td>
           <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
           <td class="py-3 pl-4 pr-4 text-left">${containers.length ? containers.map(c=>escapeHtml(c)).join('<br/>') : '—'}</td>
         </tr>
@@ -1824,12 +1836,14 @@ function computeManualNodeStatuses(ws, tz) {
                 <th class="text-center py-3 px-4">🛃 Origin Customs</th>
                 <th class="text-center py-3 px-4">🚚 Departed</th>
                 <th class="text-center py-3 px-4">📍 Arrived</th>
+                <th class=\"text-center py-3 px-4\">🏬 ETA FC</th>
+                <th class=\"text-center py-3 px-4\">📅 Latest arrival</th>
                 <th class="text-center py-3 px-4">🛃 Dest Customs</th>
                 <th class="text-left py-2 pr-2">Container #</th>
               </tr>
             </thead>
             <tbody>
-              ${rows || '<tr><td class="py-2 text-gray-500" colspan="13">No lanes found.</td></tr>'}
+              ${rows || '<tr><td class="py-2 text-gray-500" colspan="15">No lanes found.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -3130,7 +3144,18 @@ bindSign(sVas, 'vasComplete');
       const approxReceivedUnits = receivedAt ? plannedUnits : 0; // definition: planned units for received POs
       const appliedUnits = appliedUnitsByPO.get(po) || 0;
 
-      rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, receivedAt });
+      // Lane-level dates (from Intl Transit & Clearing lane manual inputs)
+      let etaFC = '';
+      let latestArrivalDate = '';
+      try {
+        const ticket = (zendesk && zendesk !== '—') ? zendesk : 'NO_TICKET';
+        const lKey = (typeof laneKey === 'function') ? laneKey(supplier, ticket, freight) : '';
+        const lm = lKey ? (loadIntlLaneManual(ws, lKey) || {}) : {};
+        etaFC = String(lm.eta_fc || lm.etaFC || lm.eta_fc_at || lm.eta_fc_fc || '').trim();
+        latestArrivalDate = String(lm.latest_arrival_date || lm.latestArrivalDate || lm.latestArrival || lm.latest_arrival || '').trim();
+      } catch { /* ignore */ }
+
+      rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, etaFC, latestArrivalDate, receivedAt });
     }
     rows.sort((a,b) =>
       a.supplier.localeCompare(b.supplier) ||
@@ -3173,9 +3198,12 @@ bindSign(sVas, 'vasComplete');
             <thead class="bg-gray-50 sticky top-0 z-10">
               <tr>
                 <th class="text-left px-3 py-2">Supplier / Zendesk / Freight / PO</th>
+                <th class="text-left px-3 py-2">Freight</th>
                 <th class="text-right px-3 py-2">Planned units</th>
                 <th class="text-right px-3 py-2">Approx received units</th>
                 <th class="text-right px-3 py-2">UID applied units</th>
+                <th class="text-left px-3 py-2">ETA FC</th>
+                <th class="text-left px-3 py-2">Latest arrival date</th>
                 <th class="text-left px-3 py-2">Received at</th>
               </tr>
             </thead>
@@ -3258,6 +3286,7 @@ bindSign(sVas, 'vasComplete');
         const sApplied = sum(allRowsS, x=>x.appliedUnits);
         const sPOs = allRowsS.length;
         const sRecPOs = countReceived(allRowsS);
+        const sPct = sPOs ? Math.round((sRecPOs / sPOs) * 100) : 0;
 
         const sCollapsed = state.collapsedSupplier.has(sId);
         html += `
@@ -3266,10 +3295,16 @@ bindSign(sVas, 'vasComplete');
               <span class="inline-block w-4">${caret(sCollapsed)}</span>
               ${esc(supplier)}
               <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(sRecPOs)}/${fmtNum(sPOs)} POs received)</span>
+              <div class="mt-1 w-40 h-1.5 bg-gray-200 rounded">
+                <div class="h-1.5 rounded bg-emerald-500" style="width:${sPct}%"></div>
+              </div>
             </td>
+            <td class="px-3 py-2"></td>
             <td class="px-3 py-2 text-right font-semibold">${fmtNum(sPlanned)}</td>
             <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApprox)}</td>
             <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApplied)}</td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
             <td class="px-3 py-2"></td>
           </tr>
         `;
@@ -3289,6 +3324,7 @@ bindSign(sVas, 'vasComplete');
           const zApplied = sum(allRowsZ, x=>x.appliedUnits);
           const zPOs = allRowsZ.length;
           const zRecPOs = countReceived(allRowsZ);
+          const zPct = zPOs ? Math.round((zRecPOs / zPOs) * 100) : 0;
 
           const zCollapsed = state.collapsedZendesk.has(zId);
           html += `
@@ -3298,10 +3334,16 @@ bindSign(sVas, 'vasComplete');
                 <span class="inline-block w-4">${caret(zCollapsed)}</span>
                 <span class="text-xs text-gray-600"><span class="font-medium">Zendesk:</span> ${esc(zendesk)}</span>
                 <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(zRecPOs)}/${fmtNum(zPOs)} POs received)</span>
+                <div class="mt-1 w-36 h-1.5 bg-gray-200 rounded">
+                  <div class="h-1.5 rounded bg-emerald-500" style="width:${zPct}%"></div>
+                </div>
               </td>
+              <td class="px-3 py-2"></td>
               <td class="px-3 py-2 text-right">${fmtNum(zPlanned)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zApprox)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zApplied)}</td>
+              <td class="px-3 py-2"></td>
+              <td class="px-3 py-2"></td>
               <td class="px-3 py-2"></td>
             </tr>
           `;
@@ -3329,9 +3371,12 @@ bindSign(sVas, 'vasComplete');
                   <span class="text-xs text-gray-600"><span class="font-medium">Freight:</span> ${esc(freight)}</span>
                   <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(fRecPOs)}/${fmtNum(fPOs)} POs received)</span>
                 </td>
+                <td class="px-3 py-2">${esc(freight)}</td>
                 <td class="px-3 py-2 text-right">${fmtNum(fPlanned)}</td>
                 <td class="px-3 py-2 text-right">${fmtNum(fApprox)}</td>
                 <td class="px-3 py-2 text-right">${fmtNum(fApplied)}</td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
                 <td class="px-3 py-2"></td>
               </tr>
             `;
@@ -3347,9 +3392,12 @@ bindSign(sVas, 'vasComplete');
                     <span class="inline-block w-4"></span>
                     <span class="font-mono text-xs">${esc(r.po)}</span>
                   </td>
+                  <td class="px-3 py-2">${esc(r.freight || '—')}</td>
                   <td class="px-3 py-2 text-right">${fmtNum(r.plannedUnits)}</td>
                   <td class="px-3 py-2 text-right">${fmtNum(r.approxReceivedUnits)}</td>
                   <td class="px-3 py-2 text-right">${fmtNum(r.appliedUnits)}</td>
+                  <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.etaFC) || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.latestArrivalDate) || '—')}</td>
                   <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.receivedAt))}</td>
                 </tr>
               `;
@@ -3358,7 +3406,7 @@ bindSign(sVas, 'vasComplete');
         }
       }
 
-      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="5">No planned POs found for this week</td></tr>`;
+      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="8">No planned POs found for this week</td></tr>`;
     };
 
     // Toggle handlers (single delegated listener)
@@ -3412,7 +3460,7 @@ bindSign(sVas, 'vasComplete');
       dlAll.onclick = () => {
         const out = [
           ['week_start', ws],
-          ['supplier','zendesk','freight','po','planned_units','approx_received_units','uid_applied_units','received_at']
+          ['supplier','zendesk','freight','po','planned_units','approx_received_units','uid_applied_units','eta_fc','latest_arrival_date','received_at']
         ];
         for (const r of rows) {
           out.push([
@@ -3420,6 +3468,8 @@ bindSign(sVas, 'vasComplete');
             String(r.plannedUnits ?? 0),
             String(r.approxReceivedUnits ?? 0),
             String(r.appliedUnits ?? 0),
+            String(r.etaFC ?? ''),
+            String(r.latestArrivalDate ?? ''),
             String(r.receivedAt ?? '')
           ]);
         }
