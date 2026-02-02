@@ -3019,6 +3019,29 @@ bindSign(sVas, 'vasComplete');
         const d = (ts instanceof Date) ? ts : new Date(ts);
         if (!Number.isFinite(d.getTime())) return String(ts);
         const opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+
+    const fmtDateOnlyLocal = (tz, ts) => {
+      try {
+        if (!ts) return '';
+        // Accept already-formatted dates (MM/DD/YYYY or YYYY-MM-DD)
+        const s0 = String(ts).trim();
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s0)) return s0;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s0)) {
+          const [y,m,d] = s0.split('-');
+          return `${m}/${d}/${y}`;
+        }
+        const d = (ts instanceof Date) ? ts : new Date(ts);
+        if (!Number.isFinite(d.getTime())) return s0;
+        const opt = { year: 'numeric', month: '2-digit', day: '2-digit' };
+        try {
+          return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
+        } catch {
+          return new Intl.DateTimeFormat('en-US', opt).format(d);
+        }
+      } catch {
+        return '';
+      }
+    };
         try {
           return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
         } catch {
@@ -3144,18 +3167,25 @@ bindSign(sVas, 'vasComplete');
       const approxReceivedUnits = receivedAt ? plannedUnits : 0; // definition: planned units for received POs
       const appliedUnits = appliedUnitsByPO.get(po) || 0;
 
-      // Lane-level dates (from Intl Transit & Clearing lane manual inputs)
+      // Lane-level fields (from Intl Transit & Clearing lane manual inputs)
       let etaFC = '';
       let latestArrivalDate = '';
+      let shipmentNo = '';
+      let hbl = '';
+      let mbl = '';
       try {
         const ticket = (zendesk && zendesk !== '—') ? zendesk : 'NO_TICKET';
         const lKey = (typeof laneKey === 'function') ? laneKey(supplier, ticket, freight) : '';
         const lm = lKey ? (loadIntlLaneManual(ws, lKey) || {}) : {};
         etaFC = String(lm.eta_fc || lm.etaFC || lm.eta_fc_at || lm.eta_fc_fc || '').trim();
         latestArrivalDate = String(lm.latest_arrival_date || lm.latestArrivalDate || lm.latestArrival || lm.latest_arrival || '').trim();
+        shipmentNo = String(lm.shipment_no || lm.shipmentNo || lm.shipment_number || lm.shipmentNumber || lm.shipment || '').trim();
+        hbl = String(lm.hbl || lm.HBL || '').trim();
+        mbl = String(lm.mbl || lm.MBL || '').trim();
       } catch { /* ignore */ }
 
-      rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, etaFC, latestArrivalDate, receivedAt });
+      rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, shipmentNo, hbl, mbl, etaFC,
+ latestArrivalDate, receivedAt });
     }
     rows.sort((a,b) =>
       a.supplier.localeCompare(b.supplier) ||
@@ -3202,6 +3232,9 @@ bindSign(sVas, 'vasComplete');
                 <th class="text-right px-3 py-2">Planned units</th>
                 <th class="text-right px-3 py-2">Approx received units</th>
                 <th class="text-right px-3 py-2">UID applied units</th>
+                <th class="text-left px-3 py-2">Shipment #</th>
+                <th class="text-left px-3 py-2">HBL</th>
+                <th class="text-left px-3 py-2">MBL</th>
                 <th class="text-left px-3 py-2">ETA FC</th>
                 <th class="text-left px-3 py-2">Latest arrival date</th>
                 <th class="text-left px-3 py-2">Received at</th>
@@ -3273,6 +3306,7 @@ bindSign(sVas, 'vasComplete');
       if (!tb) return;
 
       let html = '';
+      let poRowIdx = 0;
       const suppliers = Array.from(groups.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
 
       for (const supplier of suppliers) {
@@ -3291,7 +3325,7 @@ bindSign(sVas, 'vasComplete');
         const sCollapsed = state.collapsedSupplier.has(sId);
         html += `
           <tr class="bg-white hover:bg-gray-50 cursor-pointer select-none" data-kind="supplier" data-id="${esc(sId)}">
-            <td class="px-3 py-2 font-semibold">
+            <td class="px-3 py-2 font-semibold text-[14px]">
               <span class="inline-block w-4">${caret(sCollapsed)}</span>
               ${esc(supplier)}
               <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(sRecPOs)}/${fmtNum(sPOs)} POs received)</span>
@@ -3303,6 +3337,9 @@ bindSign(sVas, 'vasComplete');
             <td class="px-3 py-2 text-right font-semibold">${fmtNum(sPlanned)}</td>
             <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApprox)}</td>
             <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApplied)}</td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
             <td class="px-3 py-2"></td>
             <td class="px-3 py-2"></td>
             <td class="px-3 py-2"></td>
@@ -3329,24 +3366,42 @@ bindSign(sVas, 'vasComplete');
           const zFreights = Array.from(fg.keys()).filter(x => String(x || '').trim());
           const zFreightLabel = zFreights.length ? (zFreights.length === 1 ? zFreights[0] : zFreights.join(' / ')) : '—';
 
+          const uniqVal = (arr, key) => {
+            const set = new Set();
+            for (const x of arr) {
+              const v = (x && x[key]) ? String(x[key]).trim() : '';
+              if (v) set.add(v);
+            }
+            if (set.size === 1) return Array.from(set)[0];
+            return '';
+          };
+          const zShipment = uniqVal(allRowsZ, 'shipmentNo');
+          const zHBL = uniqVal(allRowsZ, 'hbl');
+          const zMBL = uniqVal(allRowsZ, 'mbl');
+          const zEta = uniqVal(allRowsZ, 'etaFC');
+          const zLatest = uniqVal(allRowsZ, 'latestArrivalDate');
+
           const zCollapsed = state.collapsedZendesk.has(zId);
           html += `
             <tr class="bg-gray-50/70 hover:bg-gray-50 cursor-pointer select-none" data-kind="zendesk" data-id="${esc(zId)}">
-              <td class="px-3 py-2">
+              <td class="px-3 py-2 text-[13px] font-medium">
                 <span class="inline-block w-4"></span>
                 <span class="inline-block w-4">${caret(zCollapsed)}</span>
-                <span class="text-xs text-gray-600"><span class="font-medium">Zendesk:</span> ${esc(zendesk)}</span>
+                <span class="text-sm text-gray-700"><span class="font-medium">Zendesk:</span> ${esc(zendesk)}</span>
                 <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(zRecPOs)}/${fmtNum(zPOs)} POs received)</span>
                 <div class="mt-1 w-36 h-1.5 bg-gray-200 rounded">
                   <div class="h-1.5 rounded bg-emerald-500" style="width:${zPct}%"></div>
                 </div>
               </td>
-              <td class="px-3 py-2 text-xs text-gray-600">${esc(zFreightLabel)}</td>
+              <td class="px-3 py-2 text-sm text-gray-700">${esc(zFreightLabel)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zPlanned)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zApprox)}</td>
               <td class="px-3 py-2 text-right">${fmtNum(zApplied)}</td>
-              <td class="px-3 py-2"></td>
-              <td class="px-3 py-2"></td>
+              <td class="px-3 py-2">${esc(zShipment || "—")}</td>
+              <td class="px-3 py-2">${esc(zHBL || "—")}</td>
+              <td class="px-3 py-2">${esc(zMBL || "—")}</td>
+              <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, zEta) || "—")}</td>
+              <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, zLatest) || "—")}</td>
               <td class="px-3 py-2"></td>
             </tr>
           `;
@@ -3381,6 +3436,9 @@ bindSign(sVas, 'vasComplete');
                 <td class="px-3 py-2"></td>
                 <td class="px-3 py-2"></td>
                 <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
               </tr>
             `;
 
@@ -3388,7 +3446,7 @@ bindSign(sVas, 'vasComplete');
 
             for (const r of arr) {
               html += `
-                <tr class="hover:bg-gray-50" data-kind="po">
+                <tr class="${(poRowIdx++ % 2) ? "bg-[#990033]/5" : "bg-white"} hover:bg-gray-50" data-kind="po">
                   <td class="px-3 py-2">
                     <span class="inline-block w-4"></span>
                     <span class="inline-block w-4"></span>
@@ -3399,9 +3457,12 @@ bindSign(sVas, 'vasComplete');
                   <td class="px-3 py-2 text-right">${fmtNum(r.plannedUnits)}</td>
                   <td class="px-3 py-2 text-right">${fmtNum(r.approxReceivedUnits)}</td>
                   <td class="px-3 py-2 text-right">${fmtNum(r.appliedUnits)}</td>
-                  <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.etaFC) || '—')}</td>
-                  <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.latestArrivalDate) || '—')}</td>
-                  <td class="px-3 py-2">${esc(fmtDateTimeLocal(tz, r.receivedAt))}</td>
+                  <td class="px-3 py-2">${esc(r.shipmentNo || '—')}</td>
+                  <td class="px-3 py-2">${esc(r.hbl || '—')}</td>
+                  <td class="px-3 py-2">${esc(r.mbl || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, r.etaFC) || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, r.latestArrivalDate) || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, r.receivedAt))}</td>
                 </tr>
               `;
             }
@@ -3409,7 +3470,7 @@ bindSign(sVas, 'vasComplete');
         }
       }
 
-      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="8">No planned POs found for this week</td></tr>`;
+      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="11">No planned POs found for this week</td></tr>`;
     };
 
     // Toggle handlers (single delegated listener)
