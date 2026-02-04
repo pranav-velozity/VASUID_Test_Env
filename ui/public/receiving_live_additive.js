@@ -366,6 +366,7 @@ function computeCartonsOutByPOFromRecords(records) {
         facility_name: String(r.facility_name || planFacility || '').trim(),
         po_number: po,
         cartons_in: Number(r.cartons_received || 0) || 0,
+        cartons_out: Number(M.cartonsOutByPO?.get(po) ?? 0) || 0,
         damaged: Number(r.cartons_damaged || 0) || 0,
         non_compliant: Number(r.cartons_noncompliant || 0) || 0,
         replaced: Number(r.cartons_replaced || 0) || 0,
@@ -1142,7 +1143,7 @@ if (checkAll) {
 	    const ws = getWeekStart();
 	    if (!ws) return;
 	    const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
-	    const header = ['week_start','supplier_name','facility_name','po_number','cartons_in','damaged','non_compliant','replaced','received_at_local','last_received_local','received_at_utc','cutoff_utc','status'];
+	    const header = ['week_start','supplier_name','facility_name','po_number','cartons_in','cartons_out','damaged','non_compliant','replaced','received_at_local','last_received_local','received_at_utc','cutoff_utc','status'];
 	    const lines = [
 	      header.join(','),
 	      ...rows.map(r => header.map(h => csvEscape(r[h])).join(','))
@@ -1409,6 +1410,7 @@ if (checkAll) {
 	      const received = rs.filter(x => x.received_at_utc).length;
 	      const delayed = rs.filter(x => String(x.status||'').includes('Delayed')).length;
 	      const cartons = rs.reduce((a,x)=>a + (x.cartons_in||0),0);
+	      const cartonsOut = rs.reduce((a,x)=>a + (x.cartons_out||0),0);
 	      const damaged = rs.reduce((a,x)=>a + (x.damaged||0),0);
 	      const nonc = rs.reduce((a,x)=>a + (x.non_compliant||0),0);
 	      const repl = rs.reduce((a,x)=>a + (x.replaced||0),0);
@@ -1417,6 +1419,7 @@ if (checkAll) {
 	          <td>${esc(x.po_number)}</td>
 	          <td>${esc(x.facility_name)}</td>
 	          <td class="right">${x.cartons_in}</td>
+	          <td class="right">${x.cartons_out}</td>
 	          <td class="right">${x.damaged}</td>
 	          <td class="right">${x.non_compliant}</td>
 	          <td class="right">${x.replaced}</td>
@@ -1432,6 +1435,7 @@ if (checkAll) {
 	            <div>Received: <b>${received}</b></div>
 	            <div>Delayed: <b class="delayed">${delayed}</b></div>
 	            <div>Cartons In: <b>${cartons}</b></div>
+	            <div>Cartons Out: <b>${cartonsOut}</b></div>
 	            <div>Damaged: <b>${damaged}</b></div>
 	            <div>Non-compliant: <b>${nonc}</b></div>
 	            <div>Replaced: <b>${repl}</b></div>
@@ -1441,7 +1445,8 @@ if (checkAll) {
 	              <tr>
 	                <th>PO</th>
 	                <th>Facility</th>
-	                <th class="right">Cartons</th>
+	                <th class="right">Cartons In</th>
+	                <th class="right">Cartons Out</th>
 	                <th class="right">Damaged</th>
 	                <th class="right">Non-comp</th>
 	                <th class="right">Replaced</th>
