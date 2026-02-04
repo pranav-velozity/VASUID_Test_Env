@@ -226,6 +226,19 @@
 
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
+  // UI helper: compact progress bar (pct: 0..100)
+  function progressBar(pct, opts) {
+    const p = clamp(Number(pct) || 0, 0, 100);
+    const w = (opts && opts.w) ? opts.w : 'w-32';
+    const h = (opts && opts.h) ? opts.h : 'h-2';
+    const bg = (opts && opts.bg) ? opts.bg : 'bg-gray-100';
+    const fill = (opts && opts.fill) ? opts.fill : 'bg-emerald-400';
+    return `
+      <div class="${w} ${h} ${bg} rounded-full overflow-hidden border" title="${Math.round(p)}%">
+        <div class="h-full ${fill}" style="width:${p}%;"></div>
+      </div>
+    `;
+  }
   function statusFromDue(due, actual, now) {
     // Soft cutoffs:
     // - if actual exists, compare actual to due
@@ -496,7 +509,7 @@ async function primeFlowWeekFromBackend(ws) {
 
     // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
     // Prefer complete for performance, but fall back to all if API supports.
-    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); return asArray(r); } catch {}
+    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=50000`); const a = asArray(r); if (a && a.length) return a; } catch {}
     try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=50000`); return asArray(r); } catch {}
     return [];
   }
@@ -1392,6 +1405,467 @@ function computeManualNodeStatuses(ws, tz) {
     selection: { node: 'milk', sub: null },
   };
 
+  // ------------------------- Lane modal (Transit & Clearing) -------------------------
+  function ensureLaneModal() {
+    let root = document.getElementById('flow-lane-modal');
+    if (root) return root;
+
+    root = document.createElement('div');
+    root.id = 'flow-lane-modal';
+    root.className = 'fixed inset-0 z-[9999] hidden';
+
+    root.innerHTML = `
+      <div class="absolute inset-0 bg-black/40" data-flow-modal-close="1"></div>
+      <div class="absolute inset-3 md:inset-6 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col">
+        <div class="p-3 border-b flex items-center justify-between gap-3">
+          <div>
+            <div id="flow-lane-modal-title" class="text-base font-semibold text-gray-800"></div>
+            <div id="flow-lane-modal-sub" class="text-xs text-gray-500 mt-0.5"></div>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="flow-lane-modal-status"></div>
+            <button class="px-2.5 py-1.5 rounded-lg border bg-white hover:bg-gray-50 text-sm" data-flow-modal-close="1">Close</button>
+          </div>
+        </div>
+        <div id="flow-lane-modal-body" class="p-3 overflow-auto flex-1"></div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    // close handlers
+    root.querySelectorAll('[data-flow-modal-close]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeLaneModal();
+      });
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const r = document.getElementById('flow-lane-modal');
+        if (r && !r.classList.contains('hidden')) closeLaneModal();
+      }
+    });
+
+    return root;
+  }
+
+  function closeLaneModal() {
+    const root = document.getElementById('flow-lane-modal');
+    if (!root) return;
+    root.classList.add('hidden');
+    root.setAttribute('aria-hidden', 'true');
+  }
+
+  function openLaneModal(ws, tz, laneKey) {
+    const ctx = window.__FLOW_INTL_CTX__ || null;
+    if (!ctx || !ctx.lanes || !ctx.weekContainers) return;
+
+    const lane = (ctx.lanes || []).find(l => l && l.key === laneKey);
+    if (!lane) return;
+
+    const manual = loadIntlLaneManual(ws, laneKey) || {};
+    const root = ensureLaneModal();
+
+    const ticket = lane.ticket && lane.ticket !== 'NO_TICKET' ? String(lane.ticket) : '';
+    const title = `${lane.supplier} • ${lane.freight}${ticket ? ` • Zendesk ${ticket}` : ''}`;
+    const subtitle = `Lane key: ${lane.key}`;
+
+    const statusHtml = `
+      <span class="dot ${dot(lane.level)}"></span>
+      <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap ml-2">${statusLabel(lane.level)}</span>
+    `;
+
+    root.querySelector('#flow-lane-modal-title').textContent = title;
+    root.querySelector('#flow-lane-modal-sub').textContent = subtitle;
+    root.querySelector('#flow-lane-modal-status').innerHTML = statusHtml;
+
+    // Containers derived from week-level containers
+    const conts = (ctx.weekContainers || [])
+      .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(lane.key))
+      .filter(c => {
+        const cid = String(c?.container_id || c?.container || '').trim();
+        const ves = String(c?.vessel || '').trim();
+        const ft = String(c?.size_ft || '').trim();
+        return !!(cid || ves || ft);
+      });
+
+    const contRows = conts.length ? `
+      <div class="rounded-xl border p-3">
+        <div class="text-sm font-semibold text-gray-700 flex items-center gap-2">${iconContainer()} <span>Containers</span></div>
+        <div class="mt-2 overflow-auto">
+          <table class="w-full text-sm">
+            <thead><tr>
+              <th class="th text-left py-2 pr-2">Container #</th>
+              <th class="th text-left py-2 pr-2">Size</th>
+              <th class="th text-left py-2 pr-2">Vessel</th>
+            </tr></thead>
+            <tbody>
+              ${(conts || []).map(c => {
+                const cid = escapeHtml(String(c.container_id || c.container || '').trim() || '—');
+                const ft = escapeHtml(String(c.size_ft || '').trim() ? (String(c.size_ft).trim() + 'ft') : '—');
+                const ves = escapeHtml(String(c.vessel || '').trim() || '—');
+                return `<tr class="border-t"><td class="py-3 pr-4">${cid}</td><td class="py-3 pr-4">${ft}</td><td class="py-3 pr-4">${ves}</td></tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : `
+      <div class="rounded-xl border p-3 text-sm text-gray-500">
+        No containers mapped to this lane yet (week-level containers).
+      </div>
+    `;
+
+    const dateVal = (v) => String(v || '').trim();
+
+    // Modal body: reuse the same lane fields pattern + new IDs
+    root.querySelector('#flow-lane-modal-body').innerHTML = `
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div class="rounded-xl border p-3">
+          <div class="text-sm font-semibold text-gray-700">Lane dates & documents</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Packing list ready</div>
+              <input data-lm-field="pack" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.pack))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
+              <input data-lm-field="originClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.originClr))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Departed origin</div>
+              <input data-lm-field="departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.departed))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
+              <input data-lm-field="arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.arrived))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
+              <input data-lm-field="destClr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.destClr))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">ETA FC</div>
+              <input data-lm-field="etaFC" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.etaFC || manual.eta_fc))}"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Latest arrival date</div>
+              <input data-lm-field="latestArrivalDate" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(dateVal(manual.latestArrivalDate || manual.latest_arrival_date || manual.latestArrival))}"/>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+              <input data-lm-field="shipmentNumber" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">HBL</div>
+              <input data-lm-field="hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+            </label>
+            <label class="text-sm">
+              <div class="text-xs text-gray-500 mb-1">MBL</div>
+              <input data-lm-field="mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+            </label>
+          </div>
+
+          <div class="flex items-center gap-3 mt-3">
+            <label class="text-sm flex items-center gap-2">
+              <input data-lm-field="hold" type="checkbox" class="h-4 w-4" ${manual.hold ? 'checked' : ''}/>
+              <span>Customs hold</span>
+            </label>
+          </div>
+
+          <label class="text-sm mt-3 block">
+            <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
+            <textarea data-lm-field="note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(String(manual.note || ''))}</textarea>
+          </label>
+
+          <div class="flex items-center justify-end mt-3">
+            <button id="flow-lane-modal-save" class="px-3 py-1.5 rounded-lg text-sm border bg-white hover:bg-gray-50">Save lane</button>
+          </div>
+          <div id="flow-lane-modal-msg" class="text-xs text-gray-500 mt-2"></div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          ${contRows}
+        </div>
+      </div>
+    `;
+
+    // Wire save button (dates + hold + note + ids)
+    const body = root.querySelector('#flow-lane-modal-body');
+    const saveBtn = body.querySelector('#flow-lane-modal-save');
+    const msg = body.querySelector('#flow-lane-modal-msg');
+
+    const readFields = () => {
+      const q = (sel) => body.querySelector(sel);
+      const get = (k) => {
+        const el = body.querySelector(`[data-lm-field="${k}"]`);
+        if (!el) return '';
+        if (el.type === 'checkbox') return !!el.checked;
+        return String(el.value || '').trim();
+      };
+      return {
+        pack: get('pack'),
+        originClr: get('originClr'),
+        departed: get('departed'),
+        arrived: get('arrived'),
+        destClr: get('destClr'),
+        etaFC: get('etaFC'),
+        latestArrivalDate: get('latestArrivalDate'),
+        hold: !!get('hold'),
+        note: get('note'),
+        shipmentNumber: get('shipmentNumber'),
+        hbl: get('hbl'),
+        mbl: get('mbl'),
+      };
+    };
+
+    const doSave = () => {
+      try {
+        const vals = readFields();
+        saveIntlLaneManual(ws, laneKey, vals);
+        if (msg) msg.textContent = 'Saved.';
+      } catch (e) {
+        if (msg) msg.textContent = 'Save failed.';
+      }
+    };
+
+    if (saveBtn) saveBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); doSave(); };
+
+    // Background persist for IDs only (blur/Enter)
+    const idKeys = new Set(['shipmentNumber','hbl','mbl']);
+    body.querySelectorAll('[data-lm-field]').forEach(el => {
+      const key = el.getAttribute('data-lm-field');
+      if (!idKeys.has(key)) return;
+
+      const saveOne = () => {
+        const v = (el.type === 'checkbox') ? !!el.checked : String(el.value || '').trim();
+        const patch = {};
+        patch[key] = v;
+        saveIntlLaneManual(ws, laneKey, patch);
+        if (msg) msg.textContent = 'Saved.';
+      };
+
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveOne();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => saveOne());
+    });
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+  }
+
+
+  function openIntlOverviewModal(ws, tz) {
+    const ctx = window.__FLOW_INTL_CTX__ || null;
+    if (!ctx || !ctx.lanes) return;
+
+    const lanes = Array.isArray(ctx.lanes) ? ctx.lanes.slice() : [];
+    const weekContainers = Array.isArray(ctx.weekContainers) ? ctx.weekContainers : [];
+    const intl = ctx.intl || null;
+
+    // Sort same as lanes tile: holds/red first, then highest remaining units
+    const rank = { red: 3, yellow: 2, green: 1, gray: 0 };
+    lanes.sort((a, b) => (rank[b.level] - rank[a.level]) || ((b.plannedUnits - b.appliedUnits) - (a.plannedUnits - a.appliedUnits)));
+
+    const root = ensureLaneModal();
+    root.querySelector('#flow-lane-modal-title').textContent = 'Transit & Clearing — Lanes (Full screen)';
+    root.querySelector('#flow-lane-modal-sub').textContent = 'All lanes for this week • Click a supplier to open the lane editor.';
+    root.querySelector('#flow-lane-modal-status').innerHTML = '';
+
+    const fmtDT = (v) => {
+      const s = String(v || '').trim();
+      if (!s) return '—';
+      try { return fmtInTZ(s, tz); } catch { return s; }
+    };
+
+    // Planned fallback baselines for a lane (derived from Intl window + freight mode).
+    // We intentionally do NOT store these in backend; UI recomputes them.
+    const plannedForLane = (lane) => {
+      const originMin = (intl && intl.originMin instanceof Date) ? intl.originMin : null;
+      const originMax = (intl && intl.originMax instanceof Date) ? intl.originMax : null;
+      if (!originMin || !originMax) return { pack: null, originClr: null, departed: null, arrived: null, destClr: null };
+      const pack = originMin;
+      const originClr = originMax;
+      const departed = addDays(originClr, 1);
+      const transitDays = (lane && lane.freight === 'Air') ? BASELINE.transit_days_air : BASELINE.transit_days_sea;
+      const arrived = addDays(departed, transitDays);
+      const destClr = addDays(arrived, 2);
+      return { pack, originClr, departed, arrived, destClr };
+    };
+
+    // Resolve actual lane dates from any known schema (backend-synced + back-compat), else planned.
+    const fmtDateOnly = (val) => {
+      try {
+        const d = (val instanceof Date) ? val : new Date(val);
+        if (!d || isNaN(d)) return '';
+        return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit' }).format(d);
+      } catch (e) { return ''; }
+    };
+
+    const laneDateCell = (manualObj, plannedDate, keys) => {
+      const tryKey = (k) => {
+        const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
+        return v ? v : '';
+      };
+      const actualRaw = (keys || []).map(tryKey).find(Boolean) || '';
+      if (actualRaw) {
+        const d = fmtDateOnly(actualRaw);
+        return d ? `<span class="whitespace-nowrap font-semibold" style="color:#334155">${escapeHtml(d)}</span>` : '<span class="text-gray-400">—</span>';
+      }
+      if (plannedDate && !isNaN(plannedDate)) {
+        const d = fmtDateOnly(plannedDate);
+        return d ? `<span class="whitespace-nowrap" style="color:#7a1f33">${escapeHtml(d)} <span class="text-[10px]" style="color:#7a1f33">planned</span></span>` : '<span class="text-gray-400">—</span>';
+      }
+      return '<span class="text-gray-400">—</span>';
+    };
+
+    const latestActualStatusText = (manualObj) => {
+      const getRaw = (keys) => {
+        for (const k of keys) {
+          const v = manualObj && (manualObj[k] != null) ? String(manualObj[k]).trim() : '';
+          if (v) return v;
+        }
+        return '';
+      };
+      const stages = [
+        { label: 'Packing list ready', keys: ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'] },
+        { label: 'Origin customs cleared', keys: ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'] },
+        { label: 'Departed origin', keys: ['departed_at','departedAt','departed'] },
+        { label: 'Arrived destination', keys: ['arrived_at','arrivedAt','arrived'] },
+        { label: 'Destination customs cleared', keys: ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'] },
+      ];
+      let best = null;
+      for (const st of stages) {
+        const raw = getRaw(st.keys);
+        if (!raw) continue;
+        const d = new Date(raw);
+        if (!d || isNaN(d)) continue;
+        if (!best || d > best.date) best = { date: d, label: st.label };
+      }
+      return best ? best.label : '';
+    };
+
+    const contListForLane = (laneKey) => {
+      const ids = (weekContainers || [])
+        .filter(c => Array.isArray(c?.lane_keys) && c.lane_keys.includes(laneKey))
+        .map(c => String(c?.container_id || c?.container || '').trim())
+        .filter(Boolean);
+      return uniqNonEmpty(ids);
+    };
+
+    // Summary strip for quick scan
+    const counts = lanes.reduce((acc, l) => {
+      acc.total++;
+      acc[l.level] = (acc[l.level] || 0) + 1;
+      const m = String(l.freight || '').toLowerCase();
+      if (m === 'air') acc.air++; else if (m === 'sea') acc.sea++;
+      return acc;
+    }, { total: 0, red: 0, yellow: 0, green: 0, gray: 0, sea: 0, air: 0 });
+
+    const rows = lanes.map(l => {
+      const manual = (l && l.manual && typeof l.manual === 'object') ? l.manual : (loadIntlLaneManual(ws, l.key) || {});
+      const ticket = l.ticket && l.ticket !== 'NO_TICKET' ? escapeHtml(l.ticket) : '—';
+      const containers = contListForLane(l.key);
+      const st = `<span class="text-xs px-2 py-0.5 rounded-full border ${pill(l.level)} whitespace-nowrap">${statusLabel(l.level)}</span>`;
+      const pl = plannedForLane(l);
+      const freightLower = String(l.freight || '').toLowerCase();
+      const freightCls = freightLower === 'air' ? 'text-sky-700' : (freightLower === 'sea' ? 'text-emerald-700' : 'text-gray-700');
+      const stageTxt = latestActualStatusText(manual);
+      const holdFlag = !!(manual.hold || manual.customs_hold || manual.customsHold || manual.customsHoldFlag);
+      return `
+        <tr class="border-t align-top hover:bg-gray-50">
+          <td class="py-3 pr-4">
+            <button class="text-left hover:underline" data-open-lane="${escapeAttr(l.key)}">${escapeHtml(l.supplier)}</button>
+            <div class="text-xs font-medium mt-0.5 ${freightCls}">${escapeHtml(l.freight || '')}</div>
+            <div class="text-xs font-semibold mt-0.5 tracking-wide" style="color:#e90076; text-transform:uppercase">${escapeHtml(stageTxt || 'No actual updates')}</div>
+          </td>
+          <td class="py-3 px-4 text-center">${ticket}</td>
+          <td class="py-3 px-4 text-center">${st}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.shipmentNumber || manual.shipment || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.hbl || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${escapeHtml(String(manual.mbl || '').trim() || '—')}</td>
+          <td class="py-3 px-4 text-center">${holdFlag ? '✓' : '—'}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.pack, ['packing_list_ready_at','packingListReadyAt','pack','packing_list_ready'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.originClr, ['origin_customs_cleared_at','originClearedAt','originClr','origin_customs_cleared'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.departed, ['departed_at','departedAt','departed'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.arrived, ['arrived_at','arrivedAt','arrived'])}</td>
+                    <td class=\"py-3 px-4 text-center\">${laneDateCell(manual, null, ['eta_fc','etaFC','eta_fc_at','eta_fc_fc'])}</td>
+          <td class=\"py-3 px-4 text-center\">${laneDateCell(manual, null, ['latest_arrival_date','latestArrivalDate','latestArrival','latest_arrival'])}</td>
+          <td class="py-3 px-4 text-center">${laneDateCell(manual, pl.destClr, ['dest_customs_cleared_at','destClearedAt','destClr','dest_customs_cleared'])}</td>
+          <td class="py-3 pl-4 pr-4 text-left">${containers.length ? containers.map(c=>escapeHtml(c)).join('<br/>') : '—'}</td>
+        </tr>
+      `;
+    }).join('');
+
+    root.querySelector('#flow-lane-modal-body').innerHTML = `
+      <div class="rounded-xl border p-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold text-gray-700">Lanes</div>
+            <div class="text-xs text-gray-500 mt-1">Dates show <b>Actual</b> when entered; otherwise fall back to <b>Planned</b>.</div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Sea</span> <b>${counts.sea}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Air</span> <b>${counts.air}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">Delayed</span> <b>${counts.red}</b></div>
+            <div class="rounded-lg border px-2 py-1 bg-white"><span class="text-gray-500">At risk</span> <b>${counts.yellow}</b></div>
+          </div>
+        </div>
+        <div class="mt-5 overflow-auto">
+          <table class="w-full text-sm min-w-[1500px]">
+            <thead class="sticky top-0 bg-white">
+              <tr class="text-[13px] text-gray-600 border-b">
+                <th class="text-left py-3 pr-4">Supplier / Freight</th>
+                <th class="text-center py-3 px-4">Zendesk</th>
+                <th class="text-center py-3 px-4">Status</th>
+                <th class="text-center py-3 px-4">Shipment #</th>
+                <th class="text-center py-3 px-4">HBL</th>
+                <th class="text-center py-3 px-4">MBL</th>
+                <th class="text-center py-3 px-4">Hold</th>
+                <th class="text-center py-3 px-4">📄 Pack List</th>
+                <th class="text-center py-3 px-4">🛃 Origin Customs</th>
+                <th class="text-center py-3 px-4">🚚 Departed</th>
+                <th class="text-center py-3 px-4">📍 Arrived</th>
+                <th class=\"text-center py-3 px-4\">🏬 ETA FC</th>
+                <th class=\"text-center py-3 px-4\">📅 Latest arrival</th>
+                <th class="text-center py-3 px-4">🛃 Dest Customs</th>
+                <th class="text-left py-2 pr-2">Container #</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || '<tr><td class="py-2 text-gray-500" colspan="15">No lanes found.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    root.querySelectorAll('[data-open-lane]').forEach(btn => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const k = btn.getAttribute('data-open-lane');
+        if (!k) return;
+        openLaneModal(ws, tz, k);
+      });
+    });
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+  }
+
   function ensureFlowPageExists() {
     // 1) page section
     let page = document.getElementById('page-flow');
@@ -1483,364 +1957,6 @@ function computeManualNodeStatuses(ws, tz) {
       }
     } catch {}
   }
-
-  
-  // ------------------------------
-  // Receiving — Full screen modal
-  // ------------------------------
-  function ensureReceivingFullModal() {
-    let root = document.getElementById('flow-receiving-fullscreen-modal');
-    if (root) return root;
-
-    root = document.createElement('div');
-    root.id = 'flow-receiving-fullscreen-modal';
-    root.className = 'fixed inset-0 z-[9999] hidden';
-    root.innerHTML = `
-      <div class="absolute inset-0 bg-black/40"></div>
-      <div class="absolute inset-0 p-4">
-        <div class="bg-white rounded-xl shadow-xl w-full h-full overflow-hidden flex flex-col">
-          <div class="flex items-center justify-between px-4 py-3 border-b">
-            <div>
-              <div class="text-base font-semibold">Receiving — Full screen</div>
-              <div id="flow-recvfs-sub" class="text-xs text-gray-500">Supplier drilldown • Approximate received units (planned units for received POs).</div>
-            </div>
-            <button data-flow-recvfs-close class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Close</button>
-          </div>
-
-          <div class="flex-1 overflow-auto p-4">
-            <div id="flow-recvfs-kpis" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"></div>
-
-            <div class="flex flex-col lg:flex-row gap-4">
-              <div class="lg:w-1/2">
-                <div class="text-sm font-semibold mb-2">Suppliers</div>
-                <div class="rounded-lg border overflow-hidden">
-                  <table class="w-full text-sm">
-                    <thead class="bg-gray-50">
-                      <tr>
-                        <th class="text-left px-3 py-2">Supplier</th>
-                        <th class="text-right px-3 py-2">POs received</th>
-                        <th class="text-right px-3 py-2">Approx received units</th>
-                      </tr>
-                    </thead>
-                    <tbody id="flow-recvfs-sup-rows"></tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="lg:w-1/2">
-                <div class="flex items-center justify-between mb-2">
-                  <div class="text-sm font-semibold">Received POs</div>
-                  <div class="flex gap-2">
-                    <button id="flow-recvfs-dl-selected" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download selected</button>
-                    <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download all</button>
-                  </div>
-                </div>
-
-                <div class="flex items-center gap-2 mb-2">
-                  <label class="text-xs text-gray-600">Supplier</label>
-                  <select id="flow-recvfs-sel" class="text-sm border rounded-md px-2 py-1 bg-white"></select>
-                </div>
-
-                <div class="rounded-lg border overflow-hidden">
-                  <table class="w-full text-sm">
-                    <thead class="bg-gray-50">
-                      <tr>
-                        <th class="text-left px-3 py-2">PO</th>
-                        <th class="text-right px-3 py-2">Planned units</th>
-                        <th class="text-left px-3 py-2">Received at</th>
-                      </tr>
-                    </thead>
-                    <tbody id="flow-recvfs-po-rows"></tbody>
-                  </table>
-                </div>
-
-                <div id="flow-recvfs-note" class="text-xs text-gray-500 mt-2"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(root);
-
-    root.querySelector('[data-flow-recvfs-close]')?.addEventListener('click', () => {
-      root.classList.add('hidden');
-    });
-    root.addEventListener('click', (e) => {
-      if (e.target === root) root.classList.add('hidden');
-      // Click outside panel
-      if (e.target && e.target.classList && e.target.classList.contains('bg-black/40')) root.classList.add('hidden');
-    });
-
-    return root;
-  }
-
-  function _csvDownload(filename, rows) {
-    const esc = (v) => {
-      const s = (v === null || v === undefined) ? '' : String(v);
-      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-      return s;
-    };
-    const csv = rows.map(r => r.map(esc).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-  }
-
-  function openReceivingFullScreenModal() {
-    // NOTE: This is a UI-only enhancement. It does not affect any calculations elsewhere.
-    const fmtNum = (v) => {
-      if (v === null || v === undefined || v === '') return '—';
-      const n = Number(v);
-      if (!Number.isFinite(n)) return String(v);
-      return n.toLocaleString();
-    };
-    const fmtDateTimeLocal = (tz, ts) => {
-      try {
-        if (!ts) return '';
-        const d = (ts instanceof Date) ? ts : new Date(ts);
-        if (!Number.isFinite(d.getTime())) return String(ts);
-        // Render in the app's configured tz, but fall back gracefully.
-        const opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
-        try {
-          return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
-        } catch {
-          return new Intl.DateTimeFormat('en-US', opt).format(d);
-        }
-      } catch {
-        return '';
-      }
-    };
-
-    const ctx = window.__FLOW_RECEIVING_FS_CTX__;
-    if (!ctx || !ctx.planRows || !ctx.receivingRows) {
-      alert('Receiving data not available yet. Please refresh the page and try again.');
-      return;
-    }
-
-    const { ws, tz, planRows, receivingRows, records } = ctx;
-    const normalizePO = (v) => String(v ?? '').trim().toUpperCase();
-    const toNum = (v) => {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    // 1) Received POs (timestamp)
-    const receivedByPO = new Map();
-    const metaByPO = new Map();
-    for (const r of (receivingRows || [])) {
-      const po = normalizePO(r.po ?? r.PO ?? r.po_number ?? r.PO_Number ?? r.poNumber ?? r.po_no ?? r.poNo);
-      const receivedAt = r.receivedAt || r.received_at || r.received_at_utc || r.received;
-      if (!po) continue;
-      if (receivedAt) receivedByPO.set(po, receivedAt);
-      const supplier = r.supplier || r.Supplier || r.vendor || r.Vendor || r.supplier_name || r.supplierName;
-      const zendesk = r.zendesk || r.zendesk_ticket || r.ticket || r.ticket_id || r.zendeskTicket;
-      const freight = r.freight || r.mode || r.ship_mode || r.shipMode || r.Freight;
-      if (!metaByPO.has(po)) metaByPO.set(po, {
-        supplier: supplier ? String(supplier) : undefined,
-        zendesk: (zendesk !== null && zendesk !== undefined && zendesk !== '') ? String(zendesk) : undefined,
-        freight: freight ? String(freight) : undefined,
-      });
-    }
-
-    // 2) Planned units by PO (+ supplier / zendesk / freight when available)
-    const getPO = (r) => normalizePO(
-      r.po_number ?? r.poNumber ?? r.PO_Number ?? r.PO ?? r.po ?? r.po_no ?? r.poNo ?? r.supplier_po ?? r.supplierPO ?? ''
-    );
-    const getPlannedUnits = (r) => (
-      toNum(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.planned_units ?? r.plannedUnits ?? r.PlannedUnits ?? r.units ?? r.Units ?? r.qty ?? r.Qty)
-    );
-    const plannedUnitsByPO = new Map();
-    for (const row of (planRows || [])) {
-      const po = getPO(row);
-      if (!po) continue;
-      plannedUnitsByPO.set(po, (plannedUnitsByPO.get(po) || 0) + getPlannedUnits(row));
-      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name || row.supplierName;
-      const zendesk = row.zendesk || row.zendesk_ticket || row.ticket || row.ticket_id || row.zendeskTicket;
-      const freight = row.freight || row.mode || row.ship_mode || row.shipMode || row.Freight;
-      const prev = metaByPO.get(po) || {};
-      metaByPO.set(po, {
-        supplier: prev.supplier || (supplier ? String(supplier) : undefined),
-        zendesk: prev.zendesk || ((zendesk !== null && zendesk !== undefined && zendesk !== '') ? String(zendesk) : undefined),
-        freight: prev.freight || (freight ? String(freight) : undefined),
-      });
-    }
-
-    // 3) Applied units (VAS actuals) by PO from records (units-based)
-    const appliedUnitsByPO = new Map();
-    for (const rec of (records || [])) {
-      const status = String(rec.status ?? rec.Status ?? '').toLowerCase();
-      if (status && status !== 'complete') continue;
-      const po = normalizePO(rec.po_number ?? rec.po ?? rec.PO ?? rec.PO_Number);
-      if (!po) continue;
-      const qty = toNum(rec.qty ?? rec.Qty ?? rec.units ?? rec.Units ?? rec.applied_units ?? rec.appliedUnits);
-      if (!qty) continue;
-      appliedUnitsByPO.set(po, (appliedUnitsByPO.get(po) || 0) + qty);
-    }
-
-    // Build flat rows for the table (received POs only)
-    const rows = [];
-    for (const [po, receivedAt] of receivedByPO.entries()) {
-      const meta = metaByPO.get(po) || {};
-      const supplier = meta.supplier || '—';
-      const zendesk = meta.zendesk || '—';
-      const freight = meta.freight || '—';
-      const plannedUnits = plannedUnitsByPO.get(po) || 0;
-      const approxReceivedUnits = plannedUnits; // definition: planned units for received POs
-      const appliedUnits = appliedUnitsByPO.get(po) || 0;
-      rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, receivedAt });
-    }
-    rows.sort((a,b) =>
-      a.supplier.localeCompare(b.supplier) ||
-      String(a.zendesk).localeCompare(String(b.zendesk)) ||
-      String(a.freight).localeCompare(String(b.freight)) ||
-      String(a.po).localeCompare(String(b.po))
-    );
-
-    // Totals
-    const totalReceivedPOs = rows.length;
-    const totalApproxUnits = rows.reduce((a,r)=>a+(r.approxReceivedUnits||0),0);
-    const totalAppliedUnits = rows.reduce((a,r)=>a+(r.appliedUnits||0),0);
-    const suppliersWithReceipts = new Set(rows.map(r=>r.supplier)).size;
-
-    const root = ensureReceivingFullModal();
-    root.classList.remove('hidden');
-
-    // Replace the body content with a single, always-visible table (no dropdown).
-    const body = root.querySelector('#flow-recvfs-body');
-    if (body) {
-      body.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4" id="flow-recvfs-kpis"></div>
-
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-sm font-semibold">Received POs (units-based)</div>
-          <div class="flex gap-2">
-            <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download table</button>
-          </div>
-        </div>
-
-        <div class="rounded-lg border overflow-auto">
-          <table class="w-full text-sm">
-            <thead class="bg-gray-50 sticky top-0">
-              <tr>
-                <th class="text-left px-3 py-2">Supplier</th>
-                <th class="text-left px-3 py-2">Zendesk</th>
-                <th class="text-left px-3 py-2">Freight</th>
-                <th class="text-left px-3 py-2">PO</th>
-                <th class="text-right px-3 py-2">Planned units</th>
-                <th class="text-right px-3 py-2">Approx received units</th>
-                <th class="text-right px-3 py-2">UID applied units</th>
-                <th class="text-left px-3 py-2">Received at</th>
-              </tr>
-            </thead>
-            <tbody id="flow-recvfs-rows"></tbody>
-          </table>
-        </div>
-      `;
-    }
-
-    // KPIs
-    const kpi = root.querySelector('#flow-recvfs-kpis');
-    if (kpi) {
-      kpi.innerHTML = `
-        <div class="rounded-lg border p-3">
-          <div class="text-xs text-gray-500">POs received</div>
-          <div class="text-xl font-semibold">${fmtNum(totalReceivedPOs)}</div>
-        </div>
-        <div class="rounded-lg border p-3">
-          <div class="text-xs text-gray-500">Approx received units</div>
-          <div class="text-xl font-semibold">${fmtNum(totalApproxUnits)}</div>
-          <div class="text-[11px] text-gray-500 mt-1">Sum of planned units for received POs</div>
-        </div>
-        <div class="rounded-lg border p-3">
-          <div class="text-xs text-gray-500">UID applied units</div>
-          <div class="text-xl font-semibold">${fmtNum(totalAppliedUnits)}</div>
-          <div class="text-[11px] text-gray-500 mt-1">From VAS records (status=complete)</div>
-        </div>
-        <div class="rounded-lg border p-3 md:col-span-3">
-          <div class="text-xs text-gray-500">Suppliers with receipts</div>
-          <div class="text-xl font-semibold">${fmtNum(suppliersWithReceipts)}</div>
-        </div>
-      `;
-    }
-
-    // Render rows with grouping (supplier -> zendesk -> freight)
-    const tb = root.querySelector('#flow-recvfs-rows');
-    if (tb) {
-      let html = '';
-      let lastSupplier = null;
-      let lastZendesk = null;
-      let lastFreight = null;
-      for (const r of rows) {
-        if (r.supplier !== lastSupplier) {
-          lastSupplier = r.supplier;
-          lastZendesk = null;
-          lastFreight = null;
-          html += `
-            <tr class="bg-white">
-              <td class="px-3 py-2 font-semibold" colspan="8">${escapeHtml(r.supplier)}</td>
-            </tr>
-          `;
-        }
-        const zfKey = `${r.zendesk}|||${r.freight}`;
-        const prevKey = `${lastZendesk}|||${lastFreight}`;
-        if (zfKey !== prevKey) {
-          lastZendesk = r.zendesk;
-          lastFreight = r.freight;
-          html += `
-            <tr class="bg-gray-50/60">
-              <td class="px-3 py-1.5 text-xs text-gray-600" colspan="8">
-                <span class="font-medium">Zendesk:</span> ${escapeHtml(r.zendesk)} &nbsp; <span class="font-medium">Freight:</span> ${escapeHtml(r.freight)}
-              </td>
-            </tr>
-          `;
-        }
-        html += `
-          <tr class="hover:bg-gray-50">
-            <td class="px-3 py-2">&nbsp;</td>
-            <td class="px-3 py-2">&nbsp;</td>
-            <td class="px-3 py-2">&nbsp;</td>
-            <td class="px-3 py-2">${escapeHtml(r.po)}</td>
-            <td class="px-3 py-2 text-right">${fmtNum(r.plannedUnits)}</td>
-            <td class="px-3 py-2 text-right">${fmtNum(r.approxReceivedUnits)}</td>
-            <td class="px-3 py-2 text-right">${fmtNum(r.appliedUnits)}</td>
-            <td class="px-3 py-2">${escapeHtml(fmtDateTimeLocal(tz, r.receivedAt))}</td>
-          </tr>
-        `;
-      }
-      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="8">No received POs found for this week</td></tr>`;
-    }
-
-    // Download full table (flat CSV)
-    const dlAll = root.querySelector('#flow-recvfs-dl-all');
-    if (dlAll) {
-      dlAll.onclick = () => {
-        const out = [
-          ['week_start', ws],
-          ['supplier','zendesk','freight','po','planned_units','approx_received_units','uid_applied_units','received_at'],
-          ...rows.map(r => [r.supplier, r.zendesk, r.freight, r.po, r.plannedUnits, r.approxReceivedUnits, r.appliedUnits, r.receivedAt || ''])
-        ];
-        _csvDownload(`Receiving_${ws}_FULL_TABLE.csv`, out);
-      };
-    }
-  }
-
-  function wireReceivingFullScreen() {
-    const btn = document.getElementById('flow-receiving-fullscreen');
-    if (!btn || btn.__bound) return;
-    btn.__bound = true;
-    btn.addEventListener('click', () => openReceivingFullScreenModal());
-  }
-
-  // Backwards-compatible alias (in case any existing handler references this name)
-  window.openReceivingFullscreenModal = openReceivingFullScreenModal;
-
 
   function setSubheader(ws) {
     const sub = document.getElementById('flow-sub');
@@ -2265,31 +2381,6 @@ const done = (id === 'receiving')
     : false;
 const nameLabel = done ? `${n.label} ✓` : n.label;
 
-const pct01 = (a, b) => {
-  const den = Number(b) || 0;
-  const num = Number(a) || 0;
-  if (den <= 0) return 1;
-  const p = num / den;
-  return Math.max(0, Math.min(1, p));
-};
-const pctLabel = (p) => `${Math.round(p * 100)}%`;
-let prog = '';
-if (id === 'receiving') {
-  prog = pctLabel(pct01(receiving?.receivedPOs || 0, receiving?.plannedPOs || 0));
-} else if (id === 'vas') {
-  prog = pctLabel(pct01(vas?.appliedUnits || 0, vas?.plannedUnits || 0));
-} else if (id === 'intl') {
-  const ls = Array.isArray(intl?.lanes) ? intl.lanes : [];
-  const total = ls.length;
-  const ontime = total ? ls.filter(l => (l && l.level) === 'green').length : 0;
-  prog = total ? `On-time lanes ${ontime}/${total}` : '';
-} else if (id === 'lastmile') {
-  const delivered = (manual?.dates?.deliveredAt || manual?.dates?.delivered_at || manual?.manual?.delivered_at) || null;
-  prog = delivered ? 'Delivered' : 'Scheduled';
-}
-const progText = prog ? `<text x="${labelX}" y="${nameY + 18}" text-anchor="${labelAnchor}" font-size="12" font-weight="700" fill="rgba(17,24,39,0.55)">${prog}</text>` : '';
-
-
 
       milestones += `
         <g class="flow-journey-hit" data-node="${id}" data-journey-node="${id}">
@@ -2298,7 +2389,6 @@ const progText = prog ? `<text x="${labelX}" y="${nameY + 18}" text-anchor="${la
                    `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" font-weight="700" fill="rgba(55,65,81,0.75)">${n.short}</text>`}
           <text x="${labelX}" y="${nameY}" text-anchor="${labelAnchor}" font-size="18" font-weight="800" fill="rgba(17,24,39,0.78)">${nameLabel}</text>
           ${paText}
-          ${progText}
           <g>
             <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="${pillH/2}" fill="${stBg}" stroke="rgba(17,24,39,0.06)" stroke-width="1"></rect>
             <text x="${pillTextX}" y="${pillY + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="${stFg}">${st}</text>
@@ -2371,9 +2461,6 @@ const progText = prog ? `<text x="${labelX}" y="${nameY + 18}" text-anchor="${la
           renderDetail(ws, tz, receiving, vas, intl, manual);
           renderRightTile(ws, tz, receiving, vas, intl, manual);
           highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
         });
       });
     } catch {}
@@ -2757,9 +2844,6 @@ const signoffSection = (context) => {
         UI.selection = { node: null, sub: null };
         renderRightTile(ws, tz, receiving, vas, intl, manual);
         highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
       };
     }
 
@@ -2810,6 +2894,680 @@ bindSign(sVas, 'vasComplete');
 
 
 
+
+
+
+  // ------------------------------
+  // Receiving — Full screen modal (units-based grouped table)
+  // ------------------------------
+  function ensureReceivingFullModal() {
+    let root = document.getElementById('flow-receiving-fullscreen-modal');
+    if (root) return root;
+
+    root = document.createElement('div');
+    root.id = 'flow-receiving-fullscreen-modal';
+    root.className = 'fixed inset-0 z-[9999] hidden';
+    root.innerHTML = `
+      <div class="absolute inset-0 bg-black/40"></div>
+      <div class="absolute inset-0 p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full h-full overflow-hidden flex flex-col">
+          <div class="flex items-center justify-between px-4 py-3 border-b">
+            <div>
+              <div class="text-base font-semibold">Receiving — Full screen</div>
+              <div id="flow-recvfs-sub" class="text-xs text-gray-500">Supplier drilldown • Approximate received units (planned units for received POs).</div>
+            </div>
+            <button data-flow-recvfs-close class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Close</button>
+          </div>
+
+          <div class="flex-1 overflow-auto p-4">
+            <div id="flow-recvfs-kpis" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"></div>
+
+            <div class="flex flex-col lg:flex-row gap-4">
+              <div class="lg:w-1/2">
+                <div class="text-sm font-semibold mb-2">Suppliers</div>
+                <div class="rounded-lg border overflow-hidden">
+                  <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="text-left px-3 py-2">Supplier</th>
+                        <th class="text-right px-3 py-2">POs received</th>
+                        <th class="text-right px-3 py-2">Approx received units</th>
+                      </tr>
+                    </thead>
+                    <tbody id="flow-recvfs-sup-rows"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="lg:w-1/2">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-sm font-semibold">Received POs</div>
+                  <div class="flex gap-2">
+                    <button id="flow-recvfs-dl-selected" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download selected</button>
+                    <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download all</button>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 mb-2">
+                  <label class="text-xs text-gray-600">Supplier</label>
+                  <select id="flow-recvfs-sel" class="text-sm border rounded-md px-2 py-1 bg-white"></select>
+                </div>
+
+                <div class="rounded-lg border overflow-hidden">
+                  <table class="w-full text-sm">
+                    <thead class="bg-gray-50">
+                      <tr>
+                        <th class="text-left px-3 py-2">PO</th>
+                        <th class="text-right px-3 py-2">Planned units</th>
+                        <th class="text-left px-3 py-2">Received at</th>
+                      </tr>
+                    </thead>
+                    <tbody id="flow-recvfs-po-rows"></tbody>
+                  </table>
+                </div>
+
+                <div id="flow-recvfs-note" class="text-xs text-gray-500 mt-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    root.querySelector('[data-flow-recvfs-close]')?.addEventListener('click', () => {
+      root.classList.add('hidden');
+    });
+    root.addEventListener('click', (e) => {
+      if (e.target === root) root.classList.add('hidden');
+      // Click outside panel
+      if (e.target && e.target.classList && e.target.classList.contains('bg-black/40')) root.classList.add('hidden');
+    });
+
+    return root;
+  }
+
+  function _csvDownload(filename, rows) {
+    const esc = (v) => {
+      const s = (v === null || v === undefined) ? '' : String(v);
+      if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    };
+    const csv = rows.map(r => r.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  function openReceivingFullScreenModal() {
+    // NOTE: This is a UI-only enhancement. It does not affect any calculations elsewhere.
+    const fmtNum = (v) => {
+      if (v === null || v === undefined || v === '') return '—';
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      return n.toLocaleString();
+    };
+    const fmtDateTimeLocal = (tz, ts) => {
+      try {
+        if (!ts) return '';
+        const d = (ts instanceof Date) ? ts : new Date(ts);
+        if (!Number.isFinite(d.getTime())) return String(ts);
+        const opt = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+        try {
+          return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
+        } catch {
+          return new Intl.DateTimeFormat('en-US', opt).format(d);
+        }
+      } catch {
+        return '';
+      }
+    };
+
+    // Date-only formatter for table columns (no time)
+    const fmtDateOnlyLocal = (tz, ts) => {
+      try {
+        if (!ts) return '';
+        // Accept already-formatted dates (MM/DD/YYYY or YYYY-MM-DD)
+        const s0 = String(ts).trim();
+        if (/^\d{2}\/\d{2}\/\d{4}$/.test(s0)) return s0;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s0)) {
+          const [y, m, d] = s0.split('-');
+          return `${m}/${d}/${y}`;
+        }
+        const d = (ts instanceof Date) ? ts : new Date(ts);
+        if (!Number.isFinite(d.getTime())) return s0;
+        const opt = { year: 'numeric', month: '2-digit', day: '2-digit' };
+        try {
+          return new Intl.DateTimeFormat('en-US', { ...opt, timeZone: tz || undefined }).format(d);
+        } catch {
+          return new Intl.DateTimeFormat('en-US', opt).format(d);
+        }
+      } catch {
+        return '';
+      }
+    };
+
+    const ctx = window.__FLOW_RECEIVING_FS_CTX__;
+    if (!ctx || !ctx.planRows || !ctx.receivingRows) {
+      alert('Receiving data not available yet. Please refresh the page and try again.');
+      return;
+    }
+
+    const { ws, tz, planRows, receivingRows, records } = ctx;
+    const normalizePO = (v) => String(v ?? '').trim().toUpperCase();
+    const toNum = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const normalizeFreight = (v) => {
+      const s = String(v ?? '').trim();
+      if (!s) return '';
+      const low = s.toLowerCase();
+      if (low.includes('sea') || low.includes('ocean')) return 'Sea';
+      if (low.includes('air')) return 'Air';
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    };
+
+
+    // -------------------- Build PO-level facts (units-only) --------------------
+
+    // 1) Received timestamps by PO
+    const receivedByPO = new Map();
+    for (const r of (receivingRows || [])) {
+      const po = normalizePO(r.po ?? r.PO ?? r.po_number ?? r.PO_Number ?? r.poNumber ?? r.po_no ?? r.poNo);
+      const receivedAt = r.receivedAt || r.received_at || r.received_at_utc || r.received;
+      if (!po) continue;
+      if (receivedAt) receivedByPO.set(po, receivedAt);
+    }
+
+    // 2) Planned units + metadata by PO (prefer planRows for supplier / zendesk / freight)
+    const getPO = (r) => normalizePO(
+      r.po_number ?? r.poNumber ?? r.PO_Number ?? r.PO ?? r.po ?? r.po_no ?? r.poNo ?? r.supplier_po ?? r.supplierPO ?? ''
+    );
+    const getPlannedUnits = (r) => (
+      toNum(r.target_qty ?? r.targetQty ?? r.planned_qty ?? r.plannedQty ?? r.planned_units ?? r.plannedUnits ?? r.PlannedUnits ?? r.units ?? r.Units ?? r.qty ?? r.Qty)
+    );
+
+    const plannedUnitsByPO = new Map();
+    const metaByPO = new Map(); // {supplier, zendesk, freight}
+    for (const row of (planRows || [])) {
+      const po = getPO(row);
+      if (!po) continue;
+
+      plannedUnitsByPO.set(po, (plannedUnitsByPO.get(po) || 0) + getPlannedUnits(row));
+
+      // Try several likely field names (keep additive + non-breaking)
+      const supplier = row.supplier || row.Supplier || row.vendor || row.Vendor || row.supplier_name || row.supplierName || row.factory || row.Factory;
+      const zendesk = row.zendesk || row.zendesk_ticket || row.zendesk_ticket_number || row.zendesk_ticket_num || row.ticket || row.ticket_id || row.zendeskTicket || row.zendeskTicketNumber || row.zendesk_no || row.zendeskNo;
+      const freightRaw = row.freight_type ?? row.freightType ?? row.freightTypeName ?? row.freight ?? row.mode ?? row.ship_mode ?? row.shipMode ?? row.Freight ?? row.transport_mode ?? row.transportMode ?? row.transport ?? row.Transport;
+      const freight = freightRaw ? normalizeFreight(freightRaw) : undefined;
+
+      const prev = metaByPO.get(po) || {};
+      metaByPO.set(po, {
+        supplier: prev.supplier || (supplier ? String(supplier) : undefined),
+        zendesk: prev.zendesk || ((zendesk !== null && zendesk !== undefined && zendesk !== '') ? String(zendesk) : undefined),
+        freight: prev.freight || (freight ? String(freight) : undefined),
+      });
+    }
+
+    // 2b) Back-fill metadata from receivingRows if planRows did not carry it
+    for (const r of (receivingRows || [])) {
+      const po = normalizePO(r.po ?? r.PO ?? r.po_number ?? r.PO_Number ?? r.poNumber ?? r.po_no ?? r.poNo);
+      if (!po) continue;
+      if (!metaByPO.has(po)) metaByPO.set(po, {});
+      const prev = metaByPO.get(po) || {};
+
+      const supplier = r.supplier || r.Supplier || r.vendor || r.Vendor || r.supplier_name || r.supplierName;
+      const zendesk = r.zendesk || r.zendesk_ticket || r.ticket || r.ticket_id || r.zendeskTicket;
+      const freightRaw = r.freight_type ?? r.freightType ?? r.freight ?? r.mode ?? r.ship_mode ?? r.shipMode ?? r.Freight ?? r.transport_mode ?? r.transportMode;
+      const freight = freightRaw ? normalizeFreight(freightRaw) : undefined;
+
+      metaByPO.set(po, {
+        supplier: prev.supplier || (supplier ? String(supplier) : undefined),
+        zendesk: prev.zendesk || ((zendesk !== null && zendesk !== undefined && zendesk !== '') ? String(zendesk) : undefined),
+        freight: prev.freight || (freight ? String(freight) : undefined),
+      });
+    }
+
+    // 3) Applied units (VAS actuals) by PO from records (units-only, align with computeVASStatus)
+    // NOTE: We intentionally do NOT filter by status here because the VAS endpoint payload is not consistent
+    // across environments, and the core UI logic (computeVASStatus) counts all returned rows.
+    const appliedUnitsByPO = new Map();
+
+    const recs = Array.isArray(records)
+      ? records
+      : (records && Array.isArray(records.records) ? records.records
+        : (records && Array.isArray(records.rows) ? records.rows
+          : (records && Array.isArray(records.data) ? records.data : [])));
+
+    for (const rec of recs) {
+      const po = getPO(rec) || normalizePO(rec.po_number ?? rec.po ?? rec.PO ?? rec.PO_Number);
+      if (!po) continue;
+
+      const qtyRaw = rec.qty ?? rec.quantity ?? rec.units ?? rec.target_qty ?? rec.applied_qty ?? rec.applied_units ?? rec.appliedUnits ?? rec.Qty ?? rec.Units;
+      const qty = toNum(qtyRaw);
+      const q = qty > 0 ? qty : 1; // match computeVASStatus defaulting behavior
+
+      appliedUnitsByPO.set(po, (appliedUnitsByPO.get(po) || 0) + q);
+    }
+
+    // 4) Build PO-level rows for ALL planned POs (not only received)
+    const rows = [];
+    for (const [po, plannedUnits] of plannedUnitsByPO.entries()) {
+      const meta = metaByPO.get(po) || {};
+      const supplier = meta.supplier || '—';
+      const zendesk = meta.zendesk || '—';
+      const freight = meta.freight || '—';
+      const receivedAt = receivedByPO.get(po) || '';
+      const approxReceivedUnits = receivedAt ? plannedUnits : 0; // definition: planned units for received POs
+      const appliedUnits = appliedUnitsByPO.get(po) || 0;
+
+      // Lane-level fields (from Intl Transit & Clearing lane manual inputs)
+      let etaFC = '';
+      let latestArrivalDate = '';
+      let shipmentNo = '';
+      let hbl = '';
+      let mbl = '';
+      try {
+        const ticket = (zendesk && zendesk !== '—') ? zendesk : 'NO_TICKET';
+        const lKey = (typeof laneKey === 'function') ? laneKey(supplier, ticket, freight) : '';
+        const lm = lKey ? (loadIntlLaneManual(ws, lKey) || {}) : {};
+        etaFC = String(lm.eta_fc || lm.etaFC || lm.eta_fc_at || lm.eta_fc_fc || '').trim();
+        latestArrivalDate = String(lm.latest_arrival_date || lm.latestArrivalDate || lm.latestArrival || lm.latest_arrival || '').trim();
+        shipmentNo = String(lm.shipment_no || lm.shipmentNo || lm.shipment_number || lm.shipmentNumber || lm.shipment || '').trim();
+        hbl = String(lm.hbl || lm.HBL || '').trim();
+        mbl = String(lm.mbl || lm.MBL || '').trim();
+      } catch { /* ignore */ }
+
+      rows.push({ supplier, zendesk, freight, po, plannedUnits, approxReceivedUnits, appliedUnits, shipmentNo, hbl, mbl, etaFC,
+ latestArrivalDate, receivedAt });
+    }
+    rows.sort((a,b) =>
+      a.supplier.localeCompare(b.supplier) ||
+      String(a.zendesk).localeCompare(String(b.zendesk)) ||
+      String(a.freight).localeCompare(String(b.freight)) ||
+      String(a.po).localeCompare(String(b.po))
+    );
+
+    // -------------------- KPIs (keep the ones you already like) --------------------
+    const receivedOnly = rows.filter(r => !!r.receivedAt);
+    const totalReceivedPOs = receivedOnly.length;
+    const totalApproxUnits = receivedOnly.reduce((a,r)=>a+(r.approxReceivedUnits||0),0);
+    const totalAppliedUnits = rows.reduce((a,r)=>a+(r.appliedUnits||0),0);
+    const suppliersWithReceipts = new Set(receivedOnly.map(r=>r.supplier)).size;
+
+    const root = ensureReceivingFullModal();
+    root.classList.remove('hidden');
+
+    // Replace the body content with a unified grouped table (no dropdown dependency).
+    // Baseline modal markup doesn't always include a dedicated body id, so fall back to the main scroll container.
+    const body = root.querySelector('#flow-recvfs-body') || root.querySelector('.flex-1.overflow-auto.p-4');
+    if (body) {
+      body.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4" id="flow-recvfs-kpis"></div>
+
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <div class="text-sm font-semibold">Receiving — Full screen (units-based)</div>
+            <div class="text-[11px] text-gray-500">Grouped: Supplier → Zendesk → Freight → PO</div>
+          </div>
+          <div class="flex gap-2">
+            <button id="flow-recvfs-expandall" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Expand all</button>
+            <button id="flow-recvfs-collapseall" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Collapse all</button>
+            <button id="flow-recvfs-dl-all" class="px-3 py-1.5 text-sm rounded-md border hover:bg-gray-50">Download (PO rows)</button>
+          </div>
+        </div>
+
+        <div class="rounded-lg border overflow-auto" style="max-height:70vh">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th class="text-left px-3 py-2">Supplier / Zendesk / Freight / PO</th>
+                <th class="text-left px-3 py-2">Freight</th>
+                <th class="text-right px-3 py-2">Planned units</th>
+                <th class="text-right px-3 py-2">Approx received units</th>
+                <th class="text-right px-3 py-2">UID applied units</th>
+                <th class="text-left px-3 py-2">Shipment #</th>
+                <th class="text-left px-3 py-2">HBL</th>
+                <th class="text-left px-3 py-2">MBL</th>
+                <th class="text-left px-3 py-2">ETA FC</th>
+                <th class="text-left px-3 py-2">Latest arrival date</th>
+                <th class="text-left px-3 py-2">Received at</th>
+              </tr>
+            </thead>
+            <tbody id="flow-recvfs-rows"></tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // KPIs
+    const kpi = root.querySelector('#flow-recvfs-kpis');
+    if (kpi) {
+      kpi.innerHTML = `
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">POs received</div>
+          <div class="text-xl font-semibold">${fmtNum(totalReceivedPOs)}</div>
+        </div>
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">Approx received units</div>
+          <div class="text-xl font-semibold">${fmtNum(totalApproxUnits)}</div>
+          <div class="text-[11px] text-gray-500 mt-1">Sum of planned units for received POs</div>
+        </div>
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">UID applied units</div>
+          <div class="text-xl font-semibold">${fmtNum(totalAppliedUnits)}</div>
+          <div class="text-[11px] text-gray-500 mt-1">From VAS records (status=complete)</div>
+        </div>
+        <div class="rounded-lg border p-3">
+          <div class="text-xs text-gray-500">Suppliers with receipts</div>
+          <div class="text-xl font-semibold">${fmtNum(suppliersWithReceipts)}</div>
+        </div>
+      `;
+    }
+
+    // -------------------- Grouped / expandable rendering --------------------
+    const state = window.__FLOW_RECVFS_EXPAND_STATE__ = window.__FLOW_RECVFS_EXPAND_STATE__ || {
+      collapsedSupplier: new Set(),
+      collapsedZendesk: new Set(),
+      collapsedFreight: new Set(),
+    };
+
+    const makeKey = (parts) => parts.map(p => String(p ?? '—')).join('|||');
+    const esc = (v) => (typeof escapeHtml === 'function') ? escapeHtml(String(v ?? '')) : String(v ?? '');
+
+    // Build nested grouping: supplier -> zendesk -> freight -> po rows
+    const groups = new Map();
+    for (const r of rows) {
+      const sKey = r.supplier || '—';
+      const zKey = r.zendesk || '—';
+      const fKey = r.freight || '—';
+
+      if (!groups.has(sKey)) groups.set(sKey, new Map());
+      const zg = groups.get(sKey);
+      if (!zg.has(zKey)) zg.set(zKey, new Map());
+      const fg = zg.get(zKey);
+      if (!fg.has(fKey)) fg.set(fKey, []);
+      fg.get(fKey).push(r);
+    }
+
+    const sum = (arr, fn) => arr.reduce((a, x) => a + (fn(x) || 0), 0);
+    const countReceived = (arr) => arr.reduce((a, x) => a + (x.receivedAt ? 1 : 0), 0);
+
+    const caret = (isCollapsed) => isCollapsed ? '▸' : '▾';
+
+    const render = () => {
+      const tb = root.querySelector('#flow-recvfs-rows');
+      if (!tb) return;
+
+      let html = '';
+      let poRowIdx = 0;
+      let supplierIdx = 0;
+      const suppliers = Array.from(groups.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+
+      for (const supplier of suppliers) {
+        const supZebra = (supplierIdx++ % 2) ? 'bg-[#990033]/5' : 'bg-white';
+        const sId = 'S:' + supplier;
+        const zg = groups.get(supplier);
+        const allRowsS = [];
+        for (const fm of zg.values()) for (const arr of fm.values()) allRowsS.push(...arr);
+
+        const sPlanned = sum(allRowsS, x=>x.plannedUnits);
+        const sApprox = sum(allRowsS, x=>x.approxReceivedUnits);
+        const sApplied = sum(allRowsS, x=>x.appliedUnits);
+        const sPOs = allRowsS.length;
+        const sRecPOs = countReceived(allRowsS);
+        const sPct = sPOs ? Math.round((sRecPOs / sPOs) * 100) : 0;
+
+        const sCollapsed = state.collapsedSupplier.has(sId);
+        html += `
+          <tr class="${supZebra} hover:bg-gray-50 cursor-pointer select-none" data-kind="supplier" data-id="${esc(sId)}">
+            <td class="px-3 py-2 font-semibold text-[14px]">
+              <span class="inline-block w-4">${caret(sCollapsed)}</span>
+              ${esc(supplier)}
+              <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(sRecPOs)}/${fmtNum(sPOs)} POs received)</span>
+              <div class="mt-1 w-40 h-1.5 bg-gray-200 rounded">
+                <div class="h-1.5 rounded bg-emerald-500" style="width:${sPct}%"></div>
+              </div>
+            </td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2 text-right font-semibold">${fmtNum(sPlanned)}</td>
+            <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApprox)}</td>
+            <td class="px-3 py-2 text-right font-semibold">${fmtNum(sApplied)}</td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
+            <td class="px-3 py-2"></td>
+          </tr>
+        `;
+
+        if (sCollapsed) continue;
+
+        const zendeskKeys = Array.from(zg.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+        for (const zendesk of zendeskKeys) {
+          const zId = 'Z:' + makeKey([supplier, zendesk]);
+          const fg = zg.get(zendesk);
+
+          const allRowsZ = [];
+          for (const arr of fg.values()) allRowsZ.push(...arr);
+
+          const zPlanned = sum(allRowsZ, x=>x.plannedUnits);
+          const zApprox = sum(allRowsZ, x=>x.approxReceivedUnits);
+          const zApplied = sum(allRowsZ, x=>x.appliedUnits);
+          const zPOs = allRowsZ.length;
+          const zRecPOs = countReceived(allRowsZ);
+          const zPct = zPOs ? Math.round((zRecPOs / zPOs) * 100) : 0;
+
+          const zFreights = Array.from(fg.keys()).filter(x => String(x || '').trim());
+          const zFreightLabel = zFreights.length ? (zFreights.length === 1 ? zFreights[0] : zFreights.join(' / ')) : '—';
+
+          const uniqVal = (arr, key) => {
+            const set = new Set();
+            for (const x of arr) {
+              const v = (x && x[key]) ? String(x[key]).trim() : '';
+              if (v) set.add(v);
+            }
+            if (set.size === 1) return Array.from(set)[0];
+            return '';
+          };
+          const zShipment = uniqVal(allRowsZ, 'shipmentNo');
+          const zHBL = uniqVal(allRowsZ, 'hbl');
+          const zMBL = uniqVal(allRowsZ, 'mbl');
+          const zEta = uniqVal(allRowsZ, 'etaFC');
+          const zLatest = uniqVal(allRowsZ, 'latestArrivalDate');
+
+          const zCollapsed = state.collapsedZendesk.has(zId);
+          html += `
+            <tr class="bg-gray-50/70 hover:bg-gray-50 cursor-pointer select-none" data-kind="zendesk" data-id="${esc(zId)}">
+              <td class="px-3 py-2 text-[13px] font-medium">
+                <span class="inline-block w-4"></span>
+                <span class="inline-block w-4">${caret(zCollapsed)}</span>
+                <span class="text-sm text-gray-700"><span class="font-medium">Zendesk:</span> ${esc(zendesk)}</span>
+                <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(zRecPOs)}/${fmtNum(zPOs)} POs received)</span>
+                <div class="mt-1 w-36 h-1.5 bg-gray-200 rounded">
+                  <div class="h-1.5 rounded bg-emerald-500" style="width:${zPct}%"></div>
+                </div>
+              </td>
+              <td class="px-3 py-2 text-sm text-gray-700">${esc(zFreightLabel)}</td>
+              <td class="px-3 py-2 text-right">${fmtNum(zPlanned)}</td>
+              <td class="px-3 py-2 text-right">${fmtNum(zApprox)}</td>
+              <td class="px-3 py-2 text-right">${fmtNum(zApplied)}</td>
+              <td class="px-3 py-2">${esc(zShipment || "—")}</td>
+              <td class="px-3 py-2">${esc(zHBL || "—")}</td>
+              <td class="px-3 py-2">${esc(zMBL || "—")}</td>
+              <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, zEta) || "—")}</td>
+              <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, zLatest) || "—")}</td>
+              <td class="px-3 py-2"></td>
+            </tr>
+          `;
+
+          if (zCollapsed) continue;
+
+          const freightKeys = Array.from(fg.keys()).sort((a,b)=>String(a).localeCompare(String(b)));
+          for (const freight of freightKeys) {
+            const fId = 'F:' + makeKey([supplier, zendesk, freight]);
+            const arr = fg.get(freight) || [];
+
+            const fPlanned = sum(arr, x=>x.plannedUnits);
+            const fApprox = sum(arr, x=>x.approxReceivedUnits);
+            const fApplied = sum(arr, x=>x.appliedUnits);
+            const fPOs = arr.length;
+            const fRecPOs = countReceived(arr);
+
+            const fCollapsed = state.collapsedFreight.has(fId);
+            html += `
+              <tr class="bg-gray-50 hover:bg-gray-50 cursor-pointer select-none" data-kind="freight" data-id="${esc(fId)}">
+                <td class="px-3 py-2">
+                  <span class="inline-block w-4"></span>
+                  <span class="inline-block w-4"></span>
+                  <span class="inline-block w-4">${caret(fCollapsed)}</span>
+                  <span class="text-xs text-gray-600"><span class="font-medium">Freight:</span> ${esc(freight)}</span>
+                  <span class="text-[11px] text-gray-500 ml-2">(${fmtNum(fRecPOs)}/${fmtNum(fPOs)} POs received)</span>
+                </td>
+                <td class="px-3 py-2">${esc(freight)}</td>
+                <td class="px-3 py-2 text-right">${fmtNum(fPlanned)}</td>
+                <td class="px-3 py-2 text-right">${fmtNum(fApprox)}</td>
+                <td class="px-3 py-2 text-right">${fmtNum(fApplied)}</td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+                <td class="px-3 py-2"></td>
+              </tr>
+            `;
+
+            if (fCollapsed) continue;
+
+            for (const r of arr) {
+              html += `
+                <tr class="${(poRowIdx++ % 2) ? "bg-[#990033]/5" : "bg-white"} hover:bg-gray-50" data-kind="po">
+                  <td class="px-3 py-2">
+                    <span class="inline-block w-4"></span>
+                    <span class="inline-block w-4"></span>
+                    <span class="inline-block w-4"></span>
+                    <span class="font-mono text-xs">${esc(r.po)}</span>
+                  </td>
+                  <td class="px-3 py-2">${esc(r.freight || '—')}</td>
+                  <td class="px-3 py-2 text-right">${fmtNum(r.plannedUnits)}</td>
+                  <td class="px-3 py-2 text-right">${fmtNum(r.approxReceivedUnits)}</td>
+                  <td class="px-3 py-2 text-right">${fmtNum(r.appliedUnits)}</td>
+                  <td class="px-3 py-2">${esc(r.shipmentNo || '—')}</td>
+                  <td class="px-3 py-2">${esc(r.hbl || '—')}</td>
+                  <td class="px-3 py-2">${esc(r.mbl || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, r.etaFC) || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, r.latestArrivalDate) || '—')}</td>
+                  <td class="px-3 py-2">${esc(fmtDateOnlyLocal(tz, r.receivedAt))}</td>
+                </tr>
+              `;
+            }
+          }
+        }
+      }
+
+      tb.innerHTML = html || `<tr><td class="px-3 py-6 text-center text-gray-500" colspan="11">No planned POs found for this week</td></tr>`;
+    };
+
+    // Toggle handlers (single delegated listener)
+    const tb = root.querySelector('#flow-recvfs-rows');
+    if (tb && !tb.__FLOW_RECVFS_BOUND__) {
+      tb.__FLOW_RECVFS_BOUND__ = true;
+      tb.addEventListener('click', (ev) => {
+        const tr = ev.target && ev.target.closest ? ev.target.closest('tr') : null;
+        if (!tr) return;
+        const kind = tr.getAttribute('data-kind');
+        const id = tr.getAttribute('data-id');
+        if (!kind || !id) return;
+
+        if (kind === 'supplier') {
+          if (state.collapsedSupplier.has(id)) state.collapsedSupplier.delete(id);
+          else state.collapsedSupplier.add(id);
+          render();
+        } else if (kind === 'zendesk') {
+          if (state.collapsedZendesk.has(id)) state.collapsedZendesk.delete(id);
+          else state.collapsedZendesk.add(id);
+          render();
+        } else if (kind === 'freight') {
+          if (state.collapsedFreight.has(id)) state.collapsedFreight.delete(id);
+          else state.collapsedFreight.add(id);
+          render();
+        }
+      });
+    }
+
+    // Expand / Collapse all
+    const btnExpand = root.querySelector('#flow-recvfs-expandall');
+    if (btnExpand) btnExpand.onclick = () => {
+      state.collapsedSupplier.clear();
+      state.collapsedZendesk.clear();
+      state.collapsedFreight.clear();
+      render();
+    };
+    const btnCollapse = root.querySelector('#flow-recvfs-collapseall');
+    if (btnCollapse) btnCollapse.onclick = () => {
+      // Collapse everything at supplier level is enough.
+      state.collapsedSupplier.clear();
+      for (const supplier of groups.keys()) state.collapsedSupplier.add('S:' + supplier);
+      state.collapsedZendesk.clear();
+      state.collapsedFreight.clear();
+      render();
+    };
+
+    // Download full table (flat CSV of PO-level rows)
+    const dlAll = root.querySelector('#flow-recvfs-dl-all');
+    if (dlAll) {
+      dlAll.onclick = () => {
+        const out = [
+          ['week_start', ws],
+          ['supplier','zendesk','freight','po','planned_units','approx_received_units','uid_applied_units','eta_fc','latest_arrival_date','received_at']
+        ];
+        for (const r of rows) {
+          out.push([
+            r.supplier, r.zendesk, r.freight, r.po,
+            String(r.plannedUnits ?? 0),
+            String(r.approxReceivedUnits ?? 0),
+            String(r.appliedUnits ?? 0),
+            String(r.etaFC ?? ''),
+            String(r.latestArrivalDate ?? ''),
+            String(r.receivedAt ?? '')
+          ]);
+        }
+        const csv = out.map(line => line.map(x => {
+          const s = String(x ?? '');
+          if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+          return s;
+        }).join(',')).join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = `receiving_fullscreen_${(ws || 'week').toString().replace(/[:\s]/g,'_')}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url), 250);
+      };
+    }
+
+    // Initial render
+    render();
+  }
+
+  function wireReceivingFullScreen() {
+    const btn = document.getElementById('flow-receiving-fullscreen');
+    if (!btn || btn.__bound) return;
+    btn.__bound = true;
+    btn.addEventListener('click', () => openReceivingFullScreenModal());
+  }
 
 function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
     // use a single 'now' reference for all upcoming/past comparisons
@@ -2922,9 +3680,6 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
         renderDetail(ws, tz, receiving, vas, intl, manual);
         renderRightTile(ws, tz, receiving, vas, intl, manual);
         highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
       });
     });
   }
@@ -2996,7 +3751,9 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
 
     // ---------------- Node-specific details ----------------
     if (sel.node === 'receiving') {
-  const title = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const overallPct = (num(receiving.plannedPOs) || 0) ? (num(receiving.receivedPOs || 0) / num(receiving.plannedPOs || 1)) * 100 : 0;
+  const titleBase = sel.sub === 'late' ? 'Receiving • Late POs' : sel.sub === 'missing' ? 'Receiving • Missing POs' : 'Receiving';
+  const title = `${titleBase} <span class="inline-flex align-middle ml-2">${progressBar(overallPct, { w: 'w-36', h: 'h-2' })}</span>`;
   const subtitle = `Due ${fmtInTZ(receiving.due, tz)} • Last received ${receiving.lastReceived ? fmtInTZ(receiving.lastReceived, tz) : '—'}`;
 
   const insights = [
@@ -3024,22 +3781,27 @@ function renderTopNodes(ws, tz, receiving, vas, intl, manual) {
   const supRows = (receiving.suppliers || [])
     .sort((a, b) => (b.cartonsOut || 0) - (a.cartonsOut || 0))
     .slice(0, 30)
-    .map(s => [
-      s.supplier,
-      `${s.receivedPOs}/${s.poCount}`,
-      `${Math.round(s.units)}`,
-      `${s.cartonsIn || 0}`,
-      `${s.cartonsOut || 0}`,
-    ]);
+    .map(s => {
+      const denom = num(s.poCount || 0) || 0;
+      const pct = denom ? (num(s.receivedPOs || 0) / denom) * 100 : 0;
+      return [
+        s.supplier,
+        progressBar(pct, { w: 'w-28', h: 'h-2' }),
+        `${s.receivedPOs}/${s.poCount}`,
+        `${Math.round(s.units)}`,
+        `${s.cartonsIn || 0}`,
+        `${s.cartonsOut || 0}`,
+      ];
+    });
 
   detail.innerHTML = [
     header(title, receiving.level, subtitle),
-    `<div class="flex justify-end mb-2"><button id="flow-receiving-fullscreen" class="px-3 py-1.5 text-xs rounded-md border hover:bg-gray-50">Full view</button></div>`,
-
+    `<div class="mt-2 flex justify-end"><button type="button" id="flow-receiving-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button></div>`,
     bullets(insights),
     kpis,
-    table(['Supplier', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
+    table(['Supplier', 'Progress', 'POs received', 'Planned units', 'Cartons In', 'Cartons Out'], supRows),
   ].join('');
+    try { wireReceivingFullScreen(); } catch {}
   return;
 }
 
@@ -3080,16 +3842,21 @@ const vasMixHtml = (vasObj) => {
     : `<div class="mt-3 text-xs text-gray-500">No remaining POs — on track.</div>`;
   return bar + legend + tbl;
 };
-const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN(x.planned), fmtN(x.applied), `${x.pct}%`]);
+const supRows = (vas.supplierRows || []).slice(0, 12).map(x => {
+  const planned = num(x.planned || 0) || 0;
+  const applied = num(x.applied || 0) || 0;
+  const pct = planned ? (applied / planned) * 100 : 0;
+  return [x.supplier, progressBar(pct, { w: 'w-28', h: 'h-2' }), fmtN(planned), fmtN(applied), `${Math.round(pct)}%`];
+});
 
 
       detail.innerHTML = [
-        header('VAS Processing', vas.level, subtitle),
+        header(`VAS Processing <span class="inline-flex align-middle ml-2">${progressBar((num(vas.completion)||0)*100, { w: 'w-36', h: 'h-2' })}</span>`, vas.level, subtitle),
         bullets(insights),
         `<div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="text-sm font-semibold text-gray-700">Suppliers (planned vs applied)</div>
-            ${table(['Supplier', 'Planned', 'Applied', '%'], supRows)}
+            ${table(['Supplier', 'Progress', 'Planned', 'Applied', '%'], supRows)}
           </div>
           
 <div class="rounded-xl border p-3">
@@ -3173,12 +3940,18 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         <div class="mt-3 rounded-xl border p-3 text-sm text-gray-500">No lanes found in the uploaded Plan for this week.</div>
       `;
 
-      detail.innerHTML = [
+            // Expose latest Intl context for UI handlers (modal, etc.)
+      try { window.__FLOW_INTL_CTX__ = { ws, tz, lanes, weekContainers, intl }; } catch {}
+
+detail.innerHTML = [
         header('Transit & Clearing', intl.level, subtitle),
         bullets(insights),
         kpis,
         `<div class="mt-3 rounded-xl border p-3">
-          <div class="text-sm font-semibold text-gray-700">Lanes</div>
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-sm font-semibold text-gray-700">Lanes</div>
+            <button type="button" id="flow-lanes-fullscreen" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Full screen</button>
+          </div>
           ${table(['Supplier', 'Zendesk', 'Freight', 'Applied', 'Cartons Out', 'Containers', 'Status'], rows)}
         </div>`,
         editor,
@@ -3317,7 +4090,11 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
 
     // default
     detail.innerHTML = header('Flow', 'gray', 'Click a node above to see details.');
-  }
+  
+
+    // Best-effort bind for Receiving full-screen button (only exists in Receiving view).
+    try { wireReceivingFullScreen(); } catch {}
+}
 
   
   function escapeAttr(s) {
@@ -3336,6 +4113,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     const departed = v(manual.departed_at);
     const arrived = v(manual.arrived_at);
     const destClr = v(manual.dest_customs_cleared_at);
+
+    const etaFC = v(manual.eta_fc || manual.etaFC || manual.eta_fc_at || manual.eta_fc_fc);
+    const latestArrivalDate = v(manual.latest_arrival_date || manual.latestArrivalDate || manual.latestArrival || manual.latest_arrival);
 
     // Baseline (reference-only): show expected milestone dates without persisting.
     const vasDueB = makeBizLocalDate(
@@ -3441,12 +4221,15 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
             </div>
           </div>
           <div class="flex items-center gap-2">
+            <button type="button" id="flow-lane-collapse" class="text-xs px-2 py-1 border rounded-lg bg-white hover:bg-gray-50">Collapse</button>
             <span class="dot ${dot(lane.level)}"></span>
             <span class="text-xs px-2 py-0.5 rounded-full border ${pill(lane.level)} whitespace-nowrap">${statusLabel(lane.level)}</span>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+
+        <div id="flow-lane-editor-body" class="mt-3">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div class="rounded-xl border p-3">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold text-gray-700">Docs & customs milestones</div>
@@ -3461,6 +4244,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-pack" data-val="${basePack}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Shipment #</div>
+                <input id="flow-intl-shipment" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.shipmentNumber || manual.shipment || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Origin customs cleared</div>
                 <input id="flow-intl-originclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${originClr}"/>
@@ -3469,6 +4258,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-originclr" data-val="${baseOriginClr}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">HBL</div>
+                <input id="flow-intl-hbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.hbl || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Departed origin</div>
                 <input id="flow-intl-departed" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${departed}"/>
@@ -3477,6 +4272,12 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-departed" data-val="${baseDeparted}">Copy</button>
                 </div>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">MBL</div>
+                <input id="flow-intl-mbl" type="text" class="w-full px-2 py-1.5 border rounded-lg" value="${escapeAttr(String(manual.mbl || ''))}" placeholder="Free text"/>
+              </label>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Arrived destination</div>
                 <input id="flow-intl-arrived" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${arrived}"/>
@@ -3485,6 +4286,9 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-arrived" data-val="${baseArrived}">Copy</button>
                 </div>
               </label>
+
+              <div class="hidden md:block"></div>
+
               <label class="text-sm">
                 <div class="text-xs text-gray-500 mb-1">Destination customs cleared</div>
                 <input id="flow-intl-destclr" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${destClr}"/>
@@ -3493,16 +4297,26 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
                   <button type="button" class="flow-intl-copy text-[11px] underline hover:text-gray-700" data-target="flow-intl-destclr" data-val="${baseDestClr}">Copy</button>
                 </div>
               </label>
-            </div>
 
-            <div class="flex items-center gap-3 mt-3">
-              <label class="text-sm flex items-center gap-2">
-                <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
-                <span>Customs hold</span>
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">ETA FC</div>
+                <input id="flow-intl-etafc" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${etaFC}"/>
               </label>
+
+              <label class="text-sm">
+                <div class="text-xs text-gray-500 mb-1">Latest arrival date</div>
+                <input id="flow-intl-latestarrival" type="datetime-local" class="w-full px-2 py-1.5 border rounded-lg" value="${latestArrivalDate}"/>
+              </label>
+
+              <div class="flex items-center gap-3 md:pt-6">
+                <label class="text-sm flex items-center gap-2">
+                  <input id="flow-intl-hold" type="checkbox" class="h-4 w-4" ${hold ? 'checked' : ''}/>
+                  <span>Customs hold</span>
+                </label>
+              </div>
             </div>
 
-            <label class="text-sm mt-3 block">
+<label class="text-sm mt-3 block">
               <div class="text-xs text-gray-500 mb-1">Note (optional)</div>
               <textarea id="flow-intl-note" rows="2" class="w-full px-2 py-1.5 border rounded-lg" placeholder="Quick update for the team...">${escapeHtml(note)}</textarea>
             </label>
@@ -3531,6 +4345,7 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
               One container can map to multiple lanes. These containers feed Last Mile immediately.
             </div>
           </div>
+          </div>
         </div>
       </div>
     `;
@@ -3557,6 +4372,59 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
     });
 
 
+
+
+    // Lane details collapse/expand (UI-only)
+    const collapseBtn = detail.querySelector('#flow-lane-collapse');
+    const bodyWrap = detail.querySelector('#flow-lane-editor-body');
+    if (collapseBtn && bodyWrap && !collapseBtn.dataset.bound) {
+      collapseBtn.dataset.bound = '1';
+      collapseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const collapsed = bodyWrap.classList.toggle('hidden');
+        collapseBtn.textContent = collapsed ? 'Expand' : 'Collapse';
+      });
+    }
+
+    // Full screen overview for all lanes (table)
+    const lanesFullBtn = detail.querySelector('#flow-lanes-fullscreen');
+    if (lanesFullBtn && !lanesFullBtn.dataset.bound) {
+      lanesFullBtn.dataset.bound = '1';
+      lanesFullBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openIntlOverviewModal(ws, getBizTZ());
+      });
+    }
+
+
+    // Background persistence for lane identifiers (Shipment/HBL/MBL)
+    const idMap = [
+      ['#flow-intl-shipment', 'shipmentNumber'],
+      ['#flow-intl-hbl', 'hbl'],
+      ['#flow-intl-mbl', 'mbl'],
+    ];
+    for (const [sel, field] of idMap) {
+      const el = detail.querySelector(sel);
+      if (!el || el.dataset.bound) continue;
+      el.dataset.bound = '1';
+      const saveOne = () => {
+        const key = selectedKey || (UI.selection && UI.selection.sub) || null;
+        if (!key) return;
+        const v = String(el.value || '').trim();
+        const patch = {}; patch[field] = v;
+        saveIntlLaneManual(ws, key, patch);
+      };
+      el.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          saveOne();
+          el.blur();
+        }
+      });
+      el.addEventListener('blur', () => saveOne());
+    }
 
     // Baseline helpers (UI-only; no persistence)
     const copyAll = detail.querySelector('#flow-intl-copy-all');
@@ -3737,6 +4605,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
         const departed = detail.querySelector('#flow-intl-departed')?.value || '';
         const arrived = detail.querySelector('#flow-intl-arrived')?.value || '';
         const destClr = detail.querySelector('#flow-intl-destclr')?.value || '';
+        const etaFC = detail.querySelector('#flow-intl-etafc')?.value || '';
+        const latestArrivalDate = detail.querySelector('#flow-intl-latestarrival')?.value || '';
 
         const hold = !!detail.querySelector('#flow-intl-hold')?.checked;
         const note = detail.querySelector('#flow-intl-note')?.value || '';
@@ -3746,6 +4616,8 @@ const supRows = (vas.supplierRows || []).slice(0, 12).map(x => [x.supplier, fmtN
           departed_at: safeISO(departed),
           arrived_at: safeISO(arrived),
           dest_customs_cleared_at: safeISO(destClr),
+          eta_fc: safeISO(etaFC),
+          latest_arrival_date: safeISO(latestArrivalDate),
           customs_hold: hold,
           note: String(note || ''),
         };
@@ -4297,171 +5169,490 @@ function renderFooterTrends(el, nodes, weekKey) {
     } catch { return String(ws || ''); }
   }
 
-  function buildReportHTML(cache) {
-    const ws = cache?.ws || '';
-    const tz = cache?.tz || getBizTZ();
-    const receiving = cache?.receiving || {};
-    const vas = cache?.vas || {};
-    const intl = cache?.intl || {};
-    const manual = cache?.manual || {};
-
-    const suppliers = Array.isArray(receiving.suppliers) ? receiving.suppliers : [];
-
-    const execRows = [
-      ['Week', escHtml(String(ws))],
-      ['Receiving', `${escHtml(pct(receiving.receivedPOs, receiving.plannedPOs))} (${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)} POs)`],
-      ['Cartons out', escHtml(receiving.cartonsOutTotal ?? 0)],
-      ['VAS applied', `${escHtml(pct(vas.appliedUnits, vas.plannedUnits))} (${escHtml(vas.appliedUnits ?? 0)}/${escHtml(vas.plannedUnits ?? 0)} units)`],
-      ['Transit lanes', escHtml(intl.lanesTotal ?? (manual?.intl?.lanes ?? 0) ?? 0)],
-      ['Docs missing', escHtml(intl.docsMissing ?? (manual?.intl?.docsMissing ?? 0) ?? 0)],
-      ['Last Mile open', `${escHtml(manual?.lastmile?.open ?? manual?.lastMile?.open ?? 0)}/${escHtml(manual?.lastmile?.total ?? manual?.lastMile?.total ?? 0)}`],
-    ];
-
-    const supplierTable = suppliers.length ? `
-      <table>
-        <thead>
-          <tr><th>Supplier</th><th>POs received</th><th>Planned units</th><th>Cartons in</th><th>Cartons out</th></tr>
-        </thead>
-        <tbody>
-          ${suppliers.map(s => `
-            <tr>
-              <td>${escHtml(s.supplier)}</td>
-              <td>${escHtml(s.receivedPOs)}/${escHtml(s.poCount)}</td>
-              <td>${escHtml(s.units)}</td>
-              <td>${escHtml(s.cartonsIn)}</td>
-              <td>${escHtml(s.cartonsOut)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    ` : `<div class="muted">No supplier breakdown available for this week.</div>`;
-
-    const nodePage = (title, bodyHtml) => `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">${escHtml(title)}</div>
-          <div class="muted">Week start: ${escHtml(ws)} • Generated: ${escHtml(new Date().toLocaleString())}</div>
-        </div>
-        ${bodyHtml}
-      </section>
-    `;
-
-    const execPage = `
-      <section class="page">
-        <div class="hdr">
-          <div class="h1">Flow — Executive summary</div>
-          <div class="muted">${escHtml(weekRangeText(ws, tz))} • Week start: ${escHtml(ws)}</div>
-        </div>
-
-        <div class="grid2">
-          ${execRows.map(([k,v]) => `<div class="kv"><div class="k">${escHtml(k)}</div><div class="v">${v}</div></div>`).join('')}
-        </div>
-
-        <div class="spacer"></div>
-        <div class="h2">Notes</div>
-        <div class="muted">Ongoing state is based on the current process node (not date math).</div>
-      </section>
-    `;
-
-    const receivingPage = nodePage('Receiving', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(receiving.due, tz))}</div></div>
-        <div class="kv"><div class="k">Last received</div><div class="v">${escHtml(fmtDateLocal(receiving.lastReceived, tz))}</div></div>
-        <div class="kv"><div class="k">POs received</div><div class="v">${escHtml(receiving.receivedPOs)}/${escHtml(receiving.plannedPOs)}</div></div>
-        <div class="kv"><div class="k">Late POs</div><div class="v">${escHtml(receiving.latePOs ?? 0)}</div></div>
-        <div class="kv"><div class="k">Cartons in</div><div class="v">${escHtml(receiving.cartonsInTotal ?? 0)}</div></div>
-        <div class="kv"><div class="k">Cartons out</div><div class="v">${escHtml(receiving.cartonsOutTotal ?? 0)}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="h2">Supplier breakdown</div>
-      ${supplierTable}
-    `);
-
-    const vasPage = nodePage('VAS Processing', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Due</div><div class="v">${escHtml(fmtDateLocal(vas.due, tz))}</div></div>
-        <div class="kv"><div class="k">Applied</div><div class="v">${escHtml(vas.appliedUnits ?? 0)} / ${escHtml(vas.plannedUnits ?? 0)} units (${escHtml(pct(vas.appliedUnits, vas.plannedUnits))})</div></div>
-        <div class="kv"><div class="k">Completion</div><div class="v">${escHtml(pct(vas.completedPOs, vas.plannedPOs))} (${escHtml(vas.completedPOs ?? 0)}/${escHtml(vas.plannedPOs ?? 0)} POs)</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">Source: completed production records aggregated for the selected week.</div>
-    `);
-
-    const intlPage = nodePage('Transit & Clearing', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Origin window</div><div class="v">${escHtml(intl.windowText ?? '—')}</div></div>
-        <div class="kv"><div class="k">Lanes</div><div class="v">${escHtml(intl.lanesTotal ?? 0)}</div></div>
-        <div class="kv"><div class="k">Mode split</div><div class="v">${escHtml(intl.modeText ?? '—')}</div></div>
-        <div class="kv"><div class="k">Docs missing</div><div class="v">${escHtml(intl.docsMissing ?? 0)}</div></div>
-        <div class="kv"><div class="k">Holds</div><div class="v">${escHtml(intl.holds ?? 0)}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">International Transit is lightweight manual data stored locally per week (unless data-driven fields are present).</div>
-    `);
-
-    const lm = manual?.lastmile || manual?.lastMile || {};
-    const lastMilePage = nodePage('Last Mile', `
-      <div class="grid2">
-        <div class="kv"><div class="k">Delivery window</div><div class="v">${escHtml((intl && intl.lastMileWindowText) || lm.windowText || '—')}</div></div>
-        <div class="kv"><div class="k">Open</div><div class="v">${escHtml(lm.open ?? 0)}</div></div>
-        <div class="kv"><div class="k">Total</div><div class="v">${escHtml(lm.total ?? 0)}</div></div>
-        <div class="kv"><div class="k">Status</div><div class="v">${escHtml(lm.statusText || '—')}</div></div>
-      </div>
-      <div class="spacer"></div>
-      <div class="muted">Last Mile is lightweight manual data stored locally per week.</div>
-    `);
-
-    const style = `
-      <style>
-        :root { color-scheme: light; }
-        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 0; padding: 0; color: #111827; }
-        .page { padding: 24px 28px; page-break-after: always; }
-        .page:last-child { page-break-after: auto; }
-        .hdr { margin-bottom: 14px; }
-        .h1 { font-size: 18px; font-weight: 700; }
-        .h2 { font-size: 13px; font-weight: 700; margin: 10px 0 8px; }
-        .muted { color: rgba(17,24,39,0.65); font-size: 11px; }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .kv { border: 1px solid rgba(17,24,39,0.10); border-radius: 10px; padding: 10px; }
-        .k { font-size: 10px; color: rgba(17,24,39,0.60); margin-bottom: 4px; }
-        .v { font-size: 12px; font-weight: 600; }
-        table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
-        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(17,24,39,0.10); }
-        th { font-size: 10px; color: rgba(17,24,39,0.60); font-weight: 700; }
-        .spacer { height: 10px; }
-        @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
-      </style>
-    `;
-
-    return `<!doctype html><html><head><meta charset="utf-8">${style}<title>Flow report</title></head><body>
-      ${execPage}
-      ${receivingPage}
-      ${vasPage}
-      ${intlPage}
-      ${lastMilePage}
-    </body></html>`;
+  
+function buildReportHTML(cache) {
+    // Kept for backward compatibility (older callers). We now generate a
+    // print-ready report by capturing the live Flow DOM (no backend mutations).
+    // This function returns a minimal shell used by downloadFlowReportPdf().
+    return `<!doctype html><html><head><meta charset="utf-8"><title>Flow report</title></head><body></body></html>`;
   }
 
   function downloadFlowReportPdf(cache) {
+    // SAFETY: do not touch refresh(), API base resolution, or backend patch calls.
+    // PDF generation is isolated to DOM capture + a separate print window.
+    const cap = cache || (window.UI && UI.reportCache) || {};
+    const ws = cap.ws || (window.UI && UI.currentWs) || (window.state && window.state.weekStart) || '';
+    const tz = cap.tz || getBizTZ();
+
+    const prevSel = (window.UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
+
+    const pageFlow = document.getElementById('page-flow');
+
+    const escape = (s) => escapeHtml(String(s ?? ''));
+
+    const addDaysLocal = (isoDateStr, days) => {
+      try {
+        const d = new Date(`${isoDateStr}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + days);
+        return d;
+      } catch { return null; }
+    };
+
+    const fmtDateRange = (wsISO) => {
+      const mon = addDaysLocal(wsISO, 0);
+      const sun = addDaysLocal(wsISO, 6);
+      if (!mon || !sun || isNaN(mon) || isNaN(sun)) return '—';
+      const fmt = (d) => new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: '2-digit', year: 'numeric' }).format(d);
+      return `${fmt(mon)} – ${fmt(sun)}`;
+    };
+
+    // ISO week number (Monday-based)
+    const isoWeekNum = (wsISO) => {
+      try {
+        const d = new Date(`${wsISO}T00:00:00Z`);
+        // Thursday in current week decides the year.
+        const day = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+        d.setUTCDate(d.getUTCDate() - day + 3); // Thu
+        const firstThu = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+        const firstDay = (firstThu.getUTCDay() + 6) % 7;
+        firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
+        const diff = d - firstThu;
+        return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
+      } catch { return null; }
+    };
+
+    const weekLabel = (() => {
+      const n = isoWeekNum(ws);
+      return n ? `Week ${String(n).padStart(2, '0')}` : 'Week —';
+    })();
+
+    const createdAt = (() => {
+      try {
+        const now = new Date();
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          year: 'numeric', month: 'short', day: '2-digit',
+          hour: '2-digit', minute: '2-digit'
+        }).format(now);
+      } catch {
+        return String(new Date());
+      }
+    })();
+
+    const captureHTML = (el) => {
+      if (!el) return '';
+      // Clone to avoid mutating live DOM
+      const c = el.cloneNode(true);
+      // Remove any buttons/controls that don't make sense in print
+      c.querySelectorAll('button, input, select, textarea').forEach(x => {
+        // Preserve textual buttons (e.g., lane supplier links) by converting to spans
+        if (x.tagName === 'BUTTON') {
+          const t = (x.textContent || '').trim();
+          if (t) {
+            const s = document.createElement('span');
+            s.textContent = t;
+            s.style.fontSize = '12px';
+            s.style.fontWeight = '600';
+            x.replaceWith(s);
+          } else {
+            x.remove();
+          }
+          return;
+        }
+        // Keep input values readable by converting to text spans
+        if (x.tagName === 'INPUT' && (x.type === 'text' || x.type === 'datetime-local')) {
+          const v = (x.value || '').trim();
+          const s = document.createElement('span');
+          s.textContent = v || '—';
+          s.style.fontSize = '12px';
+          s.style.fontWeight = '600';
+          x.replaceWith(s);
+          return;
+        }
+        if (x.tagName === 'INPUT' && x.type === 'checkbox') {
+          const s = document.createElement('span');
+          s.textContent = x.checked ? '✓' : '—';
+          s.style.fontWeight = '700';
+          x.replaceWith(s);
+          return;
+        }
+        if (x.tagName === 'TEXTAREA') {
+          const v = (x.value || x.textContent || '').trim();
+          const s = document.createElement('div');
+          s.textContent = v || '—';
+          s.style.whiteSpace = 'pre-wrap';
+          s.style.fontSize = '11px';
+          x.replaceWith(s);
+          return;
+        }
+        // Buttons etc become nothing
+        x.remove();
+      });
+      return c.innerHTML;
+    };
+
+    const stripIntlLaneDetailsFromDetailHTML = (html) => {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Remove lane editor (Lane details) section
+        const laneEditorBody = tmp.querySelector('#flow-lane-editor-body');
+        if (laneEditorBody) {
+          const wrap = laneEditorBody.closest('.rounded-xl.border.p-3') || laneEditorBody.closest('.rounded-xl') || laneEditorBody.parentElement;
+          if (wrap) wrap.remove();
+        }
+        return tmp.innerHTML;
+      } catch { return html; }
+    };
+
+    const extractIntlContainersTileHTML = (html) => {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Find the week-level containers editor section by known ids/classes
+        const wcList = tmp.querySelector('#flow-wc-list');
+        if (!wcList) return '';
+        const wrap = wcList.closest('.rounded-xl.border.p-3') || wcList.closest('.rounded-xl') || wcList.parentElement;
+        return wrap ? wrap.outerHTML : '';
+      } catch { return ''; }
+    };
+
+    const stripSelectedContainerFromHTML = (html) => {
+      // PDF-only: remove the "Selected Container" panel from Last Mile pages.
+      // Keeps the live UI untouched.
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const needles = ['selected container', 'selected-container'];
+
+        // Try common patterns: a card/section that contains a title matching the needle.
+        const all = Array.from(tmp.querySelectorAll('*'));
+        for (const el of all) {
+          const t = (el.textContent || '').trim().toLowerCase();
+          if (!t) continue;
+          if (!needles.some(n => t === n || t.includes(n))) continue;
+
+          // Prefer removing the nearest card wrapper.
+          const wrap = el.closest('.rounded-xl') || el.closest('.rounded-2xl') || el.closest('.border') || el.closest('.box') || el.parentElement;
+          if (wrap) {
+            wrap.remove();
+            break;
+          }
+        }
+        return tmp.innerHTML;
+      } catch {
+        return html;
+      }
+    };
+
+    const hideDuringCapture = () => {
+      try {
+        if (!document.getElementById('flow-pdf-export-style')) {
+          const st = document.createElement('style');
+          st.id = 'flow-pdf-export-style';
+          st.textContent = `
+            body.flow-pdf-exporting #page-flow { visibility: hidden !important; }
+            body.flow-pdf-exporting #flow-lane-modal-root { visibility: hidden !important; }
+          `;
+          document.head.appendChild(st);
+        }
+        document.body.classList.add('flow-pdf-exporting');
+      } catch {}
+    };
+
+    const showAfterCapture = () => {
+      try { document.body.classList.remove('flow-pdf-exporting'); } catch {}
+    };
+
+    const safeRenderForNode = (nodeKey) => {
+      try {
+        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+        UI.selection = { node: nodeKey, sub: null };
+        renderDetail(ws, tz, receiving, vas, intl, manual);
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        highlightSelection();
+      } catch (e) {
+        console.warn('[flow] pdf render node failed', nodeKey, e);
+      }
+    };
+
+    const nodePageHTML = (pageTitle, rightTitle, rightHTML, bottomTitle, detailHTML) => {
+      return `
+        <div class="page">
+          <div class="pageTitle">${escape(pageTitle)}</div>
+          <div class="pageGrid">
+            <div class="box">
+              <div class="boxTitle">${escape(rightTitle || 'Summary')}</div>
+              <div class="boxBody">${rightHTML || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">${escape(bottomTitle || 'Details')}</div>
+              <div class="boxBody">${detailHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
     try {
-      const html = buildReportHTML(cache || {});
+      // Ensure we have a rendered Flow DOM to capture
+      if (!pageFlow || pageFlow.classList.contains('hidden')) {
+        // If Flow isn't visible, still attempt: render once.
+        try { refresh(); } catch {}
+      }
+
+      hideDuringCapture();
+
+      const pages = [];
+
+      // Page 1: Cover
+      pages.push(`
+        <div class="page cover">
+          <div class="coverBlock">
+            <div class="coverBrand"><span class="brandAccent">VelOzity</span> <span class="brandAccent">Pinpoint</span> <span class="brandPin">📍</span></div>
+            <div class="coverWeek">${escape(weekLabel)}</div>
+            <div class="coverRange">${escape(fmtDateRange(ws))}</div>
+          </div>
+        </div>
+      `);
+
+
+      // Page 2: Overview (S-curve + Week totals)
+      const journeyHTML = captureHTML(document.getElementById('flow-journey'));
+      // IMPORTANT (PDF-only): Overview should always show Week totals (no node context).
+      // We temporarily render the right tile in "week totals" mode by clearing selection,
+      // capture the DOM, then continue with node-specific pages. Live UI is restored in finally.
+      let weekTotalsHTML = '';
+      try {
+        const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+        const prev = (UI && UI.selection) ? { node: UI.selection.node, sub: UI.selection.sub } : null;
+        UI.selection = { node: null, sub: null };
+        renderRightTile(ws, tz, receiving, vas, intl, manual);
+        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+        if (prev) UI.selection = { node: prev.node, sub: prev.sub || null };
+      } catch (e) {
+        weekTotalsHTML = captureHTML(document.getElementById('flow-footer'));
+      }
+      pages.push(`
+        <div class="page">
+          <div class="pageTitle">Overview</div>
+          <div class="overviewGrid">
+            <div class="box">
+              <div class="boxTitle">Inverted S-curve</div>
+              <div class="boxBody">${journeyHTML || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Week totals</div>
+              <div class="boxBody">${weekTotalsHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Receiving
+      safeRenderForNode('receiving');
+      pages.push(nodePageHTML('Receiving', 'Receiving summary', captureHTML(document.getElementById('flow-footer')), 'Receiving detail', captureHTML(document.getElementById('flow-detail'))));
+
+      // VAS
+      safeRenderForNode('vas');
+      pages.push(nodePageHTML('VAS Processing', 'VAS summary', captureHTML(document.getElementById('flow-footer')), 'VAS detail', captureHTML(document.getElementById('flow-detail'))));
+
+      // Transit & Clearing special: (A) right tile + lanes tile (no lane details)
+      safeRenderForNode('intl');
+      const intlRight = captureHTML(document.getElementById('flow-footer'));
+      const intlDetailRaw = captureHTML(document.getElementById('flow-detail'));
+      const intlDetailNoEditor = stripIntlLaneDetailsFromDetailHTML(intlDetailRaw);
+      pages.push(`
+        <div class="page">
+          <div class="pageTitle">Transit &amp; Clearing</div>
+          <div class="pageGrid">
+            <div class="box">
+              <div class="boxTitle">Transit &amp; Clearing summary</div>
+              <div class="boxBody">${intlRight || '<div class="muted">—</div>'}</div>
+            </div>
+            <div class="box">
+              <div class="boxTitle">Lanes</div>
+              <div class="boxBody">${intlDetailNoEditor || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      // Transit & Clearing special: (B) lanes full screen table
+      try {
+        // Build the modal content (hidden during capture), then capture its body.
+        openIntlOverviewModal(ws, tz);
+        const modalBody = document.querySelector('#flow-lane-modal-body');
+        const modalTitle = document.querySelector('#flow-lane-modal-title')?.textContent || 'Transit & Clearing — Lanes (Full screen)';
+        const lanesFullHTML = captureHTML(modalBody);
+        // close modal safely
+        const root = document.getElementById('flow-lane-modal-root');
+        if (root) root.classList.add('hidden');
+        pages.push(`
+          <div class="page">
+            <div class="pageTitle">${escape(modalTitle)}</div>
+            <div class="box">
+              <div class="boxBody">${lanesFullHTML || '<div class="muted">—</div>'}</div>
+            </div>
+          </div>
+        `);
+      } catch (e) {
+        console.warn('[flow] pdf lanes fullscreen capture failed', e);
+      }
+      // Transit & Clearing containers pages intentionally omitted in PDF.
+// Last Mile
+      safeRenderForNode('lastmile');
+      {
+        const lmRightRaw = captureHTML(document.getElementById('flow-footer'));
+        const lmDetailRaw = captureHTML(document.getElementById('flow-detail'));
+        const lmRight = stripSelectedContainerFromHTML(lmRightRaw);
+        const lmDetail = stripSelectedContainerFromHTML(lmDetailRaw);
+        pages.push(nodePageHTML('Last Mile', 'Last Mile summary', lmRight, 'Last Mile detail', lmDetail));
+      }
+
+      // Final timestamp page
+      pages.push(`
+        <div class="page cover">
+          <div class="coverBlock">
+            <div class="coverBrand"><span class="brandAccent">Report created</span></div>
+            <div class="coverRange">${escape(createdAt)}</div>
+          </div>
+        </div>
+      `);
+
+
+      // Restore selection
+      try {
+        // Best effort restore to original selection
+        // (we used UI.selection directly; keep stable afterwards)
+      } catch {}
+
+      // Add per-page footer text (avoid relying on print page counters, which vary by browser/PDF driver)
+      const totalPages = pages.length;
+      const pagesWithFooter = pages.map((p, i) => {
+        try {
+          return String(p).replace(/<\/div>\s*$/, `<div class="pageFooter">VelOzity Pinpoint • Page ${i+1} of ${totalPages}</div></div>`);
+        } catch { return p; }
+      });
+
+      // Build print window
+      const style = `
+        <style>
+          :root { color-scheme: light; }
+          @page { size: letter landscape; margin: 0.5in; }
+          html, body { margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; color: #111827; }
+          .page { position: relative; page-break-after: always; }
+          .page:last-child { page-break-after: auto; }
+          .pageTitle { font-size: 18px; font-weight: 800; margin: 0 0 10px 0; }
+          .box { border: 1px solid rgba(17,24,39,0.12); border-radius: 14px; padding: 12px; background: #fff; }
+          .boxTitle { font-size: 12px; font-weight: 700; color: rgba(17,24,39,0.70); margin-bottom: 8px; }
+          .boxBody { font-size: 12px; }
+          .muted { color: rgba(17,24,39,0.55); font-size: 12px; }
+          .overviewGrid { display: grid; grid-template-columns: 1.4fr 0.9fr; gap: 14px; align-items: start; }
+          .pageGrid { display: grid; grid-template-columns: 0.9fr 1.4fr; gap: 14px; align-items: start; }
+          .cover { display:flex; align-items:center; justify-content:center; min-height: 7.0in; }
+          .coverBlock { width: 100%; padding-left: 0.8in; text-align: left; }
+          .coverBrand { font-size: 40px; font-weight: 900; letter-spacing: 0.02em; line-height: 1.05; }
+          .brandAccent { color: #990033; }
+          .brandPin { color: #990033; font-size: 34px; margin-left: 6px; }
+          .coverWeek { font-size: 22px; font-weight: 800; margin-top: 10px; color: #111827; }
+          .coverRange { font-size: 14px; color: rgba(17,24,39,0.65); margin-top: 6px; }
+          /* Make tables print nicely */
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border-bottom: 1px solid rgba(17,24,39,0.10); padding: 6px 8px; vertical-align: top; }
+          th { color: rgba(17,24,39,0.65); font-size: 11px; font-weight: 800; }
+
+          /* PDF-only utility styles (avoid importing Tailwind; keep minimal + targeted)
+             Fixes: (1) metric label/value wrapping in Week totals, (2) progress bars visibility. */
+          .flex { display:flex; }
+          .inline-flex { display:inline-flex; }
+          .items-center { align-items:center; }
+          .items-start { align-items:flex-start; }
+          .justify-between { justify-content:space-between; }
+          .gap-2 { gap: 8px; }
+          .gap-3 { gap: 12px; }
+          .py-2 { padding-top: 8px; padding-bottom: 8px; }
+          .px-3 { padding-left: 12px; padding-right: 12px; }
+          .py-1 { padding-top: 4px; padding-bottom: 4px; }
+          .p-3 { padding: 12px; }
+          .mt-0\.5 { margin-top: 2px; }
+          .mt-1 { margin-top: 4px; }
+          .mt-2 { margin-top: 8px; }
+          .mt-3 { margin-top: 12px; }
+          .space-y-3 > * + * { margin-top: 12px; }
+          .rounded-xl { border-radius: 12px; }
+          .rounded-2xl { border-radius: 16px; }
+          .rounded-full { border-radius: 9999px; }
+          .border { border: 1px solid rgba(17,24,39,0.12); }
+          .overflow-hidden { overflow: hidden; }
+          .text-xs { font-size: 11px; }
+          .text-sm { font-size: 12px; }
+          .font-semibold { font-weight: 700; }
+          .text-gray-500 { color: rgba(17,24,39,0.55); }
+          .text-gray-600 { color: rgba(17,24,39,0.60); }
+          .text-gray-700 { color: rgba(17,24,39,0.70); }
+          .text-gray-800 { color: rgba(17,24,39,0.85); }
+          .text-gray-900 { color: rgba(17,24,39,0.95); }
+          .bg-white { background: #fff; }
+          .bg-gray-50 { background: rgba(17,24,39,0.03); }
+          .bg-gray-100 { background: rgba(17,24,39,0.06); }
+
+          /* Progress bars (used in Receiving/VAS tiles) */
+          .w-36 { width: 144px; }
+          .w-32 { width: 128px; }
+          .w-28 { width: 112px; }
+          .h-2 { height: 8px; }
+          .h-full { height: 100%; }
+          .bg-emerald-400 { background: #34d399; }
+
+          /* Keep metric rows on a single line in PDF (Week totals) */
+          .flex.items-center.justify-between > div:last-child { white-space: nowrap; }
+
+          /* Keep KPI cards (label + value) on one line across nodes (Transit KPIs, Last Mile KPIs, etc.) */
+          .rounded-lg.border.p-2 { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+          .rounded-lg.border.p-2 > div:first-child { white-space: nowrap; }
+          .rounded-lg.border.p-2 > div:last-child { white-space: nowrap; }
+
+          /* Keep compact stat pills (Sea/Air/Delayed/At risk) on one line in PDF */
+          .rounded-lg.border.px-2.py-1.bg-white { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+          /* If grid layout utilities are missing, still keep pills aligned */
+          .grid.grid-cols-2.sm\:grid-cols-4.gap-2.text-xs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+          /* Footer */
+          .pageFooter { position: absolute; right: 0; bottom: 0; font-size: 10px; color: rgba(17,24,39,0.70); }
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      `;
+
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>VelOzity Pinpoint — ${escape(weekLabel)}</title>${style}</head>
+        <body>
+          ${pagesWithFooter.join('\n')}
+        </body></html>`;
+
       const w = window.open('', '_blank');
-      if (!w) return;
+      if (!w) { showAfterCapture(); return; }
       w.document.open();
       w.document.write(html);
       w.document.close();
-      // Give the browser a moment to render before printing.
       w.focus();
-      setTimeout(() => {
-        try { w.print(); } catch(e) {}
-      }, 250);
+      setTimeout(() => { try { w.print(); } catch {} }, 300);
     } catch (e) {
-      console.warn('[flow] report build failed', e);
+      console.warn('[flow] pdf export failed', e);
+    } finally {
+      try {
+        if (prevSel) UI.selection = { node: prevSel.node, sub: prevSel.sub || null };
+        // Re-render once to restore the UI (best-effort; no backend writes)
+        try {
+          const receiving = cap.receiving, vas = cap.vas, intl = cap.intl, manual = cap.manual;
+          renderDetail(ws, tz, receiving, vas, intl, manual);
+          renderRightTile(ws, tz, receiving, vas, intl, manual);
+          highlightSelection();
+        } catch {}
+      } catch {}
+      try { showAfterCapture(); } catch {}
     }
   }
-
 async function refresh() {
     const page = ensureFlowPageExists();
     injectSkeleton(page);
@@ -4582,13 +5773,19 @@ async function refresh() {
       planRows = asArray(planRows);
       receivingRows = asArray(receivingRows);
       records = asArray(records);
+
+    // Receiving full-screen (units-based table) uses existing data only (no new endpoints).
+    // Store a lightweight context snapshot for the modal to render instantly.
+    try {
+      window.__FLOW_RECEIVING_FS_CTX__ = { ws, tz, planRows, receivingRows, records };
+    } catch {}
+
     } catch (e) {
       console.warn('[flow] load error', e);
     }
 
     const receiving = computeReceivingStatus(ws, tz, planRows, receivingRows, records);
-    
-    window.__FLOW_RECEIVING_FS_CTX__ = { ws, tz, planRows, receivingRows, receiving, records };const vas = computeVASStatus(ws, tz, planRows, records);
+    const vas = computeVASStatus(ws, tz, planRows, records);
     const intl = computeInternationalTransit(ws, tz, planRows, records, vas.due);
     const manual = computeManualNodeStatuses(ws, tz);
 
@@ -4628,9 +5825,6 @@ if (signoff.vasComplete) {
     renderDetail(ws, tz, receiving, vas, intl, manual);
     renderRightTile(ws, tz, receiving, vas, intl, manual);
     highlightSelection();
-
-    // Wire up Receiving full-screen button (PDF/report-safe; UI-only).
-    wireReceivingFullScreen();
     } catch (e) {
       console.warn('[flow] refresh failed', e);
       const detail = document.getElementById('flow-detail');
