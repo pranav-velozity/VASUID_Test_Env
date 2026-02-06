@@ -59,6 +59,19 @@ app.use((req, _res, next) => {
 /* ===== END: /api alias ===== */
 
 
+// ---- Summary cache (in-memory, additive) ----
+const _summaryCache = new Map();
+const SUMMARY_TTL_MS = 30 * 1000; // 30s
+
+function _summaryKey(q) {
+  const from = String(q.from || q.weekStart || '').trim();
+  const to = String(q.to || q.weekEnd || '').trim();
+  const status = String(q.status || 'complete').trim();
+  return `${from}|${to}|${status}`;
+}
+
+
+
 // --- Time helpers (America/Chicago) ---
 function chicagoISOFromDate(d = new Date()) {
   try {
@@ -494,6 +507,84 @@ app.get('/records', (req, res) => {
   res.json({ records: rows });
 });
 
+
+
+// --- Fetch records summary (totals + trends; avoids pulling huge record sets to client) ---
+app.get('/records/summary', (req, res) => {
+  try {
+    // Accept either from/to OR weekStart/weekEnd (same pattern as /records)
+    const weekStart = req.query.weekStart ? String(req.query.weekStart) : '';
+    const weekEnd   = req.query.weekEnd   ? String(req.query.weekEnd)   : '';
+    const fromQ     = req.query.from      ? String(req.query.from)      : '';
+    const toQ       = req.query.to        ? String(req.query.to)        : '';
+
+    const fromRaw = fromQ || weekStart || '';
+    const toRaw   = toQ   || weekEnd   || '';
+
+    // Normalize ISO timestamps (e.g. 2026-02-02T00:00:00.000Z) to YYYY-MM-DD for date_local filtering.
+    const from = fromRaw && fromRaw.includes('T') ? fromRaw.slice(0, 10) : fromRaw;
+    const to   = toRaw   && toRaw.includes('T')   ? toRaw.slice(0, 10)   : toRaw;
+
+    const status = req.query.status ? String(req.query.status) : 'complete';
+
+    // cache
+    const key = _summaryKey({ from, to, status });
+    const cached = _summaryCache.get(key);
+    if (cached && (Date.now() - cached.ts) < SUMMARY_TTL_MS) {
+      return res.json(cached.data);
+    }
+
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (from)   { where += ' AND date_local >= ?'; params.push(from); }
+    if (to)     { where += ' AND date_local <= ?'; params.push(to); }
+    if (status) { where += ' AND status = ?';      params.push(status); }
+
+    // total units (count of records)
+    const totalRow = db.prepare(`
+      SELECT COUNT(*) AS total_units
+      FROM records
+      ${where}
+    `).get(...params);
+
+    // trend: units by day
+    const byDayRows = db.prepare(`
+      SELECT date_local AS ymd, COUNT(*) AS units
+      FROM records
+      ${where}
+      GROUP BY date_local
+      ORDER BY date_local
+    `).all(...params);
+
+    // optional: PO-level totals + cartons_out (= distinct mobile_bin)
+    const byPoRows = db.prepare(`
+      SELECT
+        po_number AS po,
+        COUNT(*) AS units,
+        COUNT(DISTINCT NULLIF(TRIM(mobile_bin), '')) AS cartons_out
+      FROM records
+      ${where}
+        AND TRIM(COALESCE(po_number,'')) <> ''
+      GROUP BY po_number
+      ORDER BY po_number
+    `).all(...params);
+
+    const data = {
+      from: from || null,
+      to: to || null,
+      status,
+      total_units: Number(totalRow?.total_units || 0),
+      by_day: byDayRows.map(r => ({ ymd: r.ymd, units: Number(r.units || 0) })),
+      by_po: byPoRows.map(r => ({ po: r.po, units: Number(r.units || 0), cartons_out: Number(r.cartons_out || 0) }))
+    };
+
+    _summaryCache.set(key, { ts: Date.now(), data });
+    return res.json(data);
+  } catch (e) {
+    console.error('GET /records/summary failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
 // --- Export XLSX ---
 app.get('/export/xlsx', async (req, res) => {
   const date = String(req.query.date || todayChicagoISO());
@@ -901,8 +992,10 @@ app.get('/bins', (req, res) => {
     return res.status(500).send('Failed to fetch bins');
   }
 });
-
 /* ===== END: /bins alias ===== */
+
+
+
 
 // ---- Start ----
 app.listen(PORT, () => {
