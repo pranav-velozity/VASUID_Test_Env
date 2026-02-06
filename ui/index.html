@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint</title>
 
- <!-- Tailwind -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -1088,12 +1088,9 @@ async function downloadAppliedWeek() {
   weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
-  // Filter only 'complete' records within this week
-  const records = (state.records || []).filter(r => {
-    if (r.status !== 'complete') return false;
-    const d = toISODate(r.date_local);
-    return d && d >= ws && d <= we;
-  });
+  // Risk-averse: export exactly what Ops is already using for this week
+  const records = (state.records || []).filter(r => r.status === 'complete');
+
 
   if (!records.length) {
     alert('No applied UIDs found for this week.');
@@ -2873,13 +2870,10 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 
 <script src="/exec_live_additive.js?v=8" defer></script>
-<script src="/receiving_live_additive.js?v=8" defer></script>
+<script src="/receiving_live_additive.js?v=27" defer></script>
   <script src="/flow_live_additive.js?v=61" defer></script>
 
 </body>
 </html>
-
-
-
 
 
