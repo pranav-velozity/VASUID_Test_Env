@@ -593,7 +593,7 @@ function createHeart(size=24, color=BRAND, bpm=40){
   async function fetchPlan(w){
   if(!apiBase) return [];
   try {
-    return await api(`/plan/weeks/${w}?limit=50000`);
+    return await api(`/plan/weeks/${w}?limit=150000`);
   } catch {
     return [];
   }
@@ -602,19 +602,19 @@ function createHeart(size=24, color=BRAND, bpm=40){
 async function fetchActualsAll(){
   if (!apiBase) return [];
   try {
-    const d = await api(`/records?limit=50000`);
+    const d = await api(`/records?limit=150000`);
     return d.records || [];
   } catch {
     return [];
   }
 }
-  async function fetchActuals(f,t){ if(!apiBase) return []; try{const d=await api(`/records?from=${f}&to=${t}&status=complete&limit=50000`); return d.records||[];}catch{return [];} }
+  async function fetchActuals(f,t){ if(!apiBase) return []; try{const d=await api(`/records?from=${f}&to=${t}&status=complete&limit=150000`); return d.records||[];}catch{return [];} }
 
 // --- Fetch bins for a week (business week start) ---
 async function fetchBins(ws) {
   if (!apiBase) return [];
   try {
-    const r = await api(`/bins/weeks/${ws}?limit=50000`);
+    const r = await api(`/bins/weeks/${ws}?limit=150000`);
     return Array.isArray(r) ? r : (r.bins || []);
   } catch {
     return [];
@@ -1787,7 +1787,7 @@ async function fetchActualsInWeek(ws, we) {
   if (!apiBase) return [];
   try {
     // get everything, we’ll filter locally
-    const d = await api(`/records?limit=50000`);
+    const d = await api(`/records?limit=150000`);
     const all = d.records || [];
 
     const startTs = new Date(ws + 'T00:00:00Z').getTime();
@@ -2532,7 +2532,7 @@ async function loadOpsMetrics() {
   if (!apiBase) return;
   try {
     // Fetch all recent completed records, up to 50k
-    const res = await fetch(`${apiBase}/records?status=complete&limit=50000`);
+    const res = await fetch(`${apiBase}/records?status=complete&limit=150000`);
     if (!res.ok) throw new Error(await res.text());
     const rows = (await res.json()).records || [];
 
@@ -2643,7 +2643,7 @@ async function refreshDashboardTotals(){
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
 
-  const res = await fetch(`${apiBase}/records?limit=50000`);
+  const res = await fetch(`${apiBase}/records?limit=150000`);
   if(!res.ok) return;
   const all = (await res.json()).records || [];
 
