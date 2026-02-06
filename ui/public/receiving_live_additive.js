@@ -66,16 +66,39 @@
   }
 
 async function fetchCompletedRecordsForWeek(ws) {
-  // Match index.html contract: /records?from=<ws>&to=<we>&status=complete&limit=50000
-  // Response can be an array OR { records: [...] } depending on backend version.
+  // Legacy fallback: fetch raw completed records (can be large). Prefer /records/summary.
   try {
     const we = weekEndISO(ws);
     const d = await api(`/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete&limit=50000`);
     return Array.isArray(d) ? d : (d?.records || []);
   } catch (e) {
-    console.warn('[receiving] failed to load records for carton out', e);
+    console.warn('[receiving] failed to load records for carton out (legacy)', e);
     return [];
   }
+}
+
+// Preferred: fetch Cartons Out map via server-side summary (fast; small payload).
+async function fetchCartonsOutByPOForWeek(ws) {
+  const we = weekEndISO(ws);
+  // 1) Try summary endpoint (added in server.js). Keeps payload tiny even for 100K+ weeks.
+  try {
+    const s = await api(`/records/summary?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete`);
+    const arr = Array.isArray(s?.by_po) ? s.by_po : (Array.isArray(s?.byPo) ? s.byPo : []);
+    const m = new Map();
+    for (const r of arr) {
+      const po = String(r.po || r.po_number || '').trim();
+      if (!po) continue;
+      const v = Number(r.cartons_out ?? r.cartonsOut ?? r.mobile_bin_count ?? 0) || 0;
+      m.set(po, v);
+    }
+    return m;
+  } catch (e) {
+    console.warn('[receiving] summary endpoint not available; falling back to raw records', e);
+  }
+
+  // 2) Fallback to legacy raw records path.
+  const records = await fetchCompletedRecordsForWeek(ws);
+  return computeCartonsOutByPOFromRecords(records);
 }
 
 
@@ -366,7 +389,6 @@ function computeCartonsOutByPOFromRecords(records) {
         facility_name: String(r.facility_name || planFacility || '').trim(),
         po_number: po,
         cartons_in: Number(r.cartons_received || 0) || 0,
-        cartons_out: Number(M.cartonsOutByPO?.get(po) ?? 0) || 0,
         damaged: Number(r.cartons_damaged || 0) || 0,
         non_compliant: Number(r.cartons_noncompliant || 0) || 0,
         replaced: Number(r.cartons_replaced || 0) || 0,
@@ -1104,8 +1126,8 @@ function computeSummaryAll(planRows, receivingRows) {
     M.suppliers = buildSuppliers(planRows, M.receivingRows);
 
     // Load completed records for Carton Out (self-contained)
-    M.completedRecords = await fetchCompletedRecordsForWeek(ws);
-    M.cartonsOutByPO = computeCartonsOutByPOFromRecords(M.completedRecords);
+        // Carton Out (mobile bins) via summary endpoint (fast). Falls back to raw records if needed.
+    M.cartonsOutByPO = await fetchCartonsOutByPOForWeek(ws);
 
     renderSuppliers(M.suppliers, M.selectedSupplier);
     const sel = document.getElementById('recv-supplier');
@@ -1143,7 +1165,7 @@ if (checkAll) {
 	    const ws = getWeekStart();
 	    if (!ws) return;
 	    const rows = buildWeekExportRows(M.planRows, M.receivingRows, ws);
-	    const header = ['week_start','supplier_name','facility_name','po_number','cartons_in','cartons_out','damaged','non_compliant','replaced','received_at_local','last_received_local','received_at_utc','cutoff_utc','status'];
+	    const header = ['week_start','supplier_name','facility_name','po_number','cartons_in','damaged','non_compliant','replaced','received_at_local','last_received_local','received_at_utc','cutoff_utc','status'];
 	    const lines = [
 	      header.join(','),
 	      ...rows.map(r => header.map(h => csvEscape(r[h])).join(','))
@@ -1410,7 +1432,6 @@ if (checkAll) {
 	      const received = rs.filter(x => x.received_at_utc).length;
 	      const delayed = rs.filter(x => String(x.status||'').includes('Delayed')).length;
 	      const cartons = rs.reduce((a,x)=>a + (x.cartons_in||0),0);
-	      const cartonsOut = rs.reduce((a,x)=>a + (x.cartons_out||0),0);
 	      const damaged = rs.reduce((a,x)=>a + (x.damaged||0),0);
 	      const nonc = rs.reduce((a,x)=>a + (x.non_compliant||0),0);
 	      const repl = rs.reduce((a,x)=>a + (x.replaced||0),0);
@@ -1419,7 +1440,6 @@ if (checkAll) {
 	          <td>${esc(x.po_number)}</td>
 	          <td>${esc(x.facility_name)}</td>
 	          <td class="right">${x.cartons_in}</td>
-	          <td class="right">${x.cartons_out}</td>
 	          <td class="right">${x.damaged}</td>
 	          <td class="right">${x.non_compliant}</td>
 	          <td class="right">${x.replaced}</td>
@@ -1435,7 +1455,6 @@ if (checkAll) {
 	            <div>Received: <b>${received}</b></div>
 	            <div>Delayed: <b class="delayed">${delayed}</b></div>
 	            <div>Cartons In: <b>${cartons}</b></div>
-	            <div>Cartons Out: <b>${cartonsOut}</b></div>
 	            <div>Damaged: <b>${damaged}</b></div>
 	            <div>Non-compliant: <b>${nonc}</b></div>
 	            <div>Replaced: <b>${repl}</b></div>
@@ -1445,8 +1464,7 @@ if (checkAll) {
 	              <tr>
 	                <th>PO</th>
 	                <th>Facility</th>
-	                <th class="right">Cartons In</th>
-	                <th class="right">Cartons Out</th>
+	                <th class="right">Cartons</th>
 	                <th class="right">Damaged</th>
 	                <th class="right">Non-comp</th>
 	                <th class="right">Replaced</th>
@@ -1570,18 +1588,35 @@ function dtLocalNow() {
 
   // When Ops refreshes window.state (week switch), recompute Carton Out and re-render if needed.
   window.addEventListener('state:ready', () => {
+  // If Ops refreshes window.state/week selector, re-run tick so we load the correct week when on #receiving.
+  try { tick(); } catch {}
+
+  // If a state-based cartonsOut helper exists, use it (no API calls).
+  try {
     const ws = getWeekStart();
     if (!ws) return;
     if (ws !== M.ws) return;
-    M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
-    // lightweight refresh (no API calls)
-    try { renderCurrentSupplierView(); } catch {}
-  });
+    if (typeof computeCartonsOutByPOFromState === 'function') {
+      M.cartonsOutByPO = computeCartonsOutByPOFromState(ws);
+      try { renderCurrentSupplierView(); } catch {}
+    }
+  } catch {}
+});
 
-  window.addEventListener('hashchange', () => {
+window.addEventListener('hashchange', () => {
     showReceivingIfHash();
   });
 
+  // Hook week selector changes (event-driven, avoids constant polling)
+  const _wk = document.getElementById('week-start');
+  if (_wk) {
+    _wk.addEventListener('change', () => { try { tick(); } catch {} });
+    _wk.addEventListener('input', () => { /* cheap: only act if hash is receiving */ 
+      try {
+        if ((location.hash || '').toLowerCase().includes('receiving')) tick();
+      } catch {}
+    });
+  }
+
   tick();
-  setInterval(tick, 800);
 })();
