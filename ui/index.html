@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint</title>
 
-   <!-- Tailwind -->
+    <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -1122,41 +1122,15 @@ async function downloadAppliedWeek() {
   weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
-  // Risk-averse: export exactly what Ops is already using for this week
-  const records = (state.records || []).filter(r => r.status === 'complete');
-
-
-  if (!records.length) {
-    alert('No applied UIDs found for this week.');
-    return;
-  }
-
-  // Build export-friendly rows
-  const rows = records.map(r => ({
-    'Date Applied': toUI(r.date_local),
-    'Mobile Bin': r.mobile_bin || '',
-    'SSCC Label': r.sscc_label || '',
-    'PO Number': r.po_number || '',
-    'SKU Code': r.sku_code || '',
-    'UID': r.uid || ''
-  }));
-
-  // Convert to CSV (simple)
-  const header = Object.keys(rows[0]);
-  const esc = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
-  const csv =
-    '\ufeff' +
-    header.join(',') +
-    '\r\n' +
-    rows.map(r => header.map(h => esc(r[h])).join(',')).join('\r\n');
-
-  // Download
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  // At scale, never build this CSV in the browser.
+  // Stream it from the server (fast + safe for 2M+ rows).
+  const url = `${API}/export/applied?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}`;
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `Applied_UIDs_${ws}_to_${we}.csv`;
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 250);
+  a.remove();
 }
 
   function buildExecHTML({
@@ -1456,16 +1430,32 @@ function renderProgressTiles(plan = [], records = []) {
   const tilesRoot = document.getElementById('ops-progress-tiles');
   if (!tilesRoot) return;
 
-  // Only count "applied" as completed units
-  const completed = (records || []).filter(r => r.status === 'complete');
+  // Support two modes:
+  // 1) Raw records: [{status, po_number, sku_code, ...}]
+  // 2) Summary-by-PO (preferred at scale): [{po, units, cartons_out?}]
+  const sample = (records || [])[0] || null;
+  const isSummaryByPO = Boolean(sample && ('po' in sample) && ('units' in sample) && !('po_number' in sample));
 
-  // Index plan by PO+SKU so we can map completed records to their plan metadata
+  // Only count "applied" as completed units (raw mode)
+  const completed = isSummaryByPO ? [] : (records || []).filter(r => r.status === 'complete');
+
+  // Index plan by PO+SKU so we can map completed records to their plan metadata (raw mode)
   const planByKey = new Map();
   for (const p of plan || []) {
     const po = String(p.po_number || '').trim();
     const sku = String(p.sku_code || '').trim();
     if (!po || !sku) continue;
     planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  // In summary-by-PO mode, we need PO -> meta (supplier/facility/freight/zendesk)
+  const metaByPO = new Map();
+  if (isSummaryByPO) {
+    for (const p of plan || []) {
+      const po = String(p.po_number || '').trim();
+      if (!po || metaByPO.has(po)) continue;
+      metaByPO.set(po, p);
+    }
   }
 
   // Helper: normalize display values (blank -> (Unspecified))
@@ -1484,17 +1474,28 @@ function renderProgressTiles(plan = [], records = []) {
     return m;
   }
 
-  // Build applied totals by field value by looking up each completed record's plan row
+  // Build applied totals by field value
   function appliedByField(field) {
     const m = new Map();
-    for (const r of completed) {
-      const po = String(r.po_number || '').trim();
-      const sku = String(r.sku_code || '').trim();
-      if (!po || !sku) continue;
+    if (isSummaryByPO) {
+      for (const r of records || []) {
+        const po = String(r.po || '').trim();
+        const u = Number(r.units || 0) || 0;
+        if (!po || u <= 0) continue;
+        const p = metaByPO.get(po);
+        const key = normVal(p?.[field]);
+        m.set(key, (m.get(key) || 0) + u);
+      }
+    } else {
+      for (const r of completed) {
+        const po = String(r.po_number || '').trim();
+        const sku = String(r.sku_code || '').trim();
+        if (!po || !sku) continue;
 
-      const p = planByKey.get(`${po}|||${sku}`);
-      const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
-      m.set(key, (m.get(key) || 0) + 1);
+        const p = planByKey.get(`${po}|||${sku}`);
+        const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
+        m.set(key, (m.get(key) || 0) + 1);
+      }
     }
     return m;
   }
@@ -1969,53 +1970,63 @@ const csv=toCSV(
     };
 
 $('#btn-ship-summary').onclick = () => {
-  const rows = buildShipmentSummary(state.plan, state.records, state.bins);
+  // Summary-only download (server-side aggregation)
+  const ws = state.weekStart;
+  api(`/summary/shipment_summary?weekStart=${encodeURIComponent(ws)}`)
+    .then(resp => {
+      const rows = (resp && resp.rows) ? resp.rows : [];
+      const csv = toCSV(
+        [
+          'Supplier Name',
+          'Zendesk Ticket #',
+          'Freight Type',
+          'Facility Name',
+          'Unique PO Count',
+          'Total Units Applied',
+          'Total Mobile Bins',
+          'Gross Weight',
+          'CBM'
+        ],
+        rows
+      );
 
-  const csv = toCSV(
-    [
-      'Supplier Name',
-      'Zendesk Ticket #',
-      'Freight Type',
-      'Facility Name',
-      'Unique PO Count',
-      'Total Units Applied',
-      'Total Mobile Bins',
-      'Gross Weight',
-      'CBM'
-    ],
-    rows
-  );
-
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download=`shipment_report_summary_${ws}.csv`;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),250);
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+      a.download=`shipment_report_summary_${ws}.csv`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    })
+    .catch(() => alert('Shipment Summary download failed.'));
 };
 
 $('#btn-ship-detail').onclick = () => {
-  const rows = buildShipmentDetail(state.plan, state.records, state.bins);
+  // Summary-only download (server-side aggregation)
+  const ws = state.weekStart;
+  api(`/summary/shipment_detail?weekStart=${encodeURIComponent(ws)}`)
+    .then(resp => {
+      const rows = (resp && resp.rows) ? resp.rows : [];
+      const csv = toCSV(
+        [
+          'Supplier Name',
+          'Zendesk Ticket #',
+          'Freight Type',
+          'Facility Name',
+          'PO',
+          'Total Units Applied',
+          'Total Mobile Bins',
+          'Gross Weight',
+          'CBM'
+        ],
+        rows
+      );
 
-  const csv = toCSV(
-    [
-      'Supplier Name',
-      'Zendesk Ticket #',
-      'Freight Type',
-      'Facility Name',
-      'PO',
-      'Total Units Applied',
-      'Total Mobile Bins',
-      'Gross Weight',
-      'CBM'
-    ],
-    rows
-  );
-
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  a.download=`shipment_report_detail_${ws}.csv`;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),250);
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+      a.download=`shipment_report_detail_${ws}.csv`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    })
+    .catch(() => alert('Shipment Detail download failed.'));
 };
 
 $('#btn-dl-week-applied').onclick = downloadAppliedWeek;
@@ -2932,9 +2943,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }
 })();
 </script>
-
-
-  
 
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
