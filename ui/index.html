@@ -589,32 +589,34 @@ function createHeart(size=24, color=BRAND, bpm=40){
 }
   // API helpers
   const state={weekStart:'', plan:[], records:[]};
+
   async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
   async function fetchPlan(w){
   if(!apiBase) return [];
   try {
-    return await api(`/plan/weeks/${w}?limit=150000`);
+    return await api(`/plan/weeks/${w}`);
   } catch {
     return [];
   }
 }
 
-async function fetchActualsAll(){
-  if (!apiBase) return [];
-  try {
-    const d = await api(`/records?limit=150000`);
-    return d.records || [];
-  } catch {
-    return [];
+  // Summary-first: dashboards never pull raw /records.
+  async function fetchSummary(fromYMD, toYMD, status='complete'){
+    if(!apiBase) return null;
+    try{
+      const q = new URLSearchParams();
+      if(fromYMD) q.set('from', fromYMD);
+      if(toYMD) q.set('to', toYMD);
+      if(status) q.set('status', status);
+      return await api(`/records/summary?${q.toString()}`);
+    }catch{ return null; }
   }
-}
-  async function fetchActuals(f,t){ if(!apiBase) return []; try{const d=await api(`/records?from=${f}&to=${t}&status=complete&limit=150000`); return d.records||[];}catch{return [];} }
 
 // --- Fetch bins for a week (business week start) ---
 async function fetchBins(ws) {
   if (!apiBase) return [];
   try {
-    const r = await api(`/bins/weeks/${ws}?limit=150000`);
+    const r = await api(`/bins/weeks/${ws}`);
     return Array.isArray(r) ? r : (r.bins || []);
   } catch {
     return [];
@@ -746,7 +748,27 @@ function computeBinQA(ws, records=[], bins=[]) {
 }
 
   // ---------- Aggregations ----------
-  function aggregate(records){const byPO=new Map(),bySKU=new Map(); for(const r of records){ if(r.status!=='complete') continue; const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim(); if(po) byPO.set(po,(byPO.get(po)||0)+1); if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);} return {byPO,bySKU};}
+  // aggregate() supports:
+  // 1) raw records: { status:'complete', po_number, sku_code }
+  // 2) summary rows: { po, units } (from /records/summary by_po)
+  function aggregate(rows){
+    const byPO=new Map(),bySKU=new Map();
+    for(const r of (rows||[])){
+      if(!r) continue;
+      // summary row
+      if(('po' in r) && ('units' in r) && !('po_number' in r)){
+        const po=String(r.po||'').trim();
+        const u=Number(r.units||0)||0;
+        if(po) byPO.set(po,(byPO.get(po)||0)+u);
+        continue;
+      }
+      if(r.status!=='complete') continue;
+      const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim();
+      if(po) byPO.set(po,(byPO.get(po)||0)+1);
+      if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);
+    }
+    return {byPO,bySKU};
+  }
   function joinPOProgress(plan, byPO){
     const map=new Map();
     for(const p of plan||[]){ const po=String(p.po_number||'').trim(); if(!po) continue; const rec=map.get(po)||{due:p.due_date,planned:0,applied:0}; rec.planned+=toNum(p.target_qty); if(rec.due!==p.due_date) rec.due = rec.due < p.due_date ? rec.due : p.due_date; map.set(po,rec); }
@@ -798,17 +820,29 @@ function computeBinQA(ws, records=[], bins=[]) {
     const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
     return '\ufeff'+head+'\r\n'+body+'\r\n';
   }
-function buildDiscrepancyPOSKU(plan, records){
+function buildDiscrepancyPOSKU(plan, rows){
 const byPS=new Map();
 const binsByPS=new Map();
 
-for(const r of records||[]){
-  if(r.status!=='complete') continue;
+for(const r of rows||[]){
+  if(!r) continue;
 
+  // Summary row: { po, sku, units }
+  if(('po' in r) && ('sku' in r) && ('units' in r) && !('po_number' in r)){
+    const po=String(r.po||'').trim();
+    const sku=String(r.sku||'').trim();
+    const u=Number(r.units||0)||0;
+    if(!po||!sku) continue;
+    const k=`${po}|||${sku}`;
+    byPS.set(k,(byPS.get(k)||0)+u);
+    continue;
+  }
+
+  // Raw record: { status, po_number, sku_code, mobile_bin }
+  if(r.status!=='complete') continue;
   const po=String(r.po_number||'').trim();
   const sku=String(r.sku_code||'').trim();
   if(!po||!sku) continue;
-
   const k=`${po}|||${sku}`;
   byPS.set(k,(byPS.get(k)||0)+1);
 
@@ -1599,21 +1633,36 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const clamp01 = n => (n < 1 ? 1 : n);
 
   // --- applied aggregates (this week window only) ---
-  const inWeek = (r) => {
-  if (r.status !== 'complete') return false;
-  const dl = toISODate(r.date_local);   // normalize to YYYY-MM-DD
-  return dl && dl >= ws && dl <= we;
-};
-  const weekRecords = (records || []).filter(inWeek);
+  const rows = Array.isArray(records) ? records : [];
+  const isSummary = rows.length && ('po' in (rows[0] || {})) && ('units' in (rows[0] || {})) && !('po_number' in (rows[0] || {}));
+
+  let weekRows = [];
+  if (isSummary) {
+    // In summary-only mode, "records" is actually /records/summary.by_po already scoped to the week.
+    weekRows = rows;
+  } else {
+    const inWeek = (r) => {
+      if (!r || r.status !== 'complete') return false;
+      const dl = toISODate(r.date_local);
+      return dl && dl >= ws && dl <= we;
+    };
+    weekRows = rows.filter(inWeek);
+  }
 
   // per-PO & per-SKU counts in week
   const appliedPO  = new Map();
   const appliedSKU = new Map();
-  for (const r of weekRecords) {
-    const po  = String(r.po_number||'').trim();
-    const sku = String(r.sku_code||'').trim();
-    if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
-    if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
+  for (const r of weekRows) {
+    if (isSummary) {
+      const po = String(r.po || '').trim();
+      const u = Number(r.units || 0) || 0;
+      if (po) appliedPO.set(po, (appliedPO.get(po) || 0) + u);
+    } else {
+      const po  = String(r.po_number||'').trim();
+      const sku = String(r.sku_code||'').trim();
+      if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
+      if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
+    }
   }
 
   // --- plan aggregates (planned totals & earliest due) ---
@@ -1660,40 +1709,46 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const prioritySKU = buildPriority(planSKU, appliedSKU, 'sku');
 
 
-// --- Mobile bins: unique (this week) + top 5 by SKU diversity (this week) ---
-const binsWeek = new Set(
-  (weekRecords || [])
-    .map(r => String(r.mobile_bin || '').trim())
-    .filter(Boolean)
-);
+// --- Mobile bins / Duplicate UIDs ---
+// These require raw records. In summary-only mode we skip these insights.
+const binsWeek = new Set();
+const binsByDiversity = [];
+let dupScanCount = 0;
+let dupPairs = [];
+let dupExamples = [];
 
-// diversity across the week: bin -> set(sku)
-const binSkuSet = new Map();
-for (const r of weekRecords) {
-  const bin = String(r.mobile_bin || '').trim();
-  const sku = String(r.sku_code  || '').trim();
-  if (!bin || !sku) continue;
-  if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
-  binSkuSet.get(bin).add(sku);
-}
+if (!isSummary) {
+  // Mobile bins: unique (this week) + top 5 by SKU diversity (this week)
+  for (const r of (weekRows || [])) {
+    const bin = String(r.mobile_bin || '').trim();
+    if (bin) binsWeek.add(bin);
+  }
 
-const binsByDiversity = Array.from(binSkuSet.entries())
-  .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
-  .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
-  .slice(0, 5);
+  // diversity across the week: bin -> set(sku)
+  const binSkuSet = new Map();
+  for (const r of (weekRows || [])) {
+    const bin = String(r.mobile_bin || '').trim();
+    const sku = String(r.sku_code  || '').trim();
+    if (!bin || !sku) continue;
+    if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+    binSkuSet.get(bin).add(sku);
+  }
+  binsByDiversity.push(
+    ...Array.from(binSkuSet.entries())
+      .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
+      .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
+      .slice(0, 5)
+  );
 
-  // --- Duplicate UID detection (this week) ---
-  // “Duplicate” is defined as the same (SKU, UID) appearing more than once
+  // Duplicate UID detection (this week)
   const pairCounts = new Map();
-  for (const r of weekRecords) {
+  for (const r of (weekRows || [])) {
     const sku = String(r.sku_code||'').trim();
     const uid = String(r.uid||'').trim();
     if (!sku || !uid) continue;
     const k = `${sku}||${uid}`;
     pairCounts.set(k, (pairCounts.get(k)||0) + 1);
   }
-  let dupScanCount = 0;
-  const dupPairs = [];
   for (const [k, c] of pairCounts.entries()) {
     if (c > 1) {
       const [sku, uid] = k.split('||');
@@ -1702,11 +1757,14 @@ const binsByDiversity = Array.from(binSkuSet.entries())
     }
   }
   dupPairs.sort((a,b)=> b.count - a.count);
-  const dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
+  dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
+}
 
   // --- Pace calculations (week + due-in-3-days horizon) ---
   const daysElapsed       = clamp01(7 - clamp01(dayDiff(ws, today) * -1));
-  const appliedSoFar      = weekRecords.length;
+  const appliedSoFar      = isSummary
+    ? Array.from(appliedPO.values()).reduce((s, v) => s + (Number(v) || 0), 0)
+    : (weekRows || []).length;
   const avgPerDaySoFar    = Math.round(appliedSoFar / daysElapsed);
   const daysLeftInWeek    = clamp01(dayDiff(we, today) + 1);
   const remainingWeek     = Math.max(0, plannedTotal - appliedSoFar);
@@ -1779,32 +1837,7 @@ if (binsByDiversity.length) {
   if (mini) mini.textContent = `Applied so far: ${appliedSoFar.toLocaleString()} • Remaining: ${remainingWeek.toLocaleString()}`;
 }
 
-async function fetchActualsInWeek(ws, we) {
 
-  if (!apiBase) return [];
-  try {
-    // get everything, we’ll filter locally
-    const d = await api(`/records?limit=150000`);
-    const all = d.records || [];
-
-    const startTs = new Date(ws + 'T00:00:00Z').getTime();
-    const endTs   = startTs + 7 * 86400000;
-
-    return all.filter(r => {
-      if (r.status !== 'complete') return false;
-      // Prefer the business date
-      if (r.date_local && r.date_local >= ws && r.date_local <= we) return true;
-      // Fallback to completion timestamp if date_local missing
-      if (r.completed_at) {
-        const t = new Date(r.completed_at).getTime();
-        return t >= startTs && t < endTs;
-      }
-      return false;
-    });
-  } catch {
-    return [];
-  }
-}
 
 function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate()+6); return iso(d); }
 
@@ -1827,18 +1860,20 @@ function inWeekByCompletedAt(r, ws){
   async function setWeek(ws){
     state.weekStart=ws; $('#week-start').value=ws;
     const weDate=new Date(ws); weDate.setDate(weDate.getDate()+6); const we=iso(weDate);
-const [plan, allRecs] = await Promise.all([fetchPlan(ws), fetchActualsAll()]);
+const [plan, summary] = await Promise.all([
+  fetchPlan(ws),
+  fetchSummary(ws, we, 'complete')
+]);
 state.plan = Array.isArray(plan) ? plan : [];
 
-const recs = Array.isArray(allRecs) ? allRecs : [];
-// Prefer date_local window; fall back to completed_at only if date_local missing.
-state.records = recs.filter(r =>
-  inWeekByDateLocal(r, ws) || (!r.date_local && inWeekByCompletedAt(r, ws))
-);
+// Summary-first: for normal dashboard operation we keep only PO rollups.
+// (Raw records are loaded only for explicit drilldowns.)
+state.records = Array.isArray(summary?.by_po) ? summary.by_po : [];
 
 const bins = await fetchBins(ws);
 state.bins = Array.isArray(bins) ? bins : [];
-state.binQA = computeBinQA(ws, state.records, state.bins);
+// Bin QA requires raw records (mobile_bin). In summary-only mode we skip.
+state.binQA = computeBinQA(ws, [], state.bins);
 
     const agg=aggregate(state.records);
     const plannedTotal = state.plan.reduce((s,p)=> s + toNum(p.target_qty), 0);
@@ -1865,14 +1900,22 @@ try {
 }
 
 const totalsByWeek = {};
-capsuleIds.forEach(id => {
-  const pTotal = (plansByWeek[id] || []).reduce((s, p) => s + toNum(p.target_qty), 0);
-  // applied: prefer date_local window; fall back to completed_at if missing (same rules as state.records)
-  const aTotal = (recs || []).filter(r =>
-    inWeekByDateLocal(r, id) || (!r.date_local && inWeekByCompletedAt(r, id))
-  ).length;
-  totalsByWeek[id] = { planned: pTotal, applied: aTotal };
-});
+try {
+  const summs = await Promise.all(capsuleIds.map(id => {
+    const end = addDaysISO(id, 6);
+    return fetchSummary(id, end, 'complete');
+  }));
+  capsuleIds.forEach((id, i) => {
+    const pTotal = (plansByWeek[id] || []).reduce((s, p) => s + toNum(p.target_qty), 0);
+    const aTotal = Number(summs[i]?.total_units || 0);
+    totalsByWeek[id] = { planned: pTotal, applied: aTotal };
+  });
+} catch {
+  capsuleIds.forEach(id => {
+    const pTotal = (plansByWeek[id] || []).reduce((s, p) => s + toNum(p.target_qty), 0);
+    totalsByWeek[id] = { planned: pTotal, applied: 0 };
+  });
+}
 
 // Render capsules with correct bars for ALL pills (not only the selected week)
 renderCapsules(ws, plannedTotal, appliedTotal, totalsByWeek);
@@ -1901,8 +1944,12 @@ renderCapsules(ws, plannedTotal, appliedTotal, totalsByWeek);
 renderInsights(state.records, state.plan, state.weekStart);
 
     // download buttons
-    $('#btn-dl-posku').onclick=()=>{
-      const rows=buildDiscrepancyPOSKU(state.plan, state.records);
+    $('#btn-dl-posku').onclick=async()=>{
+      // Summary-only: pull PO+SKU rollup (tiny compared to raw records)
+      // so the POSKU discrepancy CSV stays accurate at very high volumes.
+      const p = new URLSearchParams({ from: ws, to: we, status: 'complete' });
+      const resp = await api(`/summary/po_sku?${p.toString()}`).catch(()=>({}));
+      const rows=buildDiscrepancyPOSKU(state.plan, resp?.rows || []);
       const csv=toCSV(
   ['PO','SKU','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Planned','Applied','Discrepancy (Applied - Planned)'],
   rows
@@ -2528,48 +2575,24 @@ const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==
 async function loadOpsMetrics() {
   if (!apiBase) return;
   try {
-    // Fetch all recent completed records, up to 50k
-    const res = await fetch(`${apiBase}/records?status=complete&limit=150000`);
-    if (!res.ok) throw new Error(await res.text());
-    const rows = (await res.json()).records || [];
-
-    const now = Date.now();
-    const startToday = new Date();
-    startToday.setHours(0, 0, 0, 0);
-    const hourAgo = now - 3600e3;
-    const halfAgo = now - 1800e3;
-
-    let scansToday = 0, lastHour = 0, rate = 0, drafts = 0, dupes = 0;
-    const syncCounts = {}, seen = new Set();
-
-    for (const r of rows) {
-      const ct = r.completed_at ? new Date(r.completed_at).getTime() : null;
-      const todayByCompletion = !!ct && ct >= startToday.getTime();
-
-      if (r.status === 'complete') {
-        if (todayByCompletion) scansToday++;
-        if (ct && ct >= hourAgo) lastHour++;
-        if (ct && ct >= halfAgo) rate++;
-        if (r.sku_code && r.uid) {
-          const k = r.sku_code + '|' + r.uid;
-          if (seen.has(k)) dupes++;
-          else seen.add(k);
-        }
-      } else drafts++;
-
-      const s = r.sync_state || 'unknown';
-      syncCounts[s] = (syncCounts[s] || 0) + 1;
-    }
+    // Summary-first: tiny endpoint backed by indexed queries.
+    const stats = await api(`/summary/ops`);
+    const scansToday = Number(stats?.scans_today || 0);
+    const lastHour   = Number(stats?.last_hour || 0);
+    const rate30m    = Number(stats?.last_30m || 0);
+    const drafts     = Number(stats?.drafts || 0);
+    const dupes      = Number(stats?.dupes || 0);
+    const syncCounts = (stats && typeof stats.sync_counts === 'object' && stats.sync_counts) ? stats.sync_counts : {};
 
     $('#ops-today').textContent = scansToday.toLocaleString();
     $('#ops-hour').textContent = lastHour.toLocaleString();
-    $('#ops-rate').textContent = (rate * 2).toLocaleString();
+    $('#ops-rate').textContent = (rate30m * 2).toLocaleString();
     $('#ops-drafts').textContent = drafts.toLocaleString();
     $('#ops-dupes').textContent = dupes.toLocaleString();
     $('#ops-last-updated').textContent = new Date().toLocaleTimeString();
 
     // Pulse animation + hearts
-    const bpm = Math.max(40, Math.min(200, rate * 2));
+    const bpm = Math.max(40, Math.min(200, rate30m * 2));
     $('#intake-bpm').textContent = bpm;
 
     const small = $('#ops-heart-small');
@@ -2623,15 +2646,71 @@ async function loadOpsMetrics() {
   }
 }
 
+  
+  // Coalesce scan SSE updates to avoid UI hangs when scan events are frequent.
+  let __opsRefreshTimer = null;
+  let __opsRefreshRunning = false;
+  let __opsRefreshPending = false;
+  let __opsRefreshLast = 0;
+
+  function scheduleOpsRefresh() {
+    if (!apiBase) return;
+    if (document.hidden) return;
+    __opsRefreshPending = true;
+
+    if (__opsRefreshTimer) return;
+    const minGapMs = 1500; // at most ~1 refresh per 1.5s
+    const wait = Math.max(0, minGapMs - (Date.now() - __opsRefreshLast));
+
+    __opsRefreshTimer = setTimeout(runOpsRefresh, wait);
+  }
+
+  async function runOpsRefresh() {
+    __opsRefreshTimer = null;
+
+    if (__opsRefreshRunning) {
+      __opsRefreshPending = true;
+      return;
+    }
+
+    if (!__opsRefreshPending) return;
+    __opsRefreshPending = false;
+
+    __opsRefreshRunning = true;
+    __opsRefreshLast = Date.now();
+
+    try {
+      // Yield once so clicks/paint can happen.
+      await new Promise((r) => setTimeout(r, 0));
+      await loadOpsMetrics();
+      await refreshDashboardTotals();
+    } catch (e) {
+      console.warn('Ops refresh failed:', e);
+    } finally {
+      __opsRefreshRunning = false;
+      if (__opsRefreshPending) scheduleOpsRefresh();
+    }
+  }
+
   function startSSE(){
     if(!apiBase) return;
     try{
       const ev=new EventSource(`${apiBase}/events/scan`);
       $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
-      ev.onmessage=async()=>{ await loadOpsMetrics(); await refreshDashboardTotals(); };
-      ev.onerror = ()=>{ try{ev.close();}catch{}; $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500'); setTimeout(startSSE,3000); };
+      ev.onmessage=()=>{ scheduleOpsRefresh(); };
+      ev.onerror = ()=>{
+        try{ev.close();}catch{}
+        $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500');
+        setTimeout(startSSE,3000);
+      };
+
+      // Refresh once when tab becomes visible again.
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleOpsRefresh();
+      });
     }catch{}
   }
+
 
   // ---------- Dashboard weekly refresh from completion timestamps ----------
 async function refreshDashboardTotals(){
@@ -2640,22 +2719,8 @@ async function refreshDashboardTotals(){
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
 
-  const res = await fetch(`${apiBase}/records?limit=150000`);
-  if(!res.ok) return;
-  const all = (await res.json()).records || [];
-
-  const inWeek = all.filter(r => {
-    if (r.status !== 'complete') return false;
-    if (r.completed_at) {
-      const ymd = ymdFromCompletedAtInTZ(r.completed_at); // CN business day
-      return ymd >= ws && ymd <= we;
-    }
-    // Fallback: use provided date_local (already Y-M-D)
-    const dl = toISODate(r.date_local);
-    return dl && dl >= ws && dl <= we;
-  });
-
-  const appliedTotal = inWeek.length;
+  const summary = await fetchSummary(ws, we, 'complete');
+  const appliedTotal = Number(summary?.total_units || 0);
   const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
   const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
 
@@ -2875,5 +2940,4 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
-
 
