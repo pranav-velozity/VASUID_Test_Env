@@ -15,7 +15,7 @@ services:
         value: production
       - key: ALLOWED_ORIGIN
         # TODO: set to your exact frontend origin (comma-separate if multiple)
-        value: https://vasopstestenv.netlify.app
+        value: https://vasops.netlify.app
       - key: DB_DIR
         value: /opt/render/project/src/data
       - key: DB_FILE

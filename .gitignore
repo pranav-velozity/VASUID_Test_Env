@@ -1,0 +1,17 @@
+# Node
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+dist
+.DS_Store
+
+# Env
+.env*
+.env.*.local
+
+# Vite
+ui/.vite
+
+# Build caches
+*.tsbuildinfo
