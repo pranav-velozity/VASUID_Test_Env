@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-  <!-- Tailwind -->
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -3332,6 +3332,110 @@ function renderOpsInsights(view){
     return;
   }
 
+  
+  // ----- Render -----
+  if(view==='supplier'){
+    // Build PO state counts per supplier
+    const poCounts = new Map(); // supplier -> {total, complete, partial, notSent}
+    for(const [po,x] of poDerived.entries()){
+      const key = x.supplier || 'Unspecified';
+      const cur = poCounts.get(key) || {total:0, complete:0, partial:0, notSent:0};
+      cur.total += 1;
+      const planned = x.planned||0, received = x.received||0, applied = x.applied||0;
+      if(received<=0) cur.notSent += 1;
+      else if(planned>0 && applied>=planned) cur.complete += 1;
+      else cur.partial += 1;
+      poCounts.set(key, cur);
+    }
+
+    const cards = [...agg.entries()].map(([k,v])=>{
+      const planned = v.planned||0, received=v.received||0, applied=v.applied||0;
+      const pct = planned>0 ? (100*applied/planned) : 0;
+      const rem = Math.max(0, planned - applied);
+      const counts = poCounts.get(k) || {total:0, complete:0, partial:0, notSent:0};
+      // Freight split (Air/Sea/Other) completion
+      const freightChips = ['Air','Sea','Other'].map(b=>{
+        const fv=v.freight?.[b];
+        if(!fv || !(fv.planned>0)) return '';
+        const fpct = Math.round(100*(fv.applied||0)/(fv.planned||1));
+        const label = b==='Other' ? 'Other' : b;
+        return `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]">${label} ${fpct}%</span>`;
+      }).join('');
+
+      // status badge
+      const badge =
+        planned<=0 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px] text-gray-600">No plan</span>` :
+        (pct>=90 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#16a34a;color:#16a34a;">On track</span>` :
+         pct>=75 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#f59e0b;color:#b45309;">At risk</span>` :
+                  `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#ef4444;color:#b91c1c;">Delayed</span>`);
+
+      const bar2 = (label, val, denom, color)=>{
+        const p = denom>0 ? Math.max(0, Math.min(100, 100*val/denom)) : 0;
+        return `
+          <div class="flex items-center gap-2">
+            <div class="w-16 text-[11px] text-gray-500">${label}</div>
+            <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div class="h-2 rounded-full" style="width:${p}%; background:${color};"></div>
+            </div>
+            <div class="w-20 text-right text-[11px] tabular-nums text-gray-700">${fmtInt(Math.round(val))}</div>
+          </div>
+        `;
+      };
+
+      return {k, planned, received, applied, pct, rem, counts, freightChips, badge, bar2};
+    }).sort((a,b)=> b.rem - a.rem).slice(0, 20);
+
+    root.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        ${cards.map(it=>{
+          const planned = it.planned||0, received=it.received||0, applied=it.applied||0;
+          const pct = planned>0 ? Math.round(100*applied/planned) : 0;
+          const remaining = Math.round(Math.max(0, planned-applied));
+          return `
+            <div class="rounded-2xl border bg-white p-3 shadow-sm">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div class="text-sm font-semibold truncate">${esc(it.k)}</div>
+                    ${it.badge}
+                  </div>
+                  <div class="text-[11px] text-gray-500 mt-0.5">
+                    Completion <span class="font-medium">${pct}%</span> • Remaining <span class="font-medium">${fmtInt(remaining)}</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm font-semibold tabular-nums">${fmtInt(Math.round(applied))}</div>
+                  <div class="text-[11px] text-gray-500 tabular-nums">/ ${fmtInt(Math.round(planned))}</div>
+                </div>
+              </div>
+
+              <div class="mt-3 space-y-1.5">
+                ${it.bar2('Planned', planned, planned||1, '#9ca3af')}
+                ${it.bar2('Received', received, planned||1, '#0ea5e9')}
+                ${it.bar2('Applied', applied, planned||1, '#990033')}
+              </div>
+
+              <div class="mt-2 flex items-center justify-between gap-3">
+                <div class="text-[11px] text-gray-500">
+                  POs: <span class="font-medium text-gray-700">${it.counts.total}</span>
+                  &nbsp;•&nbsp; <span class="text-gray-700">✓</span> ${it.counts.complete}
+                  &nbsp;<span class="text-gray-700">⚠</span> ${it.counts.partial}
+                  &nbsp;<span class="text-gray-700">⛔</span> ${it.counts.notSent}
+                </div>
+                <div class="flex gap-2 items-center">
+                  ${it.freightChips || ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="text-[11px] text-gray-500 mt-3">Received units are approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0. Complete = applied ≥ planned.</div>
+    `;
+    return;
+  }
+
+  // Default list view for other dimensions (facility, zendesk, freight)
   root.innerHTML = `
     <div class="space-y-3">
       ${items.map(it=>{
@@ -3364,7 +3468,7 @@ function renderOpsInsights(view){
             </div>
             <div class="mt-3 space-y-2">
               ${bar('Planned', planned, planned||1, '#9ca3af')}
-              ${bar('Received', received, planned||1, '#10b981')}
+              ${bar('Received', received, planned||1, '#0ea5e9')}
               ${bar('Applied', applied, planned||1, '#990033')}
             </div>
             ${freightRow}
@@ -3375,6 +3479,7 @@ function renderOpsInsights(view){
     </div>
   `;
 }
+
 
 
 function wireOpsInsights(){
@@ -3538,8 +3643,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
-
+  
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
