@@ -7,7 +7,8 @@
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
- <!-- Tailwind -->
+
+   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -379,22 +380,23 @@ style="border-color:#990033;">
         <div class="lg:col-span-1 min-w-0">
 
 
-      <!-- Ops right panel: Week totals -->
+      <!-- Ops right panel: Week totals (Flow-style) -->
       <div class="bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="text-base font-semibold mb-1">Week totals</div>
-        <div class="text-xs text-gray-500 mb-3">Week plan vs actual</div>
+        <div class="text-base font-semibold">Week totals</div>
+        <div class="text-xs text-gray-500 mb-3">Week of <span id="ops-week-of">—</span></div>
 
         <div class="bg-gray-50 rounded-xl border p-3">
-          <div class="flex items-center justify-between py-1">
+          <div class="flex items-center justify-between py-1.5">
             <div class="flex items-center gap-2 text-sm text-gray-700">
               <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 3h10v4H7zM5 7h14v14H5z" stroke-width="1.5"/></svg>
               </span>
-              POs planned – applied
+              POs planned – received
             </div>
-            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-po-planned">0</span> – <span id="ops-week-po-applied">0</span></div>
+            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-po-planned">0</span> – <span id="ops-week-po-received">0</span></div>
           </div>
-          <div class="flex items-center justify-between py-1">
+
+          <div class="flex items-center justify-between py-1.5">
             <div class="flex items-center gap-2 text-sm text-gray-700">
               <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-width="1.5"/></svg>
@@ -403,14 +405,26 @@ style="border-color:#990033;">
             </div>
             <div class="text-sm font-semibold tabular-nums"><span id="ops-week-units-planned">0</span> – <span id="ops-week-units-applied">0</span></div>
           </div>
-          <div class="flex items-center justify-between py-1">
+
+          <div class="flex items-center justify-between py-1.5">
             <div class="flex items-center gap-2 text-sm text-gray-700">
               <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 7l8-4 8 4v10l-8 4-8-4z" stroke-width="1.5"/></svg>
               </span>
-              Cartons out (distinct mobile bins)
+              Cartons in – cartons out
             </div>
-            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-out">0</span></div>
+            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <div class="bg-white border rounded-xl p-3">
+            <div class="text-xs text-gray-500">Total suppliers</div>
+            <div class="text-lg font-semibold tabular-nums" id="ops-week-suppliers">0</div>
+          </div>
+          <div class="bg-white border rounded-xl p-3">
+            <div class="text-xs text-gray-500">Total Zendesk</div>
+            <div class="text-lg font-semibold tabular-nums" id="ops-week-zendesk">0</div>
           </div>
         </div>
 
@@ -424,53 +438,78 @@ style="border-color:#990033;">
         </div>
       </div>
 
+      <!-- PO progress (planned / received / applied) placeholder removed from right panel -->
 
-      <!-- PO progress (planned / received / applied) -->
-      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="flex items-center justify-between gap-2 mb-1">
-          <div class="text-base font-semibold">PO progress</div>
-          <div class="text-xs text-gray-500">Units</div>
-        </div>
-        <div class="text-xs text-gray-500 mb-3">Planned vs received vs applied (this week)</div>
-
-        <!-- Totals -->
-        <div class="space-y-3 mb-4">
-          <div>
-            <div class="flex items-center justify-between text-sm">
-              <div class="text-gray-700">Received</div>
-              <div class="font-semibold tabular-nums"><span id="ops-po-received-total">0</span> / <span id="ops-po-planned-total">0</span></div>
-            </div>
-            <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-1">
-              <div id="ops-po-received-bar" class="h-full bg-emerald-500" style="width:0%"></div>
-            </div>
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between text-sm">
-              <div class="text-gray-700">Applied</div>
-              <div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
-            </div>
-            <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-1">
-              <div id="ops-po-applied-bar" class="h-full" style="width:0%; background:#990033;"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- PO search -->
-        <div class="flex items-center gap-2 mb-2">
-          <input id="ops-po-search" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="Search a PO number (e.g. WADA002381)"/>
-          <button id="ops-po-clear" class="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50">Clear</button>
-        </div>
-
-        <!-- PO details -->
-        <div id="ops-po-detail" class="bg-gray-50 rounded-xl border p-3 text-sm">
-          <div class="text-xs text-gray-500">Enter a PO to view details.</div>
-        </div>
-      </div>
-
-          <!-- (hidden legacy progress tiles kept for stability) -->
+      
+<!-- (hidden legacy progress tiles kept for stability) -->
           <div class="hidden" id="ops-progress-tiles"></div>
         </div>
+
+            <!-- Full-width PO progress (bottom half) -->
+            <div class="lg:col-span-3 min-w-0">
+              <div class="bg-white rounded-2xl border shadow p-4 mt-3">
+                <div class="flex items-center justify-between gap-3 mb-1">
+                  <div class="text-base font-semibold">PO progress</div>
+                  <div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
+                </div>
+
+                <!-- Totals -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  <div class="bg-gray-50 rounded-xl border p-3">
+                    <div class="flex items-center justify-between text-sm">
+                      <div class="text-gray-700">Received</div>
+                      <div class="font-semibold tabular-nums"><span id="ops-po-received-total">0</span> / <span id="ops-po-planned-total">0</span></div>
+                    </div>
+                    <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+                      <div id="ops-po-received-bar" class="h-full bg-emerald-500" style="width:0%"></div>
+                    </div>
+                  </div>
+
+                  <div class="bg-gray-50 rounded-xl border p-3">
+                    <div class="flex items-center justify-between text-sm">
+                      <div class="text-gray-700">Applied</div>
+                      <div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
+                    </div>
+                    <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+                      <div id="ops-po-applied-bar" class="h-full" style="width:0%; background:#990033;"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- PO search -->
+                <div class="flex items-center gap-2 mb-3">
+                  <input id="ops-po-search" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="Search / filter PO (e.g. WADA002381)"/>
+                  <button id="ops-po-clear" class="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50">Clear</button>
+                </div>
+
+                <!-- PO table -->
+                <div class="overflow-auto rounded-xl border">
+                  <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50">
+                      <tr class="text-gray-500">
+                        <th class="text-left py-2 px-3">PO</th>
+                        <th class="text-left py-2 px-3">Supplier</th>
+                        <th class="text-left py-2 px-3">Facility</th>
+                        <th class="text-left py-2 px-3">Freight</th>
+                        <th class="text-left py-2 px-3">Zendesk</th>
+                        <th class="text-right py-2 px-3">Planned</th>
+                        <th class="text-right py-2 px-3">Received</th>
+                        <th class="text-right py-2 px-3">Applied</th>
+                        <th class="text-right py-2 px-3">Rem</th>
+                        <th class="text-right py-2 px-3">%</th>
+                        <th class="py-2 px-3 w-[240px]">Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ops-po-table-body">
+                      <tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">Loading…</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- PO detail (optional inline) -->
+                <div id="ops-po-detail" class="bg-gray-50 rounded-xl border p-3 text-sm mt-3 hidden"></div>
+              </div>
+            </div>
       </div>
 </section>
 
@@ -2844,44 +2883,161 @@ async function refreshDashboardTotals(){
   // Week totals side panel (Ops)
   try{
     const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
-    const poApplied = new Set(Object.keys(summary?.by_po || {}));
     const poReceived = new Set(Object.keys(summaryReceived?.by_po || {}));
-    const receivedTotal = Number(summaryReceived?.total_units || 0);
-    const cartonsOut = Object.values(summary?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
 
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-
-    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
-    setTxt('#ops-week-po-applied', poReceived.size.toLocaleString());
-    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
-    setTxt('#ops-week-units-applied', appliedTotal.toLocaleString());
-    setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
-
-    const h=$('#ops-week-health');
-    if(h){
-      let label = 'On-Plan';
-      if(pct < 75) label='At-Risk';
-      if(pct < 50) label='Delayed';
-      h.textContent = label;
-    }
-  }catch{}
-  // PO progress tile (totals)
-  try{
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-    const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
     const receivedTotal = Number(summaryReceived?.total_units || 0);
     const appliedTotal2 = Number(summary?.total_units || 0);
 
-    setTxt('#ops-po-planned-total', plannedTotal.toLocaleString());
-    setTxt('#ops-po-planned-total-2', plannedTotal.toLocaleString());
-    setTxt('#ops-po-received-total', receivedTotal.toLocaleString());
-    setTxt('#ops-po-applied-total', appliedTotal2.toLocaleString());
+    const unitOf = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
+    };
 
-    const pctR = plannedTotal>0 ? Math.min(100, Math.round(receivedTotal*100/plannedTotal)) : 0;
-    const pctA = plannedTotal>0 ? Math.min(100, Math.round(appliedTotal2*100/plannedTotal)) : 0;
+    // "Cartons in" approximated as distinct mobile bins for RECEIVED status
+    const cartonsIn  = Object.values(summaryReceived?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
+    // "Cartons out" as distinct mobile bins for COMPLETE status
+    const cartonsOut = Object.values(summary?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
+
+    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||'').trim()).filter(Boolean));
+    const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
+
+    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
+
+    setTxt('#ops-week-of', state.weekStart || '—');
+    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
+    setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
+    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
+    setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
+    setTxt('#ops-week-cartons-in', cartonsIn.toLocaleString());
+    setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
+    setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
+    setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
+
+    const pctNow = plannedTotal>0?Math.round(appliedTotal2*100/plannedTotal):(state.plan.length?0:100);
+    const h=$('#ops-week-health');
+    if(h){
+      let label = 'On-Plan';
+      if(pctNow < 75) label='At-Risk';
+      if(pctNow < 50) label='Delayed';
+      h.textContent = label;
+    }
+  }catch{}
+  // PO progress tile (totals + table)
+  try{
+    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
+    const plannedTotal2 = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
+    const receivedTotal2 = Number(summaryReceived?.total_units || 0);
+    const appliedTotal3 = Number(summary?.total_units || 0);
+
+    setTxt('#ops-po-planned-total', plannedTotal2.toLocaleString());
+    setTxt('#ops-po-planned-total-2', plannedTotal2.toLocaleString());
+    setTxt('#ops-po-received-total', receivedTotal2.toLocaleString());
+    setTxt('#ops-po-applied-total', appliedTotal3.toLocaleString());
+
+    const pctR = plannedTotal2>0 ? Math.min(100, Math.round(receivedTotal2*100/plannedTotal2)) : 0;
+    const pctA = plannedTotal2>0 ? Math.min(100, Math.round(appliedTotal3*100/plannedTotal2)) : 0;
 
     const br=$('#ops-po-received-bar'); if(br) br.style.width = pctR + '%';
     const ba=$('#ops-po-applied-bar'); if(ba) ba.style.width = pctA + '%';
+
+    const unitOf = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
+    };
+
+    // Build PO rows from plan + summaries
+    const planByPO = new Map(); // po -> {planned, supplier, facility, freight, zendesk}
+    for(const p of (state.plan||[])){
+      const po = String(p.po_number||'').trim();
+      if(!po) continue;
+      const r = planByPO.get(po) || {
+        po,
+        planned: 0,
+        supplier: String(p.supplier_name||'').trim(),
+        facility: String(p.facility_name||'').trim(),
+        freight: String(p.freight_type||'').trim(),
+        zendesk: String(p.zendesk_ticket||'').trim(),
+      };
+      r.planned += toNum(p.target_qty);
+      // Prefer first non-empty meta
+      if(!r.supplier && p.supplier_name) r.supplier = String(p.supplier_name).trim();
+      if(!r.facility && p.facility_name) r.facility = String(p.facility_name).trim();
+      if(!r.freight && p.freight_type) r.freight = String(p.freight_type).trim();
+      if(!r.zendesk && p.zendesk_ticket) r.zendesk = String(p.zendesk_ticket).trim();
+      planByPO.set(po, r);
+    }
+
+    const byPOComplete = summary?.by_po || {};
+    const byPOReceived = summaryReceived?.by_po || {};
+
+    const rows = [];
+    for(const [po, r] of planByPO.entries()){
+      const planned = Number(r.planned||0);
+      const received = unitOf(byPOReceived[po]);
+      const applied = unitOf(byPOComplete[po]);
+      const rem = Math.max(0, planned - applied);
+      const pct = planned>0 ? Math.min(100, Math.round(applied*100/planned)) : 0;
+      rows.push({po, supplier:r.supplier, facility:r.facility, freight:r.freight, zendesk:r.zendesk, planned, received, applied, rem, pct});
+    }
+    rows.sort((a,b)=> (b.pct - a.pct) || (b.planned - a.planned) || a.po.localeCompare(b.po));
+    state._ops_po_rows = rows;
+
+    function renderTable(filterTerm){
+      const body = $('#ops-po-table-body'); if(!body) return;
+      const term = String(filterTerm||'').trim().toUpperCase();
+      const list = term ? rows.filter(x=> x.po.toUpperCase().includes(term)) : rows;
+
+      if(!list.length){
+        body.innerHTML = '<tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">No matching POs.</td></tr>';
+        return;
+      }
+
+      const fmt = (n)=> (Number(n)||0).toLocaleString();
+      const esc = (s)=> String(s||'—').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+      body.innerHTML = list.slice(0, 500).map(r=>{
+        const wR = r.planned>0 ? Math.min(100, Math.round(r.received*100/r.planned)) : 0;
+        const wA = r.planned>0 ? Math.min(100, Math.round(r.applied*100/r.planned)) : 0;
+        return `<tr class="border-t">
+          <td class="py-2 px-3 font-medium">${esc(r.po)}</td>
+          <td class="py-2 px-3">${esc(r.supplier)}</td>
+          <td class="py-2 px-3">${esc(r.facility)}</td>
+          <td class="py-2 px-3">${esc(r.freight)}</td>
+          <td class="py-2 px-3">${esc(r.zendesk)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.planned)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.received)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.applied)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.rem)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${r.pct}%</td>
+          <td class="py-2 px-3">
+            <div class="h-2 bg-gray-100 rounded-full overflow-hidden relative">
+              <div class="h-full bg-emerald-500" style="width:${wR}%"></div>
+              <div class="h-full" style="width:${wA}%; background:#990033; position:absolute; top:0; left:0;"></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Bind search once
+    if(!state._ops_po_bound){
+      state._ops_po_bound = true;
+      const input = $('#ops-po-search');
+      const clear = $('#ops-po-clear');
+      if(input){
+        input.addEventListener('input', ()=> renderTable(input.value));
+        input.addEventListener('change', ()=> renderTable(input.value));
+      }
+      if(clear && input){
+        clear.addEventListener('click', ()=>{ input.value=''; renderTable(''); });
+      }
+    }
+
+    // Initial render
+    const input = $('#ops-po-search');
+    renderTable(input ? input.value : '');
+
   }catch{}
 
 
@@ -3270,6 +3426,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
+
+  
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
