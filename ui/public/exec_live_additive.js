@@ -9,7 +9,7 @@
   const BUSINESS_TZ = document.querySelector('meta[name="business-tz"]')?.content || 'Asia/Shanghai';
 
 // --- Exec should not fetch; rely on Ops-populated window.state
-const EXEC_USE_NETWORK = true;
+const EXEC_USE_NETWORK = false; // set true only if Exec must self-fetch (defaults false to avoid heavy /records pulls)
 
 // --- API base (normalized; always ends with /api)
 const _rawBase =
@@ -1440,7 +1440,8 @@ save.onclick = (e) => {
   }
 
   // Re-render and close panel
-  window.dispatchEvent(new Event('state:ready'));
+  // Exec-only re-render (avoid broadcasting global state:ready which can disrupt other pages)
+  try { if ((location.hash || '#dashboard') === '#exec') _execTryRender(); } catch (_) {}
   document.getElementById('timeline-editor')?.classList.add('hidden');
 };
 
@@ -2244,7 +2245,8 @@ async function __execEnsureStateLoaded() {
     s.bins    = Array.isArray(bins)    ? bins    : [];
 
     // Let Exec render now, and also allow Ops to overwrite later if it wants
-    window.dispatchEvent(new Event('state:ready'));
+    // Exec-only re-render (avoid broadcasting global state:ready which can disrupt other pages)
+  try { if ((location.hash || '#dashboard') === '#exec') _execTryRender(); } catch (_) {}
   } catch (e) {
     console.warn('[Exec fallback] fetch failed:', e);
   }
@@ -2349,9 +2351,7 @@ ensureSummaryBtn(async () => {
 
 // 🔹 NEW: re-render exactly when the app signals data is ready
 window.addEventListener('state:ready', _execTryRender);
-
-
-  _execBootTimer = setInterval(_execTryRender, 600);
+  // NOTE: removed aggressive 600ms polling to avoid repeated heavy work / network calls.
   document.addEventListener('visibilitychange', _execTryRender);
   setTimeout(_execTryRender, 0);
 
