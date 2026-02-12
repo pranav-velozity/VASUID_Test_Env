@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-   <!-- Tailwind -->
+    <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -102,7 +102,25 @@
 /* icon sizing */
 .cmd svg{ width:16px; height:16px; opacity:.85; }
 
-  </style>
+  
+/* Ops insights pills */
+.ops-pill{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:88px; height:36px;
+  border:1px solid rgba(0,0,0,.08);
+  border-radius:9999px;
+  background:#fff;
+  font-size:12px;
+  font-weight:600;
+  color:#374151;
+}
+.ops-pill:hover{ background:#f9fafb; }
+.ops-pill--active{
+  border-color: rgba(153,0,51,.35);
+  box-shadow: 0 0 0 3px rgba(153,0,51,.08);
+  color:#111827;
+}
+</style>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <!-- Top Nav -->
@@ -153,7 +171,7 @@
 
 <input id="file-plan" type="file" accept=".xlsx,.csv" class="hidden"/>
 
-<div class="cmdbar" role="group" aria-label="Operations actions">
+<div class="cmdbar hidden" role="group" aria-label="Operations actions">
   <button id="btn-upload-plan" class="cmd cmd--primary" aria-label="Upload Plan" title="Upload planned PO×SKU for the selected week">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"> 
 <path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -219,7 +237,7 @@
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <!-- Left: reserved (blank for now) -->
         <div class="lg:col-span-2 min-w-0">
-          <div class="min-h-[720px]"></div>
+          <div class="min-h-[480px]"></div>
           <div class="hidden" id="ops-left-hidden">
 
 <!-- KPI tiles -->
@@ -438,7 +456,43 @@ style="border-color:#990033;">
         </div>
       </div>
 
-      <!-- PO progress (planned / received / applied) placeholder removed from right panel -->
+      
+      <!-- Reports & downloads (3x2) -->
+      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
+        <div class="text-base font-semibold mb-3">Reports & downloads</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button id="ops-dl-posku" class="cmd w-full justify-center">PO × SKU Discrepancy</button>
+          <button id="ops-dl-po" class="cmd w-full justify-center">PO Discrepancy</button>
+          <button id="ops-dl-ship-summary" class="cmd w-full justify-center">Shipment Summary</button>
+          <button id="ops-dl-ship-detail" class="cmd w-full justify-center">Shipment Details</button>
+          <button id="ops-dl-week-applied" class="cmd w-full justify-center">Download Applied</button>
+          <button id="ops-dl-mobile-bin" class="cmd w-full justify-center">Mobile bin</button>
+        </div>
+      </div>
+
+      <!-- Ops insights (switchable views) -->
+      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="text-base font-semibold">Insights</div>
+            <div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
+            <div id="ops-insights-content" class="space-y-3">
+              <div class="text-sm text-gray-600">Select a view on the right to see progress & exceptions.</div>
+            </div>
+          </div>
+
+          <!-- vertical buttons -->
+          <div class="flex flex-col gap-2 shrink-0">
+            <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier">Supplier</button>
+            <button class="ops-pill" data-opsview="facility" title="Facility">Facility</button>
+            <button class="ops-pill" data-opsview="zendesk" title="Zendesk">Zendesk</button>
+            <button class="ops-pill" data-opsview="freight" title="Freight type">Freight</button>
+            <button class="ops-pill" data-opsview="carton" title="Cartons">Carton</button>
+            <button class="ops-pill" data-opsview="placeholder" title="Placeholder">Placeholder</button>
+          </div>
+        </div>
+      </div>
+<!-- PO progress (planned / received / applied) placeholder removed from right panel -->
 
       
 <!-- (hidden legacy progress tiles kept for stability) -->
@@ -2911,6 +2965,8 @@ async function refreshDashboardTotals(){
     setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
     setTxt('#ops-week-cartons-in', cartonsIn.toLocaleString());
     setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
+    state.weekCartonsIn = cartonsIn;
+    state.weekCartonsOut = cartonsOut;
     setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
     setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
 
@@ -3277,8 +3333,154 @@ if (hash === '#receiving') {
 syncNav();
 }
 
-  window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
+  
+/* ================= Ops right panel wiring (downloads + insights) ================= */
+function wireOpsDownloads(){
+  // mirror old buttons into the new right-panel tile
+  const map = [
+    ['ops-dl-posku','btn-dl-posku'],
+    ['ops-dl-po','btn-dl-po'],
+    ['ops-dl-ship-summary','btn-ship-summary'],
+    ['ops-dl-ship-detail','btn-ship-detail'],
+    ['ops-dl-week-applied','btn-dl-week-applied'],
+  ];
+  for(const [newId, oldId] of map){
+    const a=document.getElementById(newId), b=document.getElementById(oldId);
+    if(a && b){
+      a.onclick = () => b.click();
+    }
+  }
+  const mb=document.getElementById('ops-dl-mobile-bin');
+  if(mb) mb.onclick = downloadMobileBins;
+}
+
+function downloadMobileBins(){
+  try{
+    const bins = Array.isArray(state.bins) ? state.bins : [];
+    const plan = Array.isArray(state.plan) ? state.plan : [];
+    const poToSupplier = new Map(plan.map(p => [String(p.po_number||p.po||'').trim(), String(p.supplier||p.vendor||'').trim()]));
+    const rows = [];
+    for(const b of bins){
+      const po = String(b.po_number || b.po || b.poNumber || '').trim();
+      const supplier = String(b.supplier || poToSupplier.get(po) || '').trim();
+      const mobileBin = String(b.mobile_bin || b.mobileBin || '').trim();
+      const weight = Number(b.weight_kg ?? b.weight ?? 0) || 0;
+      const units  = Number(b.total_units ?? b.units ?? 0) || 0;
+      if(!mobileBin) continue;
+      rows.push({Supplier:supplier, PO:po, Mobile_Bin_Number:mobileBin, Weight_kg:weight, Units:units});
+    }
+    rows.sort((a,b)=> (a.Supplier||'').localeCompare(b.Supplier||'') || (a.PO||'').localeCompare(b.PO||'') || (a.Mobile_Bin_Number||'').localeCompare(b.Mobile_Bin_Number||''));
+    const csv = toCsv(rows, ['Supplier','PO','Mobile_Bin_Number','Weight_kg','Units']);
+    downloadBlob(csv, `mobile_bins_${state.weekStart||'week'}.csv`, 'text/csv');
+  }catch(err){
+    console.error('mobile bin export failed', err);
+    toast('Mobile bin download failed');
+  }
+}
+
+function renderOpsInsights(view){
+  const sub = document.getElementById('ops-insights-subtitle');
+  const root = document.getElementById('ops-insights-content');
+  if(!root) return;
+  const plan = Array.isArray(state.plan) ? state.plan : [];
+  const recs = Array.isArray(state.records) ? state.records : []; // summary by_po: {po, units, cartons_out}
+  const poToApplied = new Map(recs.map(r => [String(r.po||r.po_number||r.poNumber||'').trim(), Number(r.units||r.total_units||0)||0]));
+  const groupKey = (p)=>{
+    if(view==='supplier') return String(p.supplier||p.vendor||'Unspecified').trim() || 'Unspecified';
+    if(view==='facility') return String(p.facility||'Unspecified').trim() || 'Unspecified';
+    if(view==='zendesk') return String(p.zendesk_ticket||p.zendesk||'Unspecified').trim() || 'Unspecified';
+    if(view==='freight') return String(p.freight_type||p.freight||'Unspecified').trim() || 'Unspecified';
+    return '—';
+  };
+
+  if(view==='carton'){
+    const ci = Number(state.weekCartonsIn||0)||0;
+    const co = Number(state.weekCartonsOut||0)||0;
+    const max = Math.max(ci, co, 1);
+    root.innerHTML = `
+      <div class="bg-gray-50 rounded-xl border p-3">
+        <div class="text-sm font-semibold mb-2">Cartons in vs cartons out</div>
+        <div class="flex items-end gap-4 h-28">
+          <div class="flex-1">
+            <div class="text-xs text-gray-500 mb-1">In</div>
+            <div class="w-full bg-gray-100 rounded-xl overflow-hidden" style="height:92px;">
+              <div style="height:${Math.round(92*ci/max)}px; margin-top:${92-Math.round(92*ci/max)}px; background:#10b981;"></div>
+            </div>
+            <div class="text-sm font-semibold tabular-nums mt-2">${fmtInt(ci)}</div>
+          </div>
+          <div class="flex-1">
+            <div class="text-xs text-gray-500 mb-1">Out</div>
+            <div class="w-full bg-gray-100 rounded-xl overflow-hidden" style="height:92px;">
+              <div style="height:${Math.round(92*co/max)}px; margin-top:${92-Math.round(92*co/max)}px; background:#990033;"></div>
+            </div>
+            <div class="text-sm font-semibold tabular-nums mt-2">${fmtInt(co)}</div>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 mt-3">Tip: we can add “biggest delta by supplier” once cartons-out-by-supplier is exposed as a summary.</div>
+      </div>
+    `;
+    if(sub) sub.textContent = 'Carton view';
+    return;
+  }
+
+  // default: grouped planned vs applied (and placeholder for received)
+  const agg = new Map(); // key -> {planned, applied}
+  for(const p of plan){
+    const key = groupKey(p);
+    const planned = Number(p.target_qty||p.planned_units||0)||0;
+    const po = String(p.po_number||p.po||'').trim();
+    const applied = po ? (poToApplied.get(po)||0) : 0;
+    const cur = agg.get(key) || {planned:0, applied:0};
+    cur.planned += planned;
+    cur.applied += applied;
+    agg.set(key, cur);
+  }
+  const items=[...agg.entries()].map(([k,v])=>({k, ...v, pct: v.planned>0? v.applied/v.planned:0})).sort((a,b)=>b.pct-a.pct);
+  const top = items.slice(0, 8);
+
+  const rows = top.map(it=>{
+    const pct = it.planned>0?Math.round(100*it.applied/it.planned):0;
+    const w = it.planned>0?Math.min(100, Math.round(100*it.applied/it.planned)):0;
+    return `
+      <div class="bg-gray-50 rounded-xl border p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="text-sm font-semibold truncate">${escapeHtml(it.k)}</div>
+          <div class="text-sm font-semibold tabular-nums">${fmtInt(it.applied)} / ${fmtInt(it.planned)} <span class="text-xs text-gray-500">(${pct}%)</span></div>
+        </div>
+        <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+          <div class="h-full" style="width:${w}%; background:#990033;"></div>
+        </div>
+      </div>`;
+  }).join('');
+
+  root.innerHTML = rows || `<div class="text-sm text-gray-600">No data for this week.</div>`;
+  if(sub){
+    sub.textContent =
+      view==='supplier' ? 'Supplier view' :
+      view==='facility' ? 'Facility view' :
+      view==='zendesk' ? 'Zendesk view (planned vs applied)' :
+      view==='freight' ? 'Freight type view' :
+      'Insights';
+  }
+}
+
+function wireOpsInsights(){
+  const pills = Array.from(document.querySelectorAll('.ops-pill'));
+  if(!pills.length) return;
+  pills.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      pills.forEach(b=>b.classList.remove('ops-pill--active'));
+      btn.classList.add('ops-pill--active');
+      const v = btn.getAttribute('data-opsview') || 'supplier';
+      renderOpsInsights(v);
+    });
+  });
+  renderOpsInsights('supplier');
+}
+window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
   show(location.hash || '#dashboard'); // initial render
+  try{ wireOpsDownloads(); }catch{}
+  try{ wireOpsInsights(); }catch{}
 
   // Intake scaffold + checkbox handler
   renderIntake();
@@ -3427,7 +3629,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   });
 })();
 
-  
+
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
