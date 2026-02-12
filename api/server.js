@@ -785,6 +785,331 @@ app.get('/summary/sku', (req, res) => {
     return res.status(500).json({ error: String(e?.message || e) });
   }
 });
+
+
+// --- Shipment reports (summary + detail) ---
+// Used for Operations downloads without pulling raw record datasets to the browser.
+// Week-scoped (weekStart -> weekStart+6). Grouping is derived from the uploaded plan JSON.
+function _normStr(v) {
+  const s = String(v ?? '').trim();
+  return s ? s : '(Unspecified)';
+}
+
+function _weekEndISO(ws) {
+  const d = new Date(String(ws) + 'T00:00:00');
+  d.setDate(d.getDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
+function _getPlanRowsForWeek(ws) {
+  const row = db.prepare(`SELECT data FROM plans WHERE week_start = ?`).get(ws);
+  if (!row?.data) return [];
+  try {
+    const parsed = JSON.parse(row.data);
+    return Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.rows) ? parsed.rows : []);
+  } catch {
+    return [];
+  }
+}
+
+function _getBinsForWeek(ws) {
+  return db.prepare(`SELECT week_start, mobile_bin, total_units, weight_kg, date_local FROM bins WHERE week_start = ?`).all(ws);
+}
+
+app.get('/summary/shipment_summary', (req, res) => {
+  try {
+    const ws = String(req.query.weekStart || '').slice(0, 10);
+    if (!ws) return res.status(400).json({ error: 'weekStart is required (YYYY-MM-DD)' });
+    const we = _weekEndISO(ws);
+
+    const plan = _getPlanRowsForWeek(ws);
+    const metaByPO = new Map();
+    for (const p of plan) {
+      const po = String(p?.po_number || '').trim();
+      if (!po || metaByPO.has(po)) continue;
+      metaByPO.set(po, {
+        supplier: _normStr(p?.supplier_name),
+        zendesk: _normStr(p?.zendesk_ticket ?? p?.zendesk_ticket_number ?? p?.zendesk),
+        freight: _normStr(p?.freight_type),
+        facility: _normStr(p?.facility_name),
+      });
+    }
+
+    // applied units by PO (week scoped)
+    const poUnits = db.prepare(`
+      SELECT po_number AS po, COUNT(*) AS units
+      FROM records
+      WHERE status='complete'
+        AND date_local >= ? AND date_local <= ?
+        AND TRIM(COALESCE(po_number,'')) <> ''
+      GROUP BY po_number
+    `).all(ws, we);
+
+    // distinct bins by PO (week scoped)
+    const poBins = db.prepare(`
+      SELECT po_number AS po, TRIM(mobile_bin) AS mobile_bin
+      FROM records
+      WHERE status='complete'
+        AND date_local >= ? AND date_local <= ?
+        AND TRIM(COALESCE(po_number,'')) <> ''
+        AND TRIM(COALESCE(mobile_bin,'')) <> ''
+      GROUP BY po_number, TRIM(mobile_bin)
+    `).all(ws, we);
+
+    const bins = _getBinsForWeek(ws);
+    const binWeight = new Map();
+    for (const b of bins) {
+      const mb = String(b?.mobile_bin ?? '').trim();
+      if (!mb) continue;
+      binWeight.set(mb, Number(b?.weight_kg || 0) || 0);
+    }
+
+    const binsByPO = new Map();
+    for (const r of poBins) {
+      const po = String(r.po || '').trim();
+      const mb = String(r.mobile_bin || '').trim();
+      if (!po || !mb) continue;
+      if (!binsByPO.has(po)) binsByPO.set(po, new Set());
+      binsByPO.get(po).add(mb);
+    }
+
+    const groups = new Map(); // gkey -> agg
+    const binAssigned = new Map();
+
+    for (const r of poUnits) {
+      const po = String(r.po || '').trim();
+      if (!po) continue;
+      const m = metaByPO.get(po) || { supplier: '(Unspecified)', zendesk: '(Unspecified)', freight: '(Unspecified)', facility: '(Unspecified)' };
+      const gkey = `${m.supplier}|||${m.zendesk}|||${m.freight}|||${m.facility}`;
+      if (!groups.has(gkey)) {
+        groups.set(gkey, {
+          'Supplier Name': m.supplier,
+          'Zendesk Ticket #': m.zendesk,
+          'Freight Type': m.freight,
+          'Facility Name': m.facility,
+          _poSet: new Set(),
+          _binSet: new Set(),
+          'Unique PO Count': 0,
+          'Total Units Applied': 0,
+          'Total Mobile Bins': 0,
+          'Gross Weight': 0,
+          'CBM': 0,
+        });
+      }
+      const g = groups.get(gkey);
+      g['Total Units Applied'] += Number(r.units || 0) || 0;
+      g._poSet.add(po);
+
+      const poBinSet = binsByPO.get(po) || new Set();
+      for (const mb of poBinSet) {
+        g._binSet.add(mb);
+        if (!binAssigned.has(mb)) {
+          binAssigned.set(mb, gkey);
+          g['Gross Weight'] += binWeight.get(mb) || 0;
+        }
+      }
+    }
+
+    const out = [];
+    for (const g of groups.values()) {
+      const binCount = g._binSet.size;
+      out.push({
+        'Supplier Name': g['Supplier Name'],
+        'Zendesk Ticket #': g['Zendesk Ticket #'],
+        'Freight Type': g['Freight Type'],
+        'Facility Name': g['Facility Name'],
+        'Unique PO Count': g._poSet.size,
+        'Total Units Applied': Number(g['Total Units Applied'] || 0),
+        'Total Mobile Bins': binCount,
+        'Gross Weight': Math.round((Number(g['Gross Weight'] || 0) + Number.EPSILON) * 100) / 100,
+        'CBM': Math.round((binCount * 0.046 + Number.EPSILON) * 1000) / 1000,
+      });
+    }
+
+    out.sort((a, b) =>
+      String(a['Supplier Name']).localeCompare(String(b['Supplier Name'])) ||
+      String(a['Zendesk Ticket #']).localeCompare(String(b['Zendesk Ticket #'])) ||
+      String(a['Freight Type']).localeCompare(String(b['Freight Type'])) ||
+      String(a['Facility Name']).localeCompare(String(b['Facility Name']))
+    );
+
+    return res.json({ weekStart: ws, weekEnd: we, rows: out });
+  } catch (e) {
+    console.error('GET /summary/shipment_summary failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/summary/shipment_detail', (req, res) => {
+  try {
+    const ws = String(req.query.weekStart || '').slice(0, 10);
+    if (!ws) return res.status(400).json({ error: 'weekStart is required (YYYY-MM-DD)' });
+    const we = _weekEndISO(ws);
+
+    const plan = _getPlanRowsForWeek(ws);
+    const metaByPO = new Map();
+    for (const p of plan) {
+      const po = String(p?.po_number || '').trim();
+      if (!po || metaByPO.has(po)) continue;
+      metaByPO.set(po, {
+        supplier: _normStr(p?.supplier_name),
+        zendesk: _normStr(p?.zendesk_ticket ?? p?.zendesk_ticket_number ?? p?.zendesk),
+        freight: _normStr(p?.freight_type),
+        facility: _normStr(p?.facility_name),
+      });
+    }
+
+    const poUnits = db.prepare(`
+      SELECT po_number AS po, COUNT(*) AS units
+      FROM records
+      WHERE status='complete'
+        AND date_local >= ? AND date_local <= ?
+        AND TRIM(COALESCE(po_number,'')) <> ''
+      GROUP BY po_number
+    `).all(ws, we);
+
+    const poBins = db.prepare(`
+      SELECT po_number AS po, TRIM(mobile_bin) AS mobile_bin
+      FROM records
+      WHERE status='complete'
+        AND date_local >= ? AND date_local <= ?
+        AND TRIM(COALESCE(po_number,'')) <> ''
+        AND TRIM(COALESCE(mobile_bin,'')) <> ''
+      GROUP BY po_number, TRIM(mobile_bin)
+    `).all(ws, we);
+
+    const bins = _getBinsForWeek(ws);
+    const binWeight = new Map();
+    for (const b of bins) {
+      const mb = String(b?.mobile_bin ?? '').trim();
+      if (!mb) continue;
+      binWeight.set(mb, Number(b?.weight_kg || 0) || 0);
+    }
+
+    const binsByPO = new Map();
+    for (const r of poBins) {
+      const po = String(r.po || '').trim();
+      const mb = String(r.mobile_bin || '').trim();
+      if (!po || !mb) continue;
+      if (!binsByPO.has(po)) binsByPO.set(po, new Set());
+      binsByPO.get(po).add(mb);
+    }
+
+    const groups = new Map();
+    const binAssigned = new Map();
+
+    for (const r of poUnits) {
+      const po = String(r.po || '').trim();
+      if (!po) continue;
+      const m = metaByPO.get(po) || { supplier: '(Unspecified)', zendesk: '(Unspecified)', freight: '(Unspecified)', facility: '(Unspecified)' };
+      const gkey = `${m.supplier}|||${m.zendesk}|||${m.freight}|||${m.facility}|||${po}`;
+
+      if (!groups.has(gkey)) {
+        groups.set(gkey, {
+          'Supplier Name': m.supplier,
+          'Zendesk Ticket #': m.zendesk,
+          'Freight Type': m.freight,
+          'Facility Name': m.facility,
+          'PO': po,
+          _binSet: new Set(),
+          'Total Units Applied': 0,
+          'Total Mobile Bins': 0,
+          'Gross Weight': 0,
+          'CBM': 0,
+        });
+      }
+
+      const g = groups.get(gkey);
+      g['Total Units Applied'] += Number(r.units || 0) || 0;
+
+      const poBinSet = binsByPO.get(po) || new Set();
+      for (const mb of poBinSet) {
+        g._binSet.add(mb);
+        if (!binAssigned.has(mb)) {
+          binAssigned.set(mb, gkey);
+          g['Gross Weight'] += binWeight.get(mb) || 0;
+        }
+      }
+    }
+
+    const out = [];
+    for (const g of groups.values()) {
+      const binCount = g._binSet.size;
+      out.push({
+        'Supplier Name': g['Supplier Name'],
+        'Zendesk Ticket #': g['Zendesk Ticket #'],
+        'Freight Type': g['Freight Type'],
+        'Facility Name': g['Facility Name'],
+        'PO': g['PO'],
+        'Total Units Applied': Number(g['Total Units Applied'] || 0),
+        'Total Mobile Bins': binCount,
+        'Gross Weight': Math.round((Number(g['Gross Weight'] || 0) + Number.EPSILON) * 100) / 100,
+        'CBM': Math.round((binCount * 0.046 + Number.EPSILON) * 1000) / 1000,
+      });
+    }
+
+    out.sort((a, b) =>
+      String(a['Supplier Name']).localeCompare(String(b['Supplier Name'])) ||
+      String(a['Zendesk Ticket #']).localeCompare(String(b['Zendesk Ticket #'])) ||
+      String(a['Freight Type']).localeCompare(String(b['Freight Type'])) ||
+      String(a['Facility Name']).localeCompare(String(b['Facility Name'])) ||
+      String(a['PO']).localeCompare(String(b['PO']))
+    );
+
+    return res.json({ weekStart: ws, weekEnd: we, rows: out });
+  } catch (e) {
+    console.error('GET /summary/shipment_detail failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Export: applied UIDs (CSV stream) ---
+// For large weeks, do NOT materialize the full dataset in the browser.
+app.get('/export/applied', (req, res) => {
+  try {
+    const fromRaw = req.query.from ? String(req.query.from) : '';
+    const toRaw   = req.query.to   ? String(req.query.to)   : '';
+    const from = fromRaw && fromRaw.includes('T') ? fromRaw.slice(0, 10) : fromRaw;
+    const to   = toRaw   && toRaw.includes('T')   ? toRaw.slice(0, 10)   : toRaw;
+    if (!from || !to) return res.status(400).send('from and to are required (YYYY-MM-DD)');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="Applied_UIDs_${from}_to_${to}.csv"`);
+
+    // UTF-8 BOM for Excel compatibility
+    res.write('\ufeff');
+    res.write('Date Applied,Mobile Bin,SSCC Label,PO Number,SKU Code,UID\r\n');
+
+    const stmt = db.prepare(`
+      SELECT date_local, mobile_bin, sscc_label, po_number, sku_code, uid
+      FROM records
+      WHERE status='complete'
+        AND date_local >= ? AND date_local <= ?
+      ORDER BY date_local, po_number, sku_code
+    `);
+
+    const esc = (v) => {
+      const s = String(v ?? '');
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+    };
+
+    for (const r of stmt.iterate(from, to)) {
+      res.write([
+        esc(r.date_local),
+        esc(r.mobile_bin),
+        esc(r.sscc_label),
+        esc(r.po_number),
+        esc(r.sku_code),
+        esc(r.uid)
+      ].join(',') + '\r\n');
+    }
+    return res.end();
+  } catch (e) {
+    console.error('GET /export/applied failed:', e);
+    return res.status(500).send(String(e?.message || e));
+  }
+});
 // --- Export XLSX ---
 app.get('/export/xlsx', async (req, res) => {
   const date = String(req.query.date || todayChicagoISO());
@@ -1193,6 +1518,10 @@ app.get('/bins', (req, res) => {
   }
 });
 /* ===== END: /bins alias ===== */
+
+
+
+
 
 // ---- Start ----
 app.listen(PORT, () => {
