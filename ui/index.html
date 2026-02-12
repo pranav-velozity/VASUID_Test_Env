@@ -7,7 +7,6 @@
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
-
 <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
@@ -351,6 +350,30 @@
 </div>
 <!-- Right: constant weekly tile + PO progress -->
 <div class="h-[calc(100vh-140px)] min-w-0 flex sticky flex-col overflow-hidden top-24 lg:col-span-1">
+<!-- Ops insights (switchable views) -->
+<div class="ring-gray-100 min-h-0 border bg-white flex-1 shadow rounded-2xl p-5 ring-1 mb-3">
+<div class="flex items-start justify-between gap-3">
+<div class="flex-1 min-w-0 min-h-0 h-full">
+<div class="text-base font-semibold">Insights</div>
+<div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
+<div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
+<div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
+</div>
+</div>
+<!-- vertical buttons -->
+<div class="flex flex-col gap-2 shrink-0">
+<button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier">Supplier</button>
+<button class="ops-pill" data-opsview="facility" title="Facility">Facility</button>
+<button class="ops-pill" data-opsview="zendesk" title="Zendesk">Zendesk</button>
+<button class="ops-pill" data-opsview="freight" title="Freight type">Freight</button>
+<button class="ops-pill" data-opsview="carton" title="Cartons">Carton</button>
+<button class="ops-pill" data-opsview="placeholder" title="Placeholder">Placeholder</button>
+</div>
+</div>
+</div>
+<!-- PO progress (planned / received / applied) placeholder removed from right panel -->
+<!-- (hidden legacy progress tiles kept for stability) -->
+<div class="hidden" id="ops-progress-tiles"></div>
 <!-- Ops right panel: Week totals (Flow-style) -->
 <div class="bg-white rounded-2xl border shadow p-4 mb-3">
 <div class="text-base font-semibold">Week totals</div>
@@ -403,6 +426,7 @@
 <div class="text-xs text-gray-500">Updated on refresh</div>
 </div>
 </div>
+
 <!-- Reports & downloads (3x2) -->
 <div class="bg-white rounded-2xl border shadow p-4 mb-3">
 <div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
@@ -415,30 +439,7 @@
 <button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
 </div>
 </div>
-<!-- Ops insights (switchable views) -->
-<div class="ring-gray-100 min-h-0 border bg-white flex-1 shadow rounded-2xl p-5 ring-1">
-<div class="flex items-start justify-between gap-3">
-<div class="flex-1 min-w-0 min-h-0 h-full">
-<div class="text-base font-semibold">Insights</div>
-<div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
-<div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
-<div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
-</div>
-</div>
-<!-- vertical buttons -->
-<div class="flex flex-col gap-2 shrink-0">
-<button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier">Supplier</button>
-<button class="ops-pill" data-opsview="facility" title="Facility">Facility</button>
-<button class="ops-pill" data-opsview="zendesk" title="Zendesk">Zendesk</button>
-<button class="ops-pill" data-opsview="freight" title="Freight type">Freight</button>
-<button class="ops-pill" data-opsview="carton" title="Cartons">Carton</button>
-<button class="ops-pill" data-opsview="placeholder" title="Placeholder">Placeholder</button>
-</div>
-</div>
-</div>
-<!-- PO progress (planned / received / applied) placeholder removed from right panel -->
-<!-- (hidden legacy progress tiles kept for stability) -->
-<div class="hidden" id="ops-progress-tiles"></div>
+
 </div>
 <!-- Full-width PO progress (bottom half) -->
 <div class="lg:col-span-3 min-w-0">
@@ -3550,6 +3551,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
+
 
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
