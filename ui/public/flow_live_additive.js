@@ -106,6 +106,13 @@
 
   function pad2(n) { return String(n).padStart(2, '0'); }
 
+
+  // Integer formatting helper (kept local to avoid dependency on other modules)
+  function fmtInt(n) {
+    const x = Number(n);
+    if (!isFinite(x)) return '0';
+    return Math.trunc(x).toLocaleString('en-US');
+  }
   function isoDate(d) {
     const y = d.getFullYear();
     const m = pad2(d.getMonth() + 1);
