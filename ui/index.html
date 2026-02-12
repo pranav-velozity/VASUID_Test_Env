@@ -7,7 +7,8 @@
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
-<!-- Tailwind -->
+
+  <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -205,9 +206,9 @@
   </button>
 </div>
 </div>
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+<div class="flex flex-col lg:flex-row gap-3">
 <!-- Left: reserved (blank for now) -->
-<div class="lg:col-span-2 min-w-0">
+<div class="flex-1 min-w-0">
 <div class="min-h-[480px]"></div>
 <div class="hidden" id="ops-left-hidden">
 <!-- KPI tiles -->
@@ -349,7 +350,7 @@
 </div>
 </div>
 <!-- Right: constant weekly tile + PO progress -->
-<div class="h-[calc(100vh-140px)] min-w-0 flex sticky flex-col overflow-hidden top-24 lg:col-span-1">
+<div class="h-[calc(100vh-140px)] min-w-0 flex sticky flex-col overflow-hidden top-24  lg:w-[560px] shrink-0 ml-auto">
 <!-- Ops insights (switchable views) -->
 <div class="ring-gray-100 min-h-0 border bg-white flex-1 shadow rounded-2xl p-5 ring-1 mb-3">
 <div class="flex items-start justify-between gap-3">
@@ -3551,8 +3552,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
-
+  
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
