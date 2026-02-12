@@ -6,9 +6,9 @@
   <!-- ⬇️ Set to your Render API base (no trailing slash) -->
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
-  <title>VelOzity Pinpoint</title>
+  <title>VelOzity Pinpoint Test Env</title>
 
-    <!-- Tailwind -->
+ <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -1122,9 +1122,16 @@ async function downloadAppliedWeek() {
   weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
+  if (!apiBase) {
+    alert('API not configured');
+    return;
+  }
+
   // At scale, never build this CSV in the browser.
   // Stream it from the server (fast + safe for 2M+ rows).
-  const url = `${API}/export/applied?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}`;
+  const url = `${apiBase}/export/applied?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete`;
+
+  // Use a temporary <a> so the browser downloads the file without navigating away.
   const a = document.createElement('a');
   a.href = url;
   a.download = `Applied_UIDs_${ws}_to_${we}.csv`;
@@ -1132,6 +1139,7 @@ async function downloadAppliedWeek() {
   a.click();
   a.remove();
 }
+
 
   function buildExecHTML({
   ws, we,
@@ -2943,7 +2951,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }
 })();
 </script>
-
+  
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
   <script src="/flow_live_additive.js?v=61" defer></script>
