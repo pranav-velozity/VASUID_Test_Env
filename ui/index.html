@@ -1874,13 +1874,16 @@ state.binQA = computeBinQA(ws, [], state.bins);
     const plannedTotal = state.plan.reduce((s,p)=> s + toNum(p.target_qty), 0);
     const appliedTotal = Array.from(agg.byPO.values()).reduce((s,v)=> s+v, 0);
     const pct = plannedTotal>0? Math.round(appliedTotal*100/plannedTotal) : (state.plan.length?0:100);
-    $('#planned-range').textContent = `${ws} – ${we}`;
-    $('#applied-range').textContent = `${ws} – ${we}`;
-    $('#planned-total').textContent = fmtInt(plannedTotal);
-    $('#applied-total').textContent = fmtInt(appliedTotal);
-    $('#pct-week').textContent = `${pct}%`;
-    $('#avg-week').textContent = fmtInt(appliedTotal);
-    $('#avg-day').textContent = fmtInt(Math.round((appliedTotal||0)/7));
+    const _setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+
+    const setTxt = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+    setTxt('#planned-range', `${ws} – ${we}`);
+    setTxt('#applied-range', `${ws} – ${we}`);
+    setTxt('#planned-total', fmtInt(plannedTotal));
+    setTxt('#applied-total', fmtInt(appliedTotal));
+    setTxt('#pct-week', `${pct}%`);
+    setTxt('#avg-week', fmtInt(appliedTotal));
+    setTxt('#avg-day', fmtInt(Math.round((appliedTotal||0)/7)));
     // Build capsule totals for the visible week pills [-1, 0, +1, +2, +3] relative to ws
 const capsuleIds = [-7, 0, 7, 14, 21].map(n => addDaysISO(ws, n));
 
@@ -3404,8 +3407,10 @@ window.addEventListener('hashchange', () => show(location.hash || '#dashboard'))
 document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
 
   // pulse hearts + metrics
-  $('#ops-heart').appendChild(createHeart(24, BRAND, 40));
-  $('#ops-heart-small').appendChild(createHeart(18, BRAND, 40));
+  const _oh = $('#ops-heart');
+  if (_oh) _oh.appendChild(createHeart(24, BRAND, 40));
+  const _ohs = $('#ops-heart-small');
+  if (_ohs) _ohs.appendChild(createHeart(18, BRAND, 40));
   loadOpsMetrics();
   startSSE();
 })();
@@ -3533,7 +3538,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-  
+
+
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
