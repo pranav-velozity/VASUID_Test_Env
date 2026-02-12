@@ -347,12 +347,15 @@ function iconContainer() {
 function getFacility() {
   try {
     const f = (window.state && window.state.facility) ? String(window.state.facility).trim() : '';
-    return f || 'LKWF';
-  } catch { return 'LKWF'; }
+    return f; // <-- no hardcoded default
+  } catch {
+    return '';
+  }
 }
 
 async function fetchFlowWeek(ws, facility) {
-  const f = String(facility || getFacility() || 'LKWF').trim() || 'LKWF';
+  const f = String(facility || getFacility() || '').trim();
+  if (!ws || !f) return null; // <-- don't call backend without a real facility
   try {
     return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(f)}`);
   } catch (e) {
@@ -361,8 +364,8 @@ async function fetchFlowWeek(ws, facility) {
 }
 
 async function patchFlowWeek(ws, patch, facility) {
-  const f = String(facility || getFacility() || 'LKWF').trim() || 'LKWF';
-  if (!ws || !patch || typeof patch !== 'object') return null;
+  const f = String(facility || getFacility() || '').trim();
+  if (!ws || !f || !patch || typeof patch !== 'object') return null; // <-- require facility
   if (window.__FLOW_SUPPRESS_BACKEND_WRITE__) return null;
   try {
     return await api(`/flow/week/${encodeURIComponent(ws)}?facility=${encodeURIComponent(f)}`, {
@@ -375,7 +378,6 @@ async function patchFlowWeek(ws, patch, facility) {
     return null;
   }
 }
-
 // Prime local week-scoped stores from backend once per (ws, facility).
 async function primeFlowWeekFromBackend(ws) {
   const f = getFacility();
@@ -507,10 +509,18 @@ async function primeFlowWeekFromBackend(ws) {
     const from = `${ws}T00:00:00.000Z`;
     const to = `${isoDate(weD)}T23:59:59.999Z`;
 
-    // Use the endpoint that Receiving stabilized for carton out, but we need all statuses for progress.
-    // Prefer complete for performance, but fall back to all if API supports.
-    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&status=complete&limit=150000`); const a = asArray(r); if (a && a.length) return a; } catch {}
-    try { const r = await api(`/records?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=150000`); return asArray(r); } catch {}
+    // Summary-first: get applied units by PO (and cartons_out) without pulling raw records.
+    // We map summary rows to "record-like" objects so existing computations work.
+    try {
+      const s = await api(`/records/summary?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(isoDate(weD))}&status=complete`);
+      const rows = Array.isArray(s?.by_po) ? s.by_po : [];
+      return rows.map(x => ({
+        status: 'complete',
+        po_number: x.po,
+        units: Number(x.units || 0) || 0,
+        cartons_out: Number(x.cartons_out || 0) || 0
+      }));
+    } catch {}
     return [];
   }
 
@@ -582,8 +592,26 @@ function computeCartonStatsFromRecords(records) {
   // - Records are usually already status=complete from the query, but be safe if status exists.
   // - PO: r.po_number || r.po || r.PO
   // - Mobile bin: r.mobile_bin || r.bin || r.mobileBin
-  const sets = new Map(); // po -> Set(mobile_bin)
+  // Summary mode: rows may already include cartons_out.
   const arr = asArray(records);
+  const cartonsOutByPO = new Map();
+  let cartonsOutTotal = 0;
+
+  const hasDirect = arr.some(r => r && (r.cartons_out != null || r.cartonsOut != null));
+  if (hasDirect) {
+    for (const r of arr) {
+      if (!r) continue;
+      const po = normalizePO(r.po_number || r.po || r.PO || '');
+      if (!po) continue;
+      const c = num(r.cartons_out ?? r.cartonsOut ?? 0);
+      cartonsOutByPO.set(po, c);
+      cartonsOutTotal += c;
+    }
+    return { cartonsOutByPO, cartonsOutTotal };
+  }
+
+  // Raw mode: compute distinct mobile_bin per PO.
+  const sets = new Map(); // po -> Set(mobile_bin)
   for (const r of arr) {
     if (!r) continue;
     if (r.status && String(r.status).toLowerCase() !== 'complete') continue;
@@ -594,8 +622,6 @@ function computeCartonStatsFromRecords(records) {
     if (!sets.has(po)) sets.set(po, new Set());
     sets.get(po).add(mb);
   }
-  const cartonsOutByPO = new Map();
-  let cartonsOutTotal = 0;
   for (const [po, set] of sets.entries()) {
     cartonsOutByPO.set(po, set.size);
     cartonsOutTotal += set.size;
