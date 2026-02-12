@@ -104,18 +104,22 @@
   
 /* Ops insights pills */
 .ops-pill{
-  display:inline-flex; align-items:center; justify-content:center;
-  width:88px; height:36px;
-  border:1px solid rgba(0,0,0,.08);
+  display:inline-flex; align-items:center; justify-content:flex-start; gap:8px;
+  padding:0 12px;
+  min-width:120px; height:34px;
+  border:1px solid rgba(17,24,39,.12);
   border-radius:9999px;
-  background:#fff;
+  background:transparent;
   font-size:12px;
   font-weight:600;
   color:#374151;
+  transition: all .12s ease;
 }
-.ops-pill:hover{ background:#f9fafb; }
+.ops-pill svg{ width:14px; height:14px; }
+.ops-pill:hover{ background:#f9fafb; border-color: rgba(17,24,39,.18); }
 .ops-pill--active{
-  border-color: rgba(153,0,51,.35);
+  background:#fff;
+  border-color: rgba(153,0,51,.45);
   box-shadow: 0 0 0 3px rgba(153,0,51,.08);
   color:#111827;
 }
@@ -157,7 +161,7 @@
 <label class="text-sm text-gray-600">Week start</label>
 <input class="px-2 py-1 border rounded-md text-sm" id="week-start" type="date"/>
 <input accept=".xlsx,.csv" class="hidden" id="file-plan" type="file"/>
-<div aria-label="Operations actions" class="cmdbar hidden" role="group">
+<div aria-label="Operations actions" class="cmdbar" role="group">
 <button aria-label="Upload Plan" class="cmd cmd--primary" id="btn-upload-plan" title="Upload planned PO×SKU for the selected week">
 <svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
 <path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
@@ -172,7 +176,7 @@
 <!-- Capsules + Actions -->
 <div class="mb-3 flex flex-wrap items-start gap-3 basis-full w-full">
 <div class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]" id="capsules"></div>
-<div aria-label="Reports and downloads" class="cmdbar shrink-0" role="group">
+<div aria-label="Reports and downloads" class="cmdbar shrink-0 hidden" role="group">
 <button aria-label="PO × SKU Discrepancy" class="cmd cmd--ghost" id="btn-dl-posku" title="Compare planned vs applied at PO×SKU level">
 <svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
 <path d="M3 5h18M3 12h18M3 19h18" stroke-linecap="round" stroke-width="1.5"></path>
@@ -220,12 +224,18 @@
 </div>
 <!-- vertical buttons -->
 <div class="flex flex-col gap-2 shrink-0">
-<button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier">Supplier</button>
-<button class="ops-pill" data-opsview="facility" title="Facility">Facility</button>
-<button class="ops-pill" data-opsview="zendesk" title="Zendesk">Zendesk</button>
-<button class="ops-pill" data-opsview="freight" title="Freight type">Freight</button>
-<button class="ops-pill" data-opsview="carton" title="Cartons">Carton</button>
-<button class="ops-pill" data-opsview="placeholder" title="Placeholder">Placeholder</button>
+<button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
+</svg><span>Supplier</span></button>
+<button class="ops-pill" data-opsview="facility" title="Facility"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V6a2 2 0 0 1 2-2h6v16"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 20V10a2 2 0 0 1 2-2h4v12"/><path stroke-width="1.6" stroke-linecap="round" d="M7 8h2"/><path stroke-width="1.6" stroke-linecap="round" d="M7 11h2"/><path stroke-width="1.6" stroke-linecap="round" d="M7 14h2"/></svg><span>Facility</span></button>
+<button class="ops-pill" data-opsview="zendesk" title="Zendesk"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" d="M7 9h10"/><path stroke-width="1.6" stroke-linecap="round" d="M7 13h6"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H10l-4 3v-3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/></svg><span>Zendesk</span></button>
+<button class="ops-pill" data-opsview="freight" title="Freight type"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 7h11v10H3z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 10h4l3 3v4h-7z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.5 19a1.5 1.5 0 1 0 0-.01"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a1.5 1.5 0 1 0 0-.01"/></svg><span>Freight</span></button>
+<button class="ops-pill" data-opsview="carton" title="Cartons"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 8.5 12 3 3 8.5l9 5.5 9-5.5Z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 8.5v7L12 21l-9-5.5v-7"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 14v7"/></svg><span>Carton</span></button>
+<button class="ops-pill" data-opsview="placeholder" title="Placeholder"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 2l1.2 3.6L17 7l-3.8 1.4L12 12l-1.2-3.6L7 7l3.8-1.4L12 2Z"/>
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 13l.8 2.4L8 16l-2.2.6L5 19l-.8-2.4L2 16l2.2-.6L5 13Z"/>
+</svg><span>Placeholder</span></button>
 </div>
 </div>
 </div>
@@ -3410,7 +3420,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
+ 
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
