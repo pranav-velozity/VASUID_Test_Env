@@ -8,12 +8,11 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-    <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS -->
-  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-
- <style>
+  <!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- SheetJS -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<style>
     body{background:#f8fafc;color:#111827}
     .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
     .vo-wrap{
@@ -123,583 +122,511 @@
 </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-  <!-- Top Nav -->
-  <header class="vo-nav">
-    <div class="vo-wrap py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="text-xl font-semibold">VelOzity Pinpoint</div>
-        <div id="vo-today" class="text-gray-500 text-sm"></div>
-      </div>
-      <nav id="nav-toggle" class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300">
-
-<a href="#exec" id="nav-exec"
-   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<!-- Top Nav -->
+<header class="vo-nav">
+<div class="vo-wrap py-3 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="text-xl font-semibold">VelOzity Pinpoint</div>
+<div class="text-gray-500 text-sm" id="vo-today"></div>
+</div>
+<nav class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300" id="nav-toggle">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#exec" id="nav-exec">
   Executive
 </a>
-
-  <a href="#dashboard" id="nav-dash"
-     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#dashboard" id="nav-dash">
     Operations
   </a>
-
-<a href="#receiving" id="nav-receiving"
-   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#receiving" id="nav-receiving">
   Receiving
 </a>
-        
-  <a href="#intake" id="nav-intake"
-     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#intake" id="nav-intake">
     Intake
   </a>
-
-  <a href="#flow" id="nav-flow"
-     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#flow" id="nav-flow">
     Flow
   </a>
 </nav>
-    </div>
-  </header>
-
-  <main class="vo-wrap py-4">
-    <!-- ================= Operations ================= -->
-    <section id="page-dashboard" class="hidden">
-      <div class="flex items-center justify-between mb-2 basis-full w-full">
-        <div class="text-2xl font-semibold">Operations</div>
-        <div class="flex items-center gap-2">
-          <label class="text-sm text-gray-600">Week start</label>
-<input id="week-start" type="date" class="px-2 py-1 border rounded-md text-sm"/>
-
-<input id="file-plan" type="file" accept=".xlsx,.csv" class="hidden"/>
-
-<div class="cmdbar hidden" role="group" aria-label="Operations actions">
-  <button id="btn-upload-plan" class="cmd cmd--primary" aria-label="Upload Plan" title="Upload planned PO×SKU for the selected week">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"> 
-<path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</div>
+</header>
+<main class="vo-wrap py-4">
+<!-- ================= Operations ================= -->
+<section class="hidden" id="page-dashboard">
+<div class="flex items-center justify-between mb-2 basis-full w-full">
+<div class="text-2xl font-semibold">Operations</div>
+<div class="flex items-center gap-2">
+<label class="text-sm text-gray-600">Week start</label>
+<input class="px-2 py-1 border rounded-md text-sm" id="week-start" type="date"/>
+<input accept=".xlsx,.csv" class="hidden" id="file-plan" type="file"/>
+<div aria-label="Operations actions" class="cmdbar hidden" role="group">
+<button aria-label="Upload Plan" class="cmd cmd--primary" id="btn-upload-plan" title="Upload planned PO×SKU for the selected week">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
     Upload Plan
   </button>
-  <button id="btn-zero-plan" class="cmd cmd--danger" aria-label="Zero Plan" title="Clear the plan for this week">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"><path d="M6 18L18 6M6 6l12 12" stroke-width="1.5" stroke-linecap="round"/></svg>
+<button aria-label="Zero Plan" class="cmd cmd--danger" id="btn-zero-plan" title="Clear the plan for this week">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-width="1.5"></path></svg>
     Zero Plan
   </button>
-        </div>
-      </div>
-
-      <!-- Capsules + Actions -->
-      <div class="mb-3 flex flex-wrap items-start gap-3 basis-full w-full">
-  <div id="capsules" class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]"></div>
-  <div class="cmdbar shrink-0" role="group" aria-label="Reports and downloads">
-  <button id="btn-dl-posku" class="cmd cmd--ghost" aria-label="PO × SKU Discrepancy" title="Compare planned vs applied at PO×SKU level">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-      <path d="M3 5h18M3 12h18M3 19h18" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
+</div>
+</div>
+<!-- Capsules + Actions -->
+<div class="mb-3 flex flex-wrap items-start gap-3 basis-full w-full">
+<div class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]" id="capsules"></div>
+<div aria-label="Reports and downloads" class="cmdbar shrink-0" role="group">
+<button aria-label="PO × SKU Discrepancy" class="cmd cmd--ghost" id="btn-dl-posku" title="Compare planned vs applied at PO×SKU level">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 5h18M3 12h18M3 19h18" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
     PO × SKU Discrepancy
   </button>
-
-  <button id="btn-dl-po" class="cmd cmd--ghost" aria-label="PO Discrepancy" title="Compare planned vs applied at PO level">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-      <path d="M4 6h16M4 12h10M4 18h7" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
+<button aria-label="PO Discrepancy" class="cmd cmd--ghost" id="btn-dl-po" title="Compare planned vs applied at PO level">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 6h16M4 12h10M4 18h7" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
     PO Discrepancy
   </button>
-
-<button id="btn-ship-summary" class="cmd cmd--ghost"
-  aria-label="Shipment Summary"
-  title="Shipment summary grouped by Supplier, Zendesk, Freight, Facility">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-    <path d="M3 7h13l5 5v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"
-          stroke-width="1.5" stroke-linejoin="round"/>
-    <path d="M16 7v5h5" stroke-width="1.5" stroke-linecap="round"/>
-  </svg>
+<button aria-label="Shipment Summary" class="cmd cmd--ghost" id="btn-ship-summary" title="Shipment summary grouped by Supplier, Zendesk, Freight, Facility">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 7h13l5 5v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linejoin="round" stroke-width="1.5"></path>
+<path d="M16 7v5h5" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
   Shipment Summary
 </button>
-
-<button id="btn-ship-detail" class="cmd cmd--ghost"
-  aria-label="Shipment Details"
-  title="Shipment detail by Supplier, Zendesk, Freight, Facility, and PO">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-    <path d="M4 6h16M4 12h12M4 18h8"
-          stroke-width="1.5" stroke-linecap="round"/>
-  </svg>
+<button aria-label="Shipment Details" class="cmd cmd--ghost" id="btn-ship-detail" title="Shipment detail by Supplier, Zendesk, Freight, Facility, and PO">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 6h16M4 12h12M4 18h8" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
   Shipment Details
 </button>
-
-
-  <button id="btn-dl-week-applied" class="cmd cmd--ghost" aria-label="Download Applied" title="Export applied UIDs for this week">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-      <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
+<button aria-label="Download Applied" class="cmd cmd--ghost" id="btn-dl-week-applied" title="Export applied UIDs for this week">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</svg>
     Download Applied
   </button>
-        </div>
-      </div>
-
-      
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <!-- Left: reserved (blank for now) -->
-        <div class="lg:col-span-2 min-w-0">
-          <div class="min-h-[480px]"></div>
-          <div class="hidden" id="ops-left-hidden">
-
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
+<!-- Left: reserved (blank for now) -->
+<div class="lg:col-span-2 min-w-0">
+<div class="min-h-[480px]"></div>
+<div class="hidden" id="ops-left-hidden">
 <!-- KPI tiles -->
-      <div class="w-full basis-full grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
-        <div class="bg-white rounded-2xl border shadow p-4">
-          <div class="text-base font-semibold text-gray-600">Planned</div>
-          
+<div class="w-full basis-full grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
+<div class="bg-white rounded-2xl border shadow p-4">
+<div class="text-base font-semibold text-gray-600">Planned</div>
 <!-- Search -->
-      <div class="w-full basis-full bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="text-base font-semibold mb-2">Search by PO or SKU</div>
-        
-
-      <!-- Ops left panel: PO details -->
-      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="flex items-center justify-between gap-2">
-          <div>
-            <div class="text-base font-semibold">PO details</div>
-            <div class="text-xs text-gray-500">Populates when you search a PO #</div>
-          </div>
-          <div class="text-xs text-gray-400" id="ops-po-detail-title">—</div>
-        </div>
-
-        <div class="mt-3 overflow-auto">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="text-gray-500">
-                <th class="text-left py-1 pr-2">Field</th>
-                <th class="text-left py-1">Value</th>
-              </tr>
-            </thead>
-            <tbody id="ops-po-detail-body">
-              <tr><td colspan="2" class="text-center text-xs text-gray-400 py-3">Search a PO to load details.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-<select id="supplier-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Supplier">
-        <option value="">Loading…</option>
-      </select>
-    </div>
-    <div id="supplier-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
-      Graph placeholder
-    </div>
-    <div class="mt-2 flex items-end justify-between">
-      <div class="text-xs text-gray-500">Applied / Planned</div>
-      <div class="text-sm font-semibold tabular-nums" id="supplier-metric">0 / 0</div>
-    </div>
-    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="supplier-pct">0%</span></div>
-  </div>
-
-  <!-- Facility -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
-style="border-color:#990033;">
-    <div class="flex items-center justify-between gap-2 mb-2">
-      <div class="text-base font-semibold">Facility</div>
-      <select id="facility-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Facility">
-        <option value="">Loading…</option>
-      </select>
-    </div>
-    <div id="facility-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
-      Graph placeholder
-    </div>
-    <div class="mt-2 flex items-end justify-between">
-      <div class="text-xs text-gray-500">Applied / Planned</div>
-      <div class="text-sm font-semibold tabular-nums" id="facility-metric">0 / 0</div>
-    </div>
-    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="facility-pct">0%</span></div>
-  </div>
-
-  <!-- Freight Type -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
-style="border-color:#990033;">
-    <div class="flex items-center justify-between gap-2 mb-2">
-      <div class="text-base font-semibold">Freight Type</div>
-      <select id="freight-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Freight Type">
-        <option value="">Loading…</option>
-      </select>
-    </div>
-    <div id="freight-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
-      Graph placeholder
-    </div>
-    <div class="mt-2 flex items-end justify-between">
-      <div class="text-xs text-gray-500">Applied / Planned</div>
-      <div class="text-sm font-semibold tabular-nums" id="freight-metric">0 / 0</div>
-    </div>
-    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="freight-pct">0%</span></div>
-  </div>
-
-  <!-- Zendesk Ticket -->
-  <div class="bg-white rounded-2xl border shadow p-4 min-w-0"
-style="border-color:#990033;">
-    <div class="flex items-center justify-between gap-2 mb-2">
-      <div class="text-base font-semibold">Zendesk Ticket</div>
-      <select id="zendesk-filter" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" aria-label="Filter Zendesk Ticket">
-        <option value="">Loading…</option>
-      </select>
-    </div>
-    <div id="zendesk-viz" class="h-[86px] flex items-center justify-center text-xs text-gray-400">
-      Graph placeholder
-    </div>
-    <div class="mt-2 flex items-end justify-between">
-      <div class="text-xs text-gray-500">Applied / Planned</div>
-      <div class="text-sm font-semibold tabular-nums" id="zendesk-metric">0 / 0</div>
-    </div>
-    <div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="zendesk-pct">0%</span></div>
-  </div>
+<div class="w-full basis-full bg-white rounded-2xl border shadow p-4 mb-3">
+<div class="text-base font-semibold mb-2">Search by PO or SKU</div>
+<!-- Ops left panel: PO details -->
+<div class="bg-white rounded-2xl border shadow p-4 mb-3">
+<div class="flex items-center justify-between gap-2">
+<div>
+<div class="text-base font-semibold">PO details</div>
+<div class="text-xs text-gray-500">Populates when you search a PO #</div>
 </div>
-
-      <!-- Risks -->
+<div class="text-xs text-gray-400" id="ops-po-detail-title">—</div>
+</div>
+<div class="mt-3 overflow-auto">
+<table class="w-full text-sm">
+<thead>
+<tr class="text-gray-500">
+<th class="text-left py-1 pr-2">Field</th>
+<th class="text-left py-1">Value</th>
+</tr>
+</thead>
+<tbody id="ops-po-detail-body">
+<tr><td class="text-center text-xs text-gray-400 py-3" colspan="2">Search a PO to load details.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+<select aria-label="Filter Supplier" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="supplier-filter">
+<option value="">Loading…</option>
+</select>
+</div>
+<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="supplier-viz">
+      Graph placeholder
+    </div>
+<div class="mt-2 flex items-end justify-between">
+<div class="text-xs text-gray-500">Applied / Planned</div>
+<div class="text-sm font-semibold tabular-nums" id="supplier-metric">0 / 0</div>
+</div>
+<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="supplier-pct">0%</span></div>
+</div>
+<!-- Facility -->
+<div class="bg-white rounded-2xl border shadow p-4 min-w-0" style="border-color:#990033;">
+<div class="flex items-center justify-between gap-2 mb-2">
+<div class="text-base font-semibold">Facility</div>
+<select aria-label="Filter Facility" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="facility-filter">
+<option value="">Loading…</option>
+</select>
+</div>
+<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="facility-viz">
+      Graph placeholder
+    </div>
+<div class="mt-2 flex items-end justify-between">
+<div class="text-xs text-gray-500">Applied / Planned</div>
+<div class="text-sm font-semibold tabular-nums" id="facility-metric">0 / 0</div>
+</div>
+<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="facility-pct">0%</span></div>
+</div>
+<!-- Freight Type -->
+<div class="bg-white rounded-2xl border shadow p-4 min-w-0" style="border-color:#990033;">
+<div class="flex items-center justify-between gap-2 mb-2">
+<div class="text-base font-semibold">Freight Type</div>
+<select aria-label="Filter Freight Type" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="freight-filter">
+<option value="">Loading…</option>
+</select>
+</div>
+<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="freight-viz">
+      Graph placeholder
+    </div>
+<div class="mt-2 flex items-end justify-between">
+<div class="text-xs text-gray-500">Applied / Planned</div>
+<div class="text-sm font-semibold tabular-nums" id="freight-metric">0 / 0</div>
+</div>
+<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="freight-pct">0%</span></div>
+</div>
+<!-- Zendesk Ticket -->
+<div class="bg-white rounded-2xl border shadow p-4 min-w-0" style="border-color:#990033;">
+<div class="flex items-center justify-between gap-2 mb-2">
+<div class="text-base font-semibold">Zendesk Ticket</div>
+<select aria-label="Filter Zendesk Ticket" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="zendesk-filter">
+<option value="">Loading…</option>
+</select>
+</div>
+<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="zendesk-viz">
+      Graph placeholder
+    </div>
+<div class="mt-2 flex items-end justify-between">
+<div class="text-xs text-gray-500">Applied / Planned</div>
+<div class="text-sm font-semibold tabular-nums" id="zendesk-metric">0 / 0</div>
+</div>
+<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="zendesk-pct">0%</span></div>
+</div>
+</div>
+<!-- Risks -->
 <div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-  <!-- Top PO's at Risk -->
-  <div class="bg-white rounded-2xl border shadow p-4">
-    <div class="text-base font-semibold mb-2">Top PO's at Risk</div>
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-gray-500">
-          <th class="text-left py-1 pr-2">PO #</th>
-          <th class="text-left py-1 pr-2">Due</th>
-          <th class="text-right py-1 pr-2">Planned</th>
-          <th class="text-right py-1 pr-2">Applied</th>
-          <th class="text-right py-1 pr-2">Rem</th>
-          <th class="text-right py-1">%</th>
-        </tr>
-      </thead>
-      <tbody id="risk-po-body">
-        <tr><td colspan="6" class="text-center text-xs text-gray-400 py-3">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Top SKU's at Risk -->
-  <div class="bg-white rounded-2xl border shadow p-4">
-    <div class="text-base font-semibold mb-2">Top SKU's at Risk</div>
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-gray-500">
-          <th class="text-left py-1 pr-2">SKU</th>
-          <th class="text-left py-1 pr-2">Due</th>
-          <th class="text-right py-1 pr-2">Planned</th>
-          <th class="text-right py-1 pr-2">Applied</th>
-          <th class="text-right py-1 pr-2">Rem</th>
-          <th class="text-right py-1">%</th>
-        </tr>
-      </thead>
-      <tbody id="risk-sku-body">
-        <tr><td colspan="6" class="text-center text-xs text-gray-400 py-3">Loading…</td></tr>
-      </tbody>
-    </table>
-  </div>
+<!-- Top PO's at Risk -->
+<div class="bg-white rounded-2xl border shadow p-4">
+<div class="text-base font-semibold mb-2">Top PO's at Risk</div>
+<table class="w-full text-sm">
+<thead>
+<tr class="text-gray-500">
+<th class="text-left py-1 pr-2">PO #</th>
+<th class="text-left py-1 pr-2">Due</th>
+<th class="text-right py-1 pr-2">Planned</th>
+<th class="text-right py-1 pr-2">Applied</th>
+<th class="text-right py-1 pr-2">Rem</th>
+<th class="text-right py-1">%</th>
+</tr>
+</thead>
+<tbody id="risk-po-body">
+<tr><td class="text-center text-xs text-gray-400 py-3" colspan="6">Loading…</td></tr>
+</tbody>
+</table>
 </div>
-    
-        
-          </div>
-        </div>
-
-        <!-- Right: constant weekly tile + PO progress -->
-        <div class="lg:col-span-1 min-w-0">
-
-
-      <!-- Ops right panel: Week totals (Flow-style) -->
-      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="text-base font-semibold">Week totals</div>
-        <div class="text-xs text-gray-500 mb-3">Week of <span id="ops-week-of">—</span></div>
-
-        <div class="bg-gray-50 rounded-xl border p-3">
-          <div class="flex items-center justify-between py-1.5">
-            <div class="flex items-center gap-2 text-sm text-gray-700">
-              <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M7 3h10v4H7zM5 7h14v14H5z" stroke-width="1.5"/></svg>
-              </span>
+<!-- Top SKU's at Risk -->
+<div class="bg-white rounded-2xl border shadow p-4">
+<div class="text-base font-semibold mb-2">Top SKU's at Risk</div>
+<table class="w-full text-sm">
+<thead>
+<tr class="text-gray-500">
+<th class="text-left py-1 pr-2">SKU</th>
+<th class="text-left py-1 pr-2">Due</th>
+<th class="text-right py-1 pr-2">Planned</th>
+<th class="text-right py-1 pr-2">Applied</th>
+<th class="text-right py-1 pr-2">Rem</th>
+<th class="text-right py-1">%</th>
+</tr>
+</thead>
+<tbody id="risk-sku-body">
+<tr><td class="text-center text-xs text-gray-400 py-3" colspan="6">Loading…</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: constant weekly tile + PO progress -->
+<div class="h-[calc(100vh-140px)] min-w-0 flex sticky flex-col overflow-hidden top-24 lg:col-span-1">
+<!-- Ops right panel: Week totals (Flow-style) -->
+<div class="bg-white rounded-2xl border shadow p-4 mb-3">
+<div class="text-base font-semibold">Week totals</div>
+<div class="text-xs text-gray-500 mb-3">Week of <span id="ops-week-of">—</span></div>
+<div class="bg-gray-50 rounded-xl border p-3">
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 3h10v4H7zM5 7h14v14H5z" stroke-width="1.5"></path></svg>
+</span>
               POs planned – received
             </div>
-            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-po-planned">0</span> – <span id="ops-week-po-received">0</span></div>
-          </div>
-
-          <div class="flex items-center justify-between py-1.5">
-            <div class="flex items-center gap-2 text-sm text-gray-700">
-              <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke-width="1.5"/></svg>
-              </span>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-po-planned">0</span> – <span id="ops-week-po-received">0</span></div>
+</div>
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke-width="1.5"></path></svg>
+</span>
               Units planned – applied
             </div>
-            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-units-planned">0</span> – <span id="ops-week-units-applied">0</span></div>
-          </div>
-
-          <div class="flex items-center justify-between py-1.5">
-            <div class="flex items-center gap-2 text-sm text-gray-700">
-              <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 7l8-4 8 4v10l-8 4-8-4z" stroke-width="1.5"/></svg>
-              </span>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-units-planned">0</span> – <span id="ops-week-units-applied">0</span></div>
+</div>
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z" stroke-width="1.5"></path></svg>
+</span>
               Cartons in – cartons out
             </div>
-            <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 mt-3">
-          <div class="bg-white border rounded-xl p-3">
-            <div class="text-xs text-gray-500">Total suppliers</div>
-            <div class="text-lg font-semibold tabular-nums" id="ops-week-suppliers">0</div>
-          </div>
-          <div class="bg-white border rounded-xl p-3">
-            <div class="text-xs text-gray-500">Total Zendesk</div>
-            <div class="text-lg font-semibold tabular-nums" id="ops-week-zendesk">0</div>
-          </div>
-        </div>
-
-        <div class="mt-3 flex items-center justify-between">
-          <div class="inline-flex items-center gap-2 text-xs text-gray-600">
-            <span class="inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-2 mt-3">
+<div class="bg-white border rounded-xl p-3">
+<div class="text-xs text-gray-500">Total suppliers</div>
+<div class="text-lg font-semibold tabular-nums" id="ops-week-suppliers">0</div>
+</div>
+<div class="bg-white border rounded-xl p-3">
+<div class="text-xs text-gray-500">Total Zendesk</div>
+<div class="text-lg font-semibold tabular-nums" id="ops-week-zendesk">0</div>
+</div>
+</div>
+<div class="mt-3 flex items-center justify-between">
+<div class="inline-flex items-center gap-2 text-xs text-gray-600">
+<span class="inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
             Health
             <span class="px-2 py-0.5 rounded-full border text-xs" id="ops-week-health">—</span>
-          </div>
-          <div class="text-xs text-gray-500">Updated on refresh</div>
-        </div>
-      </div>
-
-      
-      <!-- Reports & downloads (3x2) -->
-      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="text-base font-semibold mb-3">Reports & downloads</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button id="ops-dl-posku" class="cmd w-full justify-center">PO × SKU Discrepancy</button>
-          <button id="ops-dl-po" class="cmd w-full justify-center">PO Discrepancy</button>
-          <button id="ops-dl-ship-summary" class="cmd w-full justify-center">Shipment Summary</button>
-          <button id="ops-dl-ship-detail" class="cmd w-full justify-center">Shipment Details</button>
-          <button id="ops-dl-week-applied" class="cmd w-full justify-center">Download Applied</button>
-          <button id="ops-dl-mobile-bin" class="cmd w-full justify-center">Mobile bin</button>
-        </div>
-      </div>
-
-      <!-- Ops insights (switchable views) -->
-      <div class="bg-white rounded-2xl border shadow p-4 mb-3">
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <div class="text-base font-semibold">Insights</div>
-            <div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
-            <div id="ops-insights-content" class="space-y-3">
-              <div class="text-sm text-gray-600">Select a view on the right to see progress & exceptions.</div>
-            </div>
-          </div>
-
-          <!-- vertical buttons -->
-          <div class="flex flex-col gap-2 shrink-0">
-            <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier">Supplier</button>
-            <button class="ops-pill" data-opsview="facility" title="Facility">Facility</button>
-            <button class="ops-pill" data-opsview="zendesk" title="Zendesk">Zendesk</button>
-            <button class="ops-pill" data-opsview="freight" title="Freight type">Freight</button>
-            <button class="ops-pill" data-opsview="carton" title="Cartons">Carton</button>
-            <button class="ops-pill" data-opsview="placeholder" title="Placeholder">Placeholder</button>
-          </div>
-        </div>
-      </div>
+</div>
+<div class="text-xs text-gray-500">Updated on refresh</div>
+</div>
+</div>
+<!-- Reports & downloads (3x2) -->
+<div class="bg-white rounded-2xl border shadow p-4 mb-3">
+<div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-posku"><span class="text-base leading-none">📊</span>PO × SKU Discrepancy</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-po"><span class="text-base leading-none">📑</span>PO Discrepancy</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-ship-summary"><span class="text-base leading-none">🚚</span>Shipment Summary</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-ship-detail"><span class="text-base leading-none">📄</span>Shipment Details</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-week-applied"><span class="text-base leading-none">⬇️</span>Download Applied</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
+</div>
+</div>
+<!-- Ops insights (switchable views) -->
+<div class="ring-gray-100 min-h-0 border bg-white flex-1 shadow rounded-2xl p-5 ring-1">
+<div class="flex items-start justify-between gap-3">
+<div class="flex-1 min-w-0 min-h-0 h-full">
+<div class="text-base font-semibold">Insights</div>
+<div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
+<div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
+<div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
+</div>
+</div>
+<!-- vertical buttons -->
+<div class="flex flex-col gap-2 shrink-0">
+<button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier">Supplier</button>
+<button class="ops-pill" data-opsview="facility" title="Facility">Facility</button>
+<button class="ops-pill" data-opsview="zendesk" title="Zendesk">Zendesk</button>
+<button class="ops-pill" data-opsview="freight" title="Freight type">Freight</button>
+<button class="ops-pill" data-opsview="carton" title="Cartons">Carton</button>
+<button class="ops-pill" data-opsview="placeholder" title="Placeholder">Placeholder</button>
+</div>
+</div>
+</div>
 <!-- PO progress (planned / received / applied) placeholder removed from right panel -->
-
-      
 <!-- (hidden legacy progress tiles kept for stability) -->
-          <div class="hidden" id="ops-progress-tiles"></div>
-        </div>
-
-            <!-- Full-width PO progress (bottom half) -->
-            <div class="lg:col-span-3 min-w-0">
-              <div class="bg-white rounded-2xl border shadow p-4 mt-3">
-                <div class="flex items-center justify-between gap-3 mb-1">
-                  <div class="text-base font-semibold">PO progress</div>
-                  <div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
-                </div>
-
-                <!-- Totals -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  <div class="bg-gray-50 rounded-xl border p-3">
-                    <div class="flex items-center justify-between text-sm">
-                      <div class="text-gray-700">Received</div>
-                      <div class="font-semibold tabular-nums"><span id="ops-po-received-total">0</span> / <span id="ops-po-planned-total">0</span></div>
-                    </div>
-                    <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-                      <div id="ops-po-received-bar" class="h-full bg-emerald-500" style="width:0%"></div>
-                    </div>
-                  </div>
-
-                  <div class="bg-gray-50 rounded-xl border p-3">
-                    <div class="flex items-center justify-between text-sm">
-                      <div class="text-gray-700">Applied</div>
-                      <div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
-                    </div>
-                    <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-                      <div id="ops-po-applied-bar" class="h-full" style="width:0%; background:#990033;"></div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- PO search -->
-                <div class="flex items-center gap-2 mb-3">
-                  <input id="ops-po-search" class="w-full border rounded-xl px-3 py-2 text-sm" placeholder="Search / filter PO (e.g. WADA002381)"/>
-                  <button id="ops-po-clear" class="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50">Clear</button>
-                </div>
-
-                <!-- PO table -->
-                <div class="overflow-auto rounded-xl border">
-                  <table class="min-w-full text-sm">
-                    <thead class="bg-gray-50">
-                      <tr class="text-gray-500">
-                        <th class="text-left py-2 px-3">PO</th>
-                        <th class="text-left py-2 px-3">Supplier</th>
-                        <th class="text-left py-2 px-3">Facility</th>
-                        <th class="text-left py-2 px-3">Freight</th>
-                        <th class="text-left py-2 px-3">Zendesk</th>
-                        <th class="text-right py-2 px-3">Planned</th>
-                        <th class="text-right py-2 px-3">Received</th>
-                        <th class="text-right py-2 px-3">Applied</th>
-                        <th class="text-right py-2 px-3">Rem</th>
-                        <th class="text-right py-2 px-3">%</th>
-                        <th class="py-2 px-3 w-[240px]">Progress</th>
-                      </tr>
-                    </thead>
-                    <tbody id="ops-po-table-body">
-                      <tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">Loading…</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                <!-- PO detail (optional inline) -->
-                <div id="ops-po-detail" class="bg-gray-50 rounded-xl border p-3 text-sm mt-3 hidden"></div>
-              </div>
-            </div>
-      </div>
-</section>
-
-    <!-- ================= UID Intake ================= -->
-    <section id="page-intake" class="hidden">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-5">
-          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
-          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
-            </svg>
-            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
-          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
-<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
-<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
-          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
-          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
-        </div>
-      </div>
-
-      <!-- Ops ribbon -->
-      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
-          <div class="flex gap-3">
-            <div class="flex-1 border rounded-lg p-3">
-              <div class="text-xs text-gray-500">Scans Today</div>
-              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-            <div class="flex-1 border rounded-lg p-3">
-              <div class="text-xs text-gray-500">Last Hour</div>
-              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-4 border rounded-lg p-3">
-            <div id="ops-heart-small"></div>
-            <div>
-              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
-              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-          </div>
-          <div class="border rounded-lg p-3">
-            <div class="text-sm font-semibold mb-1">Data Quality</div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
-            </div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
-            </div>
-            <div class="text-xs text-gray-500 mt-2">Sync states</div>
-            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
-          </div>
-          <div class="border rounded-lg p-3">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold">Alerts</div>
-              <small class="text-gray-500">
-                <span id="ops-last-updated">—</span>
-                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
-                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
+<div class="hidden" id="ops-progress-tiles"></div>
+</div>
+<!-- Full-width PO progress (bottom half) -->
+<div class="lg:col-span-3 min-w-0">
+<div class="bg-white rounded-2xl border shadow p-4 mt-3">
+<div class="flex items-center justify-between gap-3 mb-1">
+<div class="text-base font-semibold">PO progress</div>
+<div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
+</div>
+<!-- Totals -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+<div class="bg-gray-50 rounded-xl border p-3">
+<div class="flex items-center justify-between text-sm">
+<div class="text-gray-700">Received</div>
+<div class="font-semibold tabular-nums"><span id="ops-po-received-total">0</span> / <span id="ops-po-planned-total">0</span></div>
+</div>
+<div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+<div class="h-full bg-emerald-500" id="ops-po-received-bar" style="width:0%"></div>
+</div>
+</div>
+<div class="bg-gray-50 rounded-xl border p-3">
+<div class="flex items-center justify-between text-sm">
+<div class="text-gray-700">Applied</div>
+<div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
+</div>
+<div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:#990033;"></div>
+</div>
+</div>
+</div>
+<!-- PO search -->
+<div class="flex items-center gap-2 mb-3">
+<input class="w-full border rounded-xl px-3 py-2 text-sm" id="ops-po-search" placeholder="Search / filter PO (e.g. WADA002381)"/>
+<button class="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50" id="ops-po-clear">Clear</button>
+</div>
+<!-- PO table -->
+<div class="overflow-auto rounded-xl border">
+<table class="min-w-full text-sm">
+<thead class="bg-gray-50">
+<tr class="text-gray-500">
+<th class="text-left py-2 px-3">PO</th>
+<th class="text-left py-2 px-3">Supplier</th>
+<th class="text-left py-2 px-3">Facility</th>
+<th class="text-left py-2 px-3">Freight</th>
+<th class="text-left py-2 px-3">Zendesk</th>
+<th class="text-right py-2 px-3">Planned</th>
+<th class="text-right py-2 px-3">Received</th>
+<th class="text-right py-2 px-3">Applied</th>
+<th class="text-right py-2 px-3">Rem</th>
+<th class="text-right py-2 px-3">%</th>
+<th class="py-2 px-3 w-[240px]">Progress</th>
+</tr>
+</thead>
+<tbody id="ops-po-table-body">
+<tr><td class="text-center text-xs text-gray-400 py-6" colspan="11">Loading…</td></tr>
+</tbody>
+</table>
+</div>
+<!-- PO detail (optional inline) -->
+<div class="bg-gray-50 rounded-xl border p-3 text-sm mt-3 hidden" id="ops-po-detail"></div>
+</div>
+</div>
+</div>
+</div></section>
+<!-- ================= UID Intake ================= -->
+<section class="hidden" id="page-intake">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-5">
+<div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+<div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+<svg aria-hidden="true" class="heartbeat" focusable="false" height="18" viewbox="0 0 24 24" width="18">
+<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"></path>
+</svg>
+<div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button aria-label="Export XLSX" class="px-3 py-2 rounded-lg text-sm border" id="btn-export-day">Export XLSX</button>
+<button aria-label="Upload UIDs" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-applied">Upload UIDs</button>
+<button aria-label="Upload Bin Manifest" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-bins">Upload Bin Manifest</button>
+<input accept=".xlsx,.csv" class="hidden" id="file-bins" type="file"/>
+<input accept=".xlsx,.csv" class="hidden" id="file-upload-applied" type="file"/>
+<button aria-label="Delete Selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" id="btn-delete-selected">Delete Selected</button>
+</div>
+</div>
+<!-- Ops ribbon -->
+<div class="mt-3 bg-white border rounded-xl shadow p-3" id="ops-ribbon">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+<div class="flex gap-3">
+<div class="flex-1 border rounded-lg p-3">
+<div class="text-xs text-gray-500">Scans Today</div>
+<div class="text-2xl font-bold tabular-nums" id="ops-today">0</div>
+</div>
+<div class="flex-1 border rounded-lg p-3">
+<div class="text-xs text-gray-500">Last Hour</div>
+<div class="text-2xl font-bold tabular-nums" id="ops-hour">0</div>
+</div>
+</div>
+<div class="flex items-center gap-4 border rounded-lg p-3">
+<div id="ops-heart-small"></div>
+<div>
+<div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
+<div class="text-2xl font-bold tabular-nums" id="ops-rate">0</div>
+</div>
+</div>
+<div class="border rounded-lg p-3">
+<div class="text-sm font-semibold mb-1">Data Quality</div>
+<div class="flex items-center justify-between text-sm">
+<span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
+</div>
+<div class="flex items-center justify-between text-sm">
+<span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
+</div>
+<div class="text-xs text-gray-500 mt-2">Sync states</div>
+<div class="flex flex-wrap gap-2 mt-1" id="ops-sync-badges"></div>
+</div>
+<div class="border rounded-lg p-3">
+<div class="flex items-center justify-between">
+<div class="text-sm font-semibold">Alerts</div>
+<small class="text-gray-500">
+<span id="ops-last-updated">—</span>
+<span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
+<span class="w-2 h-2 rounded-full bg-gray-300" id="ops-dot"></span>SSE
                 </span>
-              </small>
-            </div>
-            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- Intake Table -->
-      <div class="mt-3 overflow-auto">
-        <table class="w-full min-w-[1100px] border-collapse border">
-          <thead class="bg-gray-100">
-          <tr>
-            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
-            <th class="th border px-2 py-1 text-left">Date</th>
-            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
-            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
-            <th class="th border px-2 py-1 text-left">PO_Number</th>
-            <th class="th border px-2 py-1 text-left">SKU_Code</th>
-            <th class="th border px-2 py-1 text-left">UID</th>
-            <th class="th border px-2 py-1 text-center">Sync</th>
-          </tr>
-          </thead>
-          <tbody id="intake-body"></tbody>
-        </table>
-      </div>
-
-      <div class="mt-3">
-        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
-      </div>
-
+</small>
+</div>
+<ul aria-live="polite" class="list-disc ml-4 mt-1 text-sm" id="ops-alerts"><li class="text-gray-400">No alerts.</li></ul>
+</div>
+</div>
+</div>
+<!-- Intake Table -->
+<div class="mt-3 overflow-auto">
+<table class="w-full min-w-[1100px] border-collapse border">
+<thead class="bg-gray-100">
+<tr>
+<th class="th border px-2 py-1 text-left w-8"><input id="chk-all" type="checkbox"/></th>
+<th class="th border px-2 py-1 text-left">Date</th>
+<th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+<th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
+<th class="th border px-2 py-1 text-left">PO_Number</th>
+<th class="th border px-2 py-1 text-left">SKU_Code</th>
+<th class="th border px-2 py-1 text-left">UID</th>
+<th class="th border px-2 py-1 text-center">Sync</th>
+</tr>
+</thead>
+<tbody id="intake-body"></tbody>
+</table>
+</div>
+<div class="mt-3">
+<button class="px-3 py-2 rounded-lg border text-sm" id="btn-add-row">Add Row</button>
+</div>
 <!-- Quick Delete by UID -->
 <div class="mt-4 bg-white rounded-2xl border shadow p-4">
-  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
-  <p class="text-xs text-gray-500 mb-2">
+<div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+<p class="text-xs text-gray-500 mb-2">
     Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
   </p>
-  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
-  <div class="mt-2 flex items-center gap-2">
-    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
-    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
-  </div>
+<textarea class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2" id="uids-to-delete" placeholder="Paste UIDs here…" rows="3"></textarea>
+<div class="mt-2 flex items-center gap-2">
+<button class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700" id="btn-delete-uids">Delete UID(s)</button>
+<span class="text-xs text-gray-500" id="delete-uids-status"></span>
 </div>
-    </section>
-
-<!-- ================= Executive (Client) ================= -->
-<section id="page-exec" class="hidden">
-  <div class="flex items-center justify-between mb-3">
-    <div>
-      <div class="text-2xl font-semibold">Executive Summary</div>
-      <div id="exec-sub" class="text-xs text-rose-900/70 mt-0.5"></div>
-    </div>
-    <div class="flex items-center gap-2">
-      <button id="btn-exec-doc" class="cmd cmd--primary">Download .doc</button>
-      <button id="btn-exec-csv" class="cmd">PO×SKU CSV</button>
-    </div>
-  </div>
+</div>
 </section>
-
+<!-- ================= Executive (Client) ================= -->
+<section class="hidden" id="page-exec">
+<div class="flex items-center justify-between mb-3">
+<div>
+<div class="text-2xl font-semibold">Executive Summary</div>
+<div class="text-xs text-rose-900/70 mt-0.5" id="exec-sub"></div>
+</div>
+<div class="flex items-center gap-2">
+<button class="cmd cmd--primary" id="btn-exec-doc">Download .doc</button>
+<button class="cmd" id="btn-exec-csv">PO×SKU CSV</button>
+</div>
+</div>
+</section>
 <!-- ================= Flow ================= -->
-<section id="page-flow" class="hidden"></section>
-  </main>
-
-  <!-- Footer health pill (shows Applied this week) -->
-  <div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
-    <span id="health-pill" class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300">
-      <span id="health-dot" class="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
-      Health: <span id="vo-health" class="ml-1">n/a</span>
-    </span>
-    <span id="vo-footer-text">Applied this week: 0</span>
-  </div>
-
-  <script>
+<section class="hidden" id="page-flow"></section>
+</main>
+<!-- Footer health pill (shows Applied this week) -->
+<div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
+<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300" id="health-pill">
+<span class="inline-block w-2 h-2 rounded-full bg-amber-500" id="health-dot"></span>
+      Health: <span class="ml-1" id="vo-health">n/a</span>
+</span>
+<span id="vo-footer-text">Applied this week: 0</span>
+</div>
+<script>
   const BRAND = '#990033';
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
@@ -3501,8 +3428,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 })();
 
   </script>
-
-
 <script>
 (function () {
   function isReady(s) {
@@ -3524,7 +3449,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }, 300);
 })();
 </script>
-
 <script>
 (function () {
   // Re-fire state:ready after Ops switches weeks (or re-populates state)
@@ -3539,10 +3463,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }
 })();
 </script>
-
-
-<script src="/exec_live_additive.js?v=8" defer></script>
-<script src="/receiving_live_additive.js?v=27" defer>
+<script defer="" src="/exec_live_additive.js?v=8"></script>
+<script defer="" src="/receiving_live_additive.js?v=27">
 // --- Ops: PO progress search (right panel) ---
 (function(){
   function q(sel){ return document.querySelector(sel); }
@@ -3627,9 +3549,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   window.addEventListener('state:ready', () => {
     if(input.value.trim()) renderPO(input.value);
   });
-})();
-
-
+})();  
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
