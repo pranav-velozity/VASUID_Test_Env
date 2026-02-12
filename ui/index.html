@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint</title>
 
-  <!-- Tailwind -->
+   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -820,11 +820,11 @@ function computeBinQA(ws, records=[], bins=[]) {
     const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
     return '\ufeff'+head+'\r\n'+body+'\r\n';
   }
-function buildDiscrepancyPOSKU(plan, rows){
+function buildDiscrepancyPOSKU(plan, recRows){
 const byPS=new Map();
 const binsByPS=new Map();
 
-for(const r of rows||[]){
+for(const r of recRows||[]){
   if(!r) continue;
 
   // Summary row: { po, sku, units }
@@ -854,7 +854,7 @@ for(const r of rows||[]){
 }
 
 
-  const seen=new Set(); const rows=[];
+  const seen=new Set(); const outRows=[];
   for(const p of plan||[]){
     const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim();
     if(!po||!sku) continue;
@@ -867,7 +867,7 @@ for(const r of rows||[]){
 const binSet = binsByPS.get(k) || new Set();
 const binList = Array.from(binSet).sort();
 
-rows.push({
+outRows.push({
   'PO': po,
   'SKU': sku,
   'Supplier Name': p.supplier_name || '',
@@ -881,7 +881,7 @@ rows.push({
   'Discrepancy (Applied - Planned)': applied - planned
 });
   }
-  return rows;
+  return outRows;
 }
 
 function buildDiscrepancyPO(joined, plan){
@@ -2933,6 +2933,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 })();
 </script>
 
+
+  
 
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
