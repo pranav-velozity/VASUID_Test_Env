@@ -130,7 +130,11 @@ CREATE TABLE IF NOT EXISTS records (
 );
 CREATE INDEX IF NOT EXISTS idx_records_date ON records(date_local);
 CREATE INDEX IF NOT EXISTS idx_records_status ON records(status);
+CREATE INDEX IF NOT EXISTS idx_records_completed_at ON records(completed_at);
+CREATE INDEX IF NOT EXISTS idx_records_status_completed_at ON records(status, completed_at);
 CREATE INDEX IF NOT EXISTS idx_records_po ON records(po_number);
+CREATE INDEX IF NOT EXISTS idx_records_po_status ON records(po_number, status);
+CREATE INDEX IF NOT EXISTS idx_records_po_mobile_bin ON records(po_number, mobile_bin);
 CREATE INDEX IF NOT EXISTS idx_records_sku ON records(sku_code);
 CREATE INDEX IF NOT EXISTS idx_records_uid ON records(uid);
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_po_sku_uid ON records(po_number, sku_code, uid);
@@ -508,6 +512,135 @@ app.get('/records', (req, res) => {
 });
 
 
+// --- Paginated records (cursor-based; for drilldowns only) ---
+// Cursor format: "<completed_at>|<id>" (both URL-encoded by the client). Results are ordered DESC.
+app.get('/records/page', (req, res) => {
+  try {
+    const weekStart = req.query.weekStart ? String(req.query.weekStart) : '';
+    const weekEnd   = req.query.weekEnd   ? String(req.query.weekEnd)   : '';
+    const fromQ     = req.query.from      ? String(req.query.from)      : '';
+    const toQ       = req.query.to        ? String(req.query.to)        : '';
+
+    const fromRaw = fromQ || weekStart || '';
+    const toRaw   = toQ   || weekEnd   || '';
+
+    const from = fromRaw && fromRaw.includes('T') ? fromRaw.slice(0, 10) : fromRaw;
+    const to   = toRaw   && toRaw.includes('T')   ? toRaw.slice(0, 10)   : toRaw;
+    const status = req.query.status ? String(req.query.status) : '';
+
+    const limitRaw = req.query.limit ? Number(req.query.limit) : 5000;
+    const limit = Math.max(1, Math.min(20000, Number.isFinite(limitRaw) ? limitRaw : 5000));
+
+    const cursor = req.query.cursor ? String(req.query.cursor) : '';
+    let cursorCompletedAt = '';
+    let cursorId = '';
+    if (cursor.includes('|')) {
+      const parts = cursor.split('|');
+      cursorCompletedAt = parts[0] || '';
+      cursorId = parts[1] || '';
+    }
+
+    const params = [];
+    let sql = 'SELECT * FROM records WHERE 1=1';
+    if (from)   { sql += ' AND date_local >= ?'; params.push(from); }
+    if (to)     { sql += ' AND date_local <= ?'; params.push(to); }
+    if (status) { sql += ' AND status = ?';      params.push(status); }
+
+    // keyset pagination: (completed_at, id) DESC
+    if (cursorCompletedAt && cursorId) {
+      sql += ' AND (completed_at < ? OR (completed_at = ? AND id < ?))';
+      params.push(cursorCompletedAt, cursorCompletedAt, cursorId);
+    } else if (cursorCompletedAt) {
+      sql += ' AND completed_at < ?';
+      params.push(cursorCompletedAt);
+    }
+
+    sql += ' ORDER BY completed_at DESC, id DESC';
+    sql += ' LIMIT ?';
+    params.push(limit);
+
+    const rows = db.prepare(sql).all(...params);
+
+    let next_cursor = null;
+    if (rows.length) {
+      const last = rows[rows.length - 1];
+      if (last?.completed_at && last?.id) {
+        next_cursor = `${last.completed_at}|${last.id}`;
+      }
+    }
+
+    return res.json({ records: rows, next_cursor });
+  } catch (e) {
+    console.error('GET /records/page failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Ops quick stats (tiny payload; safe to call frequently) ---
+app.get('/summary/ops', (req, res) => {
+  try {
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const hourAgoISO = new Date(now.getTime() - 3600e3).toISOString();
+    const halfAgoISO = new Date(now.getTime() - 1800e3).toISOString();
+    const todayYMD = todayChicagoISO();
+
+    const scansToday = db.prepare(
+      `SELECT COUNT(*) AS n FROM records WHERE status='complete' AND date_local = ?`
+    ).get(todayYMD)?.n || 0;
+
+    const lastHour = db.prepare(
+      `SELECT COUNT(*) AS n FROM records WHERE status='complete' AND completed_at >= ?`
+    ).get(hourAgoISO)?.n || 0;
+
+    const last30 = db.prepare(
+      `SELECT COUNT(*) AS n FROM records WHERE status='complete' AND completed_at >= ?`
+    ).get(halfAgoISO)?.n || 0;
+
+    const drafts = db.prepare(
+      `SELECT COUNT(*) AS n FROM records WHERE status <> 'complete'`
+    ).get()?.n || 0;
+
+    // Duplicate pairs among completed rows for today (sku_code + uid)
+    const dupeRow = db.prepare(
+      `SELECT
+        (COUNT(*) - COUNT(DISTINCT COALESCE(TRIM(sku_code),'') || '|' || COALESCE(TRIM(uid),''))) AS dupes
+       FROM records
+       WHERE status='complete' AND date_local = ? AND TRIM(COALESCE(sku_code,''))<>'' AND TRIM(COALESCE(uid,''))<>''`
+    ).get(todayYMD);
+    const dupes = Math.max(0, Number(dupeRow?.dupes || 0));
+
+    const syncRows = db.prepare(
+      `SELECT COALESCE(sync_state,'unknown') AS sync_state, COUNT(*) AS n
+       FROM records
+       GROUP BY COALESCE(sync_state,'unknown')`
+    ).all();
+    const sync_counts = {};
+    for (const r of syncRows) sync_counts[r.sync_state] = Number(r.n || 0);
+
+    const lastCompleted = db.prepare(
+      `SELECT MAX(completed_at) AS ts FROM records WHERE status='complete'`
+    ).get()?.ts || null;
+
+    return res.json({
+      now: nowISO,
+      today: todayYMD,
+      scans_today: Number(scansToday),
+      last_hour: Number(lastHour),
+      last_30m: Number(last30),
+      drafts: Number(drafts),
+      dupes: Number(dupes),
+      sync_counts,
+      last_completed_at: lastCompleted
+    });
+  } catch (e) {
+    console.error('GET /summary/ops failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+
 
 // --- Fetch records summary (totals + trends; avoids pulling huge record sets to client) ---
 app.get('/records/summary', (req, res) => {
@@ -582,6 +715,73 @@ app.get('/records/summary', (req, res) => {
     return res.json(data);
   } catch (e) {
     console.error('GET /records/summary failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+
+// --- Summary: PO+SKU rollup (for discrepancies without pulling raw records) ---
+app.get('/summary/po_sku', (req, res) => {
+  try {
+    const fromRaw = req.query.from ? String(req.query.from) : '';
+    const toRaw   = req.query.to   ? String(req.query.to)   : '';
+    const from = fromRaw && fromRaw.includes('T') ? fromRaw.slice(0, 10) : fromRaw;
+    const to   = toRaw   && toRaw.includes('T')   ? toRaw.slice(0, 10)   : toRaw;
+    const status = req.query.status ? String(req.query.status) : 'complete';
+
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (from)   { where += ' AND date_local >= ?'; params.push(from); }
+    if (to)     { where += ' AND date_local <= ?'; params.push(to); }
+    if (status) { where += ' AND status = ?';      params.push(status); }
+
+    const rows = db.prepare(`
+      SELECT
+        po_number AS po,
+        sku_code  AS sku,
+        COUNT(*) AS units
+      FROM records
+      ${where}
+        AND TRIM(COALESCE(po_number,'')) <> ''
+        AND TRIM(COALESCE(sku_code,'')) <> ''
+      GROUP BY po_number, sku_code
+      ORDER BY po_number, sku_code
+    `).all(...params);
+
+    return res.json({ from: from || null, to: to || null, status, rows: rows.map(r => ({ po: r.po, sku: r.sku, units: Number(r.units || 0) })) });
+  } catch (e) {
+    console.error('GET /summary/po_sku failed:', e);
+    return res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+// --- Summary: SKU rollup ---
+app.get('/summary/sku', (req, res) => {
+  try {
+    const fromRaw = req.query.from ? String(req.query.from) : '';
+    const toRaw   = req.query.to   ? String(req.query.to)   : '';
+    const from = fromRaw && fromRaw.includes('T') ? fromRaw.slice(0, 10) : fromRaw;
+    const to   = toRaw   && toRaw.includes('T')   ? toRaw.slice(0, 10)   : toRaw;
+    const status = req.query.status ? String(req.query.status) : 'complete';
+
+    const params = [];
+    let where = 'WHERE 1=1';
+    if (from)   { where += ' AND date_local >= ?'; params.push(from); }
+    if (to)     { where += ' AND date_local <= ?'; params.push(to); }
+    if (status) { where += ' AND status = ?';      params.push(status); }
+
+    const rows = db.prepare(`
+      SELECT sku_code AS sku, COUNT(*) AS units
+      FROM records
+      ${where}
+        AND TRIM(COALESCE(sku_code,'')) <> ''
+      GROUP BY sku_code
+      ORDER BY sku_code
+    `).all(...params);
+
+    return res.json({ from: from || null, to: to || null, status, rows: rows.map(r => ({ sku: r.sku, units: Number(r.units || 0) })) });
+  } catch (e) {
+    console.error('GET /summary/sku failed:', e);
     return res.status(500).json({ error: String(e?.message || e) });
   }
 });
@@ -993,9 +1193,6 @@ app.get('/bins', (req, res) => {
   }
 });
 /* ===== END: /bins alias ===== */
-
-
-
 
 // ---- Start ----
 app.listen(PORT, () => {
