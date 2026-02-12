@@ -206,155 +206,12 @@
   </button>
 </div>
 </div>
-<div class="flex flex-col lg:flex-row gap-3">
-<!-- Left: reserved (blank for now) -->
-<div class="flex-1 min-w-0">
-<div class="min-h-[480px]"></div>
-<div class="hidden" id="ops-left-hidden">
-<!-- KPI tiles -->
-<div class="w-full basis-full grid grid-cols-1 sm:grid-cols-5 gap-3 mb-3">
-<div class="bg-white rounded-2xl border shadow p-4">
-<div class="text-base font-semibold text-gray-600">Planned</div>
-<!-- Search -->
-<div class="w-full basis-full bg-white rounded-2xl border shadow p-4 mb-3">
-<div class="text-base font-semibold mb-2">Search by PO or SKU</div>
-<!-- Ops left panel: PO details -->
-<div class="bg-white rounded-2xl border shadow p-4 mb-3">
-<div class="flex items-center justify-between gap-2">
-<div>
-<div class="text-base font-semibold">PO details</div>
-<div class="text-xs text-gray-500">Populates when you search a PO #</div>
-</div>
-<div class="text-xs text-gray-400" id="ops-po-detail-title">—</div>
-</div>
-<div class="mt-3 overflow-auto">
-<table class="w-full text-sm">
-<thead>
-<tr class="text-gray-500">
-<th class="text-left py-1 pr-2">Field</th>
-<th class="text-left py-1">Value</th>
-</tr>
-</thead>
-<tbody id="ops-po-detail-body">
-<tr><td class="text-center text-xs text-gray-400 py-3" colspan="2">Search a PO to load details.</td></tr>
-</tbody>
-</table>
-</div>
-</div>
-<select aria-label="Filter Supplier" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="supplier-filter">
-<option value="">Loading…</option>
-</select>
-</div>
-<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="supplier-viz">
-      Graph placeholder
-    </div>
-<div class="mt-2 flex items-end justify-between">
-<div class="text-xs text-gray-500">Applied / Planned</div>
-<div class="text-sm font-semibold tabular-nums" id="supplier-metric">0 / 0</div>
-</div>
-<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="supplier-pct">0%</span></div>
-</div>
-<!-- Facility -->
-<div class="bg-white rounded-2xl border shadow p-4 min-w-0" style="border-color:#990033;">
-<div class="flex items-center justify-between gap-2 mb-2">
-<div class="text-base font-semibold">Facility</div>
-<select aria-label="Filter Facility" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="facility-filter">
-<option value="">Loading…</option>
-</select>
-</div>
-<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="facility-viz">
-      Graph placeholder
-    </div>
-<div class="mt-2 flex items-end justify-between">
-<div class="text-xs text-gray-500">Applied / Planned</div>
-<div class="text-sm font-semibold tabular-nums" id="facility-metric">0 / 0</div>
-</div>
-<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="facility-pct">0%</span></div>
-</div>
-<!-- Freight Type -->
-<div class="bg-white rounded-2xl border shadow p-4 min-w-0" style="border-color:#990033;">
-<div class="flex items-center justify-between gap-2 mb-2">
-<div class="text-base font-semibold">Freight Type</div>
-<select aria-label="Filter Freight Type" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="freight-filter">
-<option value="">Loading…</option>
-</select>
-</div>
-<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="freight-viz">
-      Graph placeholder
-    </div>
-<div class="mt-2 flex items-end justify-between">
-<div class="text-xs text-gray-500">Applied / Planned</div>
-<div class="text-sm font-semibold tabular-nums" id="freight-metric">0 / 0</div>
-</div>
-<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="freight-pct">0%</span></div>
-</div>
-<!-- Zendesk Ticket -->
-<div class="bg-white rounded-2xl border shadow p-4 min-w-0" style="border-color:#990033;">
-<div class="flex items-center justify-between gap-2 mb-2">
-<div class="text-base font-semibold">Zendesk Ticket</div>
-<select aria-label="Filter Zendesk Ticket" class="border rounded-md px-2 py-1 text-xs max-w-[160px]" id="zendesk-filter">
-<option value="">Loading…</option>
-</select>
-</div>
-<div class="h-[86px] flex items-center justify-center text-xs text-gray-400" id="zendesk-viz">
-      Graph placeholder
-    </div>
-<div class="mt-2 flex items-end justify-between">
-<div class="text-xs text-gray-500">Applied / Planned</div>
-<div class="text-sm font-semibold tabular-nums" id="zendesk-metric">0 / 0</div>
-</div>
-<div class="text-xs text-gray-500 mt-1">Progress: <span class="font-semibold tabular-nums" id="zendesk-pct">0%</span></div>
-</div>
-</div>
-<!-- Risks -->
-<div class="w-full basis-full min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-<!-- Top PO's at Risk -->
-<div class="bg-white rounded-2xl border shadow p-4">
-<div class="text-base font-semibold mb-2">Top PO's at Risk</div>
-<table class="w-full text-sm">
-<thead>
-<tr class="text-gray-500">
-<th class="text-left py-1 pr-2">PO #</th>
-<th class="text-left py-1 pr-2">Due</th>
-<th class="text-right py-1 pr-2">Planned</th>
-<th class="text-right py-1 pr-2">Applied</th>
-<th class="text-right py-1 pr-2">Rem</th>
-<th class="text-right py-1">%</th>
-</tr>
-</thead>
-<tbody id="risk-po-body">
-<tr><td class="text-center text-xs text-gray-400 py-3" colspan="6">Loading…</td></tr>
-</tbody>
-</table>
-</div>
-<!-- Top SKU's at Risk -->
-<div class="bg-white rounded-2xl border shadow p-4">
-<div class="text-base font-semibold mb-2">Top SKU's at Risk</div>
-<table class="w-full text-sm">
-<thead>
-<tr class="text-gray-500">
-<th class="text-left py-1 pr-2">SKU</th>
-<th class="text-left py-1 pr-2">Due</th>
-<th class="text-right py-1 pr-2">Planned</th>
-<th class="text-right py-1 pr-2">Applied</th>
-<th class="text-right py-1 pr-2">Rem</th>
-<th class="text-right py-1">%</th>
-</tr>
-</thead>
-<tbody id="risk-sku-body">
-<tr><td class="text-center text-xs text-gray-400 py-3" colspan="6">Loading…</td></tr>
-</tbody>
-</table>
-</div>
-</div>
-</div>
-</div>
-<!-- Right: constant weekly tile + PO progress -->
-<div class="h-[calc(100vh-140px)] min-w-0 flex sticky flex-col overflow-hidden top-24  lg:w-[560px] shrink-0 ml-auto">
-<!-- Ops insights (switchable views) -->
-<div class="ring-gray-100 min-h-0 border bg-white flex-1 shadow rounded-2xl p-5 ring-1 mb-3">
+<div class="mt-3 grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+  <div class="lg:col-span-3 min-w-0">
+    <!-- Ops insights (switchable views) -->
+<div class="ring-gray-100 min-h-0 border bg-white min-h-[520px] shadow rounded-2xl p-5 ring-1 mb-3">
 <div class="flex items-start justify-between gap-3">
-<div class="flex-1 min-w-0 min-h-0 h-full">
+<div class="min-h-[520px] min-w-0 min-h-0 h-full">
 <div class="text-base font-semibold">Insights</div>
 <div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
 <div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
@@ -375,7 +232,9 @@
 <!-- PO progress (planned / received / applied) placeholder removed from right panel -->
 <!-- (hidden legacy progress tiles kept for stability) -->
 <div class="hidden" id="ops-progress-tiles"></div>
-<!-- Ops right panel: Week totals (Flow-style) -->
+  </div>
+  <div class="lg:col-span-2 min-w-0 space-y-3">
+    <!-- Ops right panel: Week totals (Flow-style) -->
 <div class="bg-white rounded-2xl border shadow p-4 mb-3">
 <div class="text-base font-semibold">Week totals</div>
 <div class="text-xs text-gray-500 mb-3">Week of <span id="ops-week-of">—</span></div>
@@ -440,11 +299,10 @@
 <button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
 </div>
 </div>
-
-</div>
-<!-- Full-width PO progress (bottom half) -->
-<div class="lg:col-span-3 min-w-0">
-<div class="bg-white rounded-2xl border shadow p-4 mt-3">
+  </div>
+</div><!-- Full-width PO progress (bottom half) -->
+<div class="w-full min-w-0 mt-6">
+<div class="bg-white rounded-2xl border shadow p-4">
 <div class="flex items-center justify-between gap-3 mb-1">
 <div class="text-base font-semibold">PO progress</div>
 <div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
@@ -3552,7 +3410,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-  
+
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
