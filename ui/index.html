@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
- <!-- Tailwind -->
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -609,6 +609,19 @@ async function fetchBins(ws) {
     return [];
   }
 }
+
+// --- Fetch receiving rows for a week (used to estimate cartons-in and "approx received units") ---
+async function fetchReceiving(ws) {
+  if (!apiBase) return [];
+  try {
+    // Matches Flow/Receiving modules
+    const r = await api(`/receiving?weekStart=${encodeURIComponent(ws)}`);
+    return Array.isArray(r) ? r : (r.rows || r.data || []);
+  } catch {
+    return [];
+  }
+}
+
 
 // --- Compute bin QA (cross-check with applied records) ---
 function computeBinQA(ws, records=[], bins=[]) {
@@ -1856,15 +1869,17 @@ function inWeekByCompletedAt(r, ws){
   async function setWeek(ws){
     state.weekStart=ws; $('#week-start').value=ws;
     const weDate=new Date(ws); weDate.setDate(weDate.getDate()+6); const we=iso(weDate);
-const [plan, summary] = await Promise.all([
+const [plan, summary, receiving] = await Promise.all([
   fetchPlan(ws),
-  fetchSummary(ws, we, 'complete')
+  fetchSummary(ws, we, 'complete'),
+  fetchReceiving(ws)
 ]);
 state.plan = Array.isArray(plan) ? plan : [];
 
 // Summary-first: for normal dashboard operation we keep only PO rollups.
 // (Raw records are loaded only for explicit drilldowns.)
 state.records = Array.isArray(summary?.by_po) ? summary.by_po : [];
+state.receiving = Array.isArray(receiving) ? receiving : [];
 
 const bins = await fetchBins(ws);
 state.bins = Array.isArray(bins) ? bins : [];
@@ -3205,8 +3220,9 @@ function renderOpsInsights(view){
   if(!root) return;
 
   const plan = Array.isArray(state.plan) ? state.plan : [];
-  const recs = Array.isArray(state.records) ? state.records : []; // summary by_po: {po, units, cartons_out}
-  const bins = Array.isArray(state.bins) ? state.bins : [];       // week bins: {po_number, mobile_bin, weight_kg, ...}
+  const recs = Array.isArray(state.records) ? state.records : []; // /records/summary (applied units etc)
+  const receiving = Array.isArray(state.receiving) ? state.receiving : []; // /receiving (cartons_in/out + received timestamps)
+  const bins = Array.isArray(state.bins) ? state.bins : []; // /records (mobile bins for cartons-out + mobile-bin download)
 
   const toNum = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n : 0; };
   const norm = (s)=>String(s||'').trim();
@@ -3220,17 +3236,33 @@ function renderOpsInsights(view){
   const poToApplied = new Map(recs.map(r => [norm(r.po||r.po_number||r.poNumber), toNum(r.units||r.total_units||0)]));
 
   // Cartons-in per PO from bins: distinct mobile_bin per PO
-  const poToCartonSet = new Map();
-  for(const b of bins){
-    const po = norm(b.po_number||b.po||b.poNumber);
-    if(!po) continue;
-    const mb = norm(b.mobile_bin||b.mobileBin||b.bin||b.mobile_bin_number);
-    if(!mb) continue;
-    let set = poToCartonSet.get(po);
-    if(!set){ set = new Set(); poToCartonSet.set(po, set); }
-    set.add(mb);
+  // Cartons-in by PO comes from /receiving (same source as Flow/Receiving pages).
+  // We use this to estimate "Approx received units" at PO level.
+  const poToCartonsIn = new Map();
+  const poReceivedAt = new Map();
+  for (const r of receiving) {
+    const po = String(r.po_number ?? r.po ?? '').trim();
+    if (!po) continue;
+
+    const receivedAt = r.received_at ?? r.receivedAt ?? r.received_timestamp ?? r.receivedTimestamp ?? null;
+    if (receivedAt) poReceivedAt.set(po, receivedAt);
+
+    const ciRaw =
+      r.cartons_in ??
+      r.cartonsIn ??
+      r.cartons_received ??
+      r.cartonsReceived ??
+      r.cartons_in_qty ??
+      r.cartonsInQty ??
+      r.cartons_in_count ??
+      r.cartonsInCount ??
+      0;
+
+    const ci = Number(ciRaw);
+    if (Number.isFinite(ci) && ci > 0) {
+      poToCartonsIn.set(po, (poToCartonsIn.get(po) || 0) + ci);
+    }
   }
-  const poToCartonsIn = new Map([...poToCartonSet.entries()].map(([po,set])=>[po, set.size]));
 
   // Build per-PO planned + meta (so we don’t double count applied in grouped views)
   const poPlan = new Map(); // po -> {plannedUnits, plannedCartons, supplier, facility, freight, zendesk}
@@ -3263,9 +3295,11 @@ function renderOpsInsights(view){
     const cartonsIn = poToCartonsIn.get(po) || 0;
     let received = 0;
     if(planned>0){
-      if(plannedCartons>0){ received = planned * Math.min(1, cartonsIn/plannedCartons); }
+      if(poReceivedAt.has(po)) { received = planned; }
+      else if(plannedCartons>0 && cartonsIn>0){ received = planned * Math.min(1, cartonsIn/plannedCartons); }
       else if(cartonsIn>0){ received = planned; }
     }
+    received = Math.round(received);
     const applied = poToApplied.get(po) || 0;
     poDerived.set(po, {planned, received, applied, cartonsIn, plannedCartons, ...p});
   }
@@ -3668,8 +3702,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
-
   
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
