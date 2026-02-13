@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-  <!-- Tailwind -->
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -2327,11 +2327,15 @@ await setWeek(state.weekStart);   // 🔄 keep state.records in sync
       });
     });
 
-    // ribbon quick badges
-    $('#ops-drafts').textContent = drafts;
-    $('#ops-sync-badges').innerHTML =
-      `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
-       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
+    // ribbon quick badges (guarded: these elements may not exist on every page)
+    const elDrafts = $('#ops-drafts');
+    if(elDrafts) elDrafts.textContent = drafts;
+    const elBadges = $('#ops-sync-badges');
+    if(elBadges) {
+      elBadges.innerHTML =
+        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
+         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
+    }
   }
 
   $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
@@ -3391,6 +3395,10 @@ function renderOpsInsights(view){
     return;
   }
 
+  // Normalized PO-level rows used by multiple insight views
+  // NOTE: Facility view relies on `rows`.
+  const rows = Array.from(poDerived.values());
+
   
   // ----- Render -----
   if(view==='supplier'){
@@ -3801,7 +3809,11 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   window.addEventListener('state:ready', () => {
     if(input.value.trim()) renderPO(input.value);
   });
-})();  
+})();
+
+
+
+  
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
