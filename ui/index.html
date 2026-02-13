@@ -8,6 +8,3998 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
+  <!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- SheetJS -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<style>
+    body{background:#f8fafc;color:#111827}
+    .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
+    .vo-wrap{
+  max-width:none;
+  width:min(96vw,1920px);
+  margin:0 auto;
+  padding:16px 24px;
+  box-sizing:border-box;
+}
+#page-dashboard .cmdbar, #capsules{ min-width:0; flex-wrap:wrap; }
+
+    .dot{width:.6rem;height:.6rem;border-radius:9999px;display:inline-block}
+    .heartbeat{animation:heartbeat 1.2s ease-in-out infinite;transform-origin:center}
+    @keyframes heartbeat{0%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}60%{transform:scale(1)}100%{transform:scale(1)}}
+    .cell{width:100%;padding:.4rem .5rem;border:0;outline:none}
+    .cell:focus{box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+    .th{font-size:.75rem;font-weight:600;color:#374151}
+    /* Shorter week capsule */
+    .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
+    .wkcap .m{font-size:10px}
+    .wkcap .d{font-size:16px;font-weight:700;line-height:1.1}
+    .wkcap .t{font-size:11px;margin-top:2px;color:#990033}
+    .wkcap .bar{height:6px;border-radius:9999px;background:#e5e7eb;overflow:hidden;margin-top:4px}
+    .wkcap .bar>div{height:6px;border-radius:9999px;background:#990033;width:0%}
+
+/* Respect .hidden; only style when visible */
+#page-dashboard:not(.hidden){ display:block; }
+#page-dashboard:not(.hidden) > *{
+  position:relative;
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin-bottom:.75rem;
+}
+
+/* segmented toggle visuals (neutral) */
+.seg { color:#303030; }
+.seg.active {
+  background:#fff;
+  color:#303030;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.1);
+}
+.seg:not(.active):hover { background: rgba(0,0,0,.06); }
+
+
+/* --- Command Bar (visual only) --- */
+.cmdbar{
+  display:flex; flex-wrap:wrap; gap:.25rem;
+  padding:.25rem; border-radius:12px;
+  background:#fff; border:1px solid #e5e7eb;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.08);
+}
+.cmd{
+  display:inline-flex; align-items:center; gap:.5rem;
+  font-size:.875rem; line-height:1;
+  padding:.5rem .75rem; border-radius:10px;
+  border:1px solid transparent; background:transparent; color:#374151;
+  transition:background .15s ease, border-color .15s ease, transform .05s ease;
+}
+.cmd:hover{ background:#f9fafb; border-color:#e5e7eb; }
+.cmd:active{ transform:translateY(1px); }
+.cmd:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(153,0,51,.15); }
+
+/* variants */
+.cmd--primary{ background:#990033; color:#fff; }
+.cmd--primary:hover{ filter:brightness(.98); }
+.cmd--danger{ color:#991b1b; background:#fff5f5; border-color:#fecaca; }
+.cmd--ghost{ background:transparent; }
+
+/* Override colors for Upload/Zero buttons ONLY */
+#btn-upload-plan,
+#btn-zero-plan {
+  background: #E2E2E2 !important;
+  color: #303030 !important;
+  border-color: #e5e7eb !important;
+}
+
+#btn-upload-plan:hover,
+#btn-zero-plan:hover {
+  background: #d9d9d9 !important; /* subtle hover */
+}
+
+
+
+/* icon sizing */
+.cmd svg{ width:16px; height:16px; opacity:.75; }
+
+  
+/* Ops insights pills */
+.ops-pill{
+  display:inline-flex; align-items:center; justify-content:flex-start; gap:8px;
+  padding:0 12px;
+  min-width:120px; height:34px;
+  border:1px solid rgba(17,24,39,.12);
+  border-radius:9999px;
+  background:transparent;
+  font-size:12px;
+  font-weight:600;
+  color:#374151;
+  transition: all .12s ease;
+}
+.ops-pill svg{ width:14px; height:14px; }
+.ops-pill:hover{ background:#f9fafb; border-color: rgba(17,24,39,.18); }
+.ops-pill--active{
+  background:#fff;
+  border-color: rgba(153,0,51,.45);
+  box-shadow: 0 0 0 3px rgba(153,0,51,.08);
+  color:#111827;
+}
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<!-- Top Nav -->
+<header class="vo-nav">
+<div class="vo-wrap py-3 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="text-xl font-semibold">VelOzity Pinpoint</div>
+<div class="text-gray-500 text-sm" id="vo-today"></div>
+</div>
+<nav class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300" id="nav-toggle">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#exec" id="nav-exec">
+  Executive
+</a>
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#dashboard" id="nav-dash">
+    Operations
+  </a>
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#receiving" id="nav-receiving">
+  Receiving
+</a>
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#intake" id="nav-intake">
+    Intake
+  </a>
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#flow" id="nav-flow">
+    Flow
+  </a>
+</nav>
+</div>
+</header>
+<main class="vo-wrap py-4">
+<!-- ================= Operations ================= -->
+<section class="hidden" id="page-dashboard">
+<div class="flex items-center justify-between mb-2 basis-full w-full">
+<div class="text-2xl font-semibold">Operations</div>
+<div class="flex items-center gap-2">
+<label class="text-sm text-gray-600">Week start</label>
+<input class="px-2 py-1 border rounded-md text-sm" id="week-start" type="date"/>
+<input accept=".xlsx,.csv" class="hidden" id="file-plan" type="file"/>
+<div aria-label="Operations actions" class="cmdbar" role="group">
+<button aria-label="Upload Plan" class="cmd cmd--primary" id="btn-upload-plan" title="Upload planned PO×SKU for the selected week">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17h16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+    Upload Plan
+  </button>
+<button aria-label="Zero Plan" class="cmd cmd--danger" id="btn-zero-plan" title="Clear the plan for this week">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-width="1.5"></path></svg>
+    Zero Plan
+  </button>
+</div>
+</div>
+<!-- Capsules + Actions -->
+<div class="mb-3 flex flex-wrap items-start gap-3 basis-full w-full">
+<div class="flex flex-wrap items-center gap-3 flex-1 min-w-[320px]" id="capsules"></div>
+<div aria-label="Reports and downloads" class="cmdbar shrink-0 hidden" role="group">
+<button aria-label="PO × SKU Discrepancy" class="cmd cmd--ghost" id="btn-dl-posku" title="Compare planned vs applied at PO×SKU level">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 5h18M3 12h18M3 19h18" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+    PO × SKU Discrepancy
+  </button>
+<button aria-label="PO Discrepancy" class="cmd cmd--ghost" id="btn-dl-po" title="Compare planned vs applied at PO level">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 6h16M4 12h10M4 18h7" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+    PO Discrepancy
+  </button>
+<button aria-label="Shipment Summary" class="cmd cmd--ghost" id="btn-ship-summary" title="Shipment summary grouped by Supplier, Zendesk, Freight, Facility">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M3 7h13l5 5v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" stroke-linejoin="round" stroke-width="1.5"></path>
+<path d="M16 7v5h5" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+  Shipment Summary
+</button>
+<button aria-label="Shipment Details" class="cmd cmd--ghost" id="btn-ship-detail" title="Shipment detail by Supplier, Zendesk, Freight, Facility, and PO">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M4 6h16M4 12h12M4 18h8" stroke-linecap="round" stroke-width="1.5"></path>
+</svg>
+  Shipment Details
+</button>
+<button aria-label="Download Applied" class="cmd cmd--ghost" id="btn-dl-week-applied" title="Export applied UIDs for this week">
+<svg aria-hidden="true" fill="none" focusable="false" stroke="currentColor" viewbox="0 0 24 24">
+<path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path>
+</svg>
+    Download Applied
+  </button>
+</div>
+</div>
+<div class="mt-3 grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+  <div class="lg:col-span-3 min-w-0">
+    <!-- Ops insights (switchable views) -->
+<div class="ring-gray-100 min-h-0 border bg-white min-h-[520px] shadow rounded-2xl p-5 ring-1 mb-3">
+<div class="flex items-start justify-between gap-3">
+<div class="min-h-[520px] min-w-0 min-h-0 h-full">
+<div class="text-base font-semibold">Insights</div>
+<div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
+<div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
+<div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
+</div>
+</div>
+<!-- vertical buttons -->
+<div class="flex flex-col gap-2 shrink-0">
+<button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
+</svg><span>Supplier</span></button>
+<button class="ops-pill" data-opsview="facility" title="Facility"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V6a2 2 0 0 1 2-2h6v16"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 20V10a2 2 0 0 1 2-2h4v12"/><path stroke-width="1.6" stroke-linecap="round" d="M7 8h2"/><path stroke-width="1.6" stroke-linecap="round" d="M7 11h2"/><path stroke-width="1.6" stroke-linecap="round" d="M7 14h2"/></svg><span>Facility</span></button>
+<button class="ops-pill" data-opsview="zendesk" title="Zendesk"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" d="M7 9h10"/><path stroke-width="1.6" stroke-linecap="round" d="M7 13h6"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H10l-4 3v-3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/></svg><span>Zendesk</span></button>
+<button class="ops-pill" data-opsview="freight" title="Freight type"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 7h11v10H3z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 10h4l3 3v4h-7z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.5 19a1.5 1.5 0 1 0 0-.01"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a1.5 1.5 0 1 0 0-.01"/></svg><span>Freight</span></button>
+<button class="ops-pill" data-opsview="carton" title="Cartons"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 8.5 12 3 3 8.5l9 5.5 9-5.5Z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 8.5v7L12 21l-9-5.5v-7"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 14v7"/></svg><span>Carton</span></button>
+<button class="ops-pill" data-opsview="placeholder" title="Placeholder"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 2l1.2 3.6L17 7l-3.8 1.4L12 12l-1.2-3.6L7 7l3.8-1.4L12 2Z"/>
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 13l.8 2.4L8 16l-2.2.6L5 19l-.8-2.4L2 16l2.2-.6L5 13Z"/>
+</svg><span>Placeholder</span></button>
+</div>
+</div>
+</div>
+<!-- PO progress (planned / received / applied) placeholder removed from right panel -->
+<!-- (hidden legacy progress tiles kept for stability) -->
+<div class="hidden" id="ops-progress-tiles"></div>
+  </div>
+  <div class="lg:col-span-2 min-w-0 flex flex-col gap-3 min-h-[520px]">
+    <!-- Ops right panel: Week totals (Flow-style) -->
+<div class="bg-white rounded-2xl border shadow p-4 mb-3">
+<div class="text-base font-semibold">Week totals</div>
+<div class="text-xs text-gray-500 mb-3">Week of <span id="ops-week-of">—</span></div>
+<div class="bg-gray-50 rounded-xl border p-3">
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 3h10v4H7zM5 7h14v14H5z" stroke-width="1.5"></path></svg>
+</span>
+              POs planned – received
+            </div>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-po-planned">0</span> – <span id="ops-week-po-received">0</span></div>
+</div>
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke-width="1.5"></path></svg>
+</span>
+              Units planned – applied
+            </div>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-units-planned">0</span> – <span id="ops-week-units-applied">0</span></div>
+</div>
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z" stroke-width="1.5"></path></svg>
+</span>
+              Cartons in – cartons out
+            </div>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-2 mt-3">
+<div class="bg-white border rounded-xl p-3">
+<div class="text-xs text-gray-500">Total suppliers</div>
+<div class="text-lg font-semibold tabular-nums" id="ops-week-suppliers">0</div>
+</div>
+<div class="bg-white border rounded-xl p-3">
+<div class="text-xs text-gray-500">Total Zendesk</div>
+<div class="text-lg font-semibold tabular-nums" id="ops-week-zendesk">0</div>
+</div>
+</div>
+<div class="mt-3 flex items-center justify-between">
+<div class="inline-flex items-center gap-2 text-xs text-gray-600">
+<span class="inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+            Health
+            <span class="px-2 py-0.5 rounded-full border text-xs" id="ops-week-health">—</span>
+</div>
+<div class="text-xs text-gray-500">Updated on refresh</div>
+</div>
+</div>
+
+<!-- Reports & downloads (3x2) -->
+<div class="bg-white rounded-2xl border shadow p-4 mb-3 flex-1 flex flex-col">
+<div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-posku"><span class="text-base leading-none">📊</span>PO × SKU Discrepancy</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-po"><span class="text-base leading-none">📑</span>PO Discrepancy</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-ship-summary"><span class="text-base leading-none">🚚</span>Shipment Summary</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-ship-detail"><span class="text-base leading-none">📄</span>Shipment Details</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-week-applied"><span class="text-base leading-none">⬇️</span>Download Applied</button>
+<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
+</div>
+</div>
+  </div>
+</div><!-- Full-width PO progress (bottom half) -->
+<div class="w-full min-w-0 mt-6">
+<div class="bg-white rounded-2xl border shadow p-4">
+<div class="flex items-center justify-between gap-3 mb-1">
+<div class="text-base font-semibold">PO progress</div>
+<div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
+</div>
+<!-- Totals -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+<div class="bg-gray-50 rounded-xl border p-3">
+<div class="flex items-center justify-between text-sm">
+<div class="text-gray-700">Received</div>
+<div class="font-semibold tabular-nums"><span id="ops-po-received-total">0</span> / <span id="ops-po-planned-total">0</span></div>
+</div>
+<div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+<div class="h-full bg-emerald-500" id="ops-po-received-bar" style="width:0%"></div>
+</div>
+</div>
+<div class="bg-gray-50 rounded-xl border p-3">
+<div class="flex items-center justify-between text-sm">
+<div class="text-gray-700">Applied</div>
+<div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
+</div>
+<div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
+<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:#16a34a;"></div>
+</div>
+</div>
+</div>
+<!-- PO search -->
+<div class="flex items-center gap-2 mb-3">
+<input class="w-full border rounded-xl px-3 py-2 text-sm" id="ops-po-search" placeholder="Search / filter PO (e.g. WADA002381)"/>
+<button class="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50" id="ops-po-clear">Clear</button>
+</div>
+<!-- PO table -->
+<div class="overflow-auto rounded-xl border">
+<table class="min-w-full text-sm">
+<thead class="bg-gray-50">
+<tr class="text-gray-500">
+<th class="text-left py-2 px-3">PO</th>
+<th class="text-left py-2 px-3">Supplier</th>
+<th class="text-left py-2 px-3">Facility</th>
+<th class="text-left py-2 px-3">Freight</th>
+<th class="text-left py-2 px-3">Zendesk</th>
+<th class="text-right py-2 px-3">Planned</th>
+<th class="text-right py-2 px-3">Received</th>
+<th class="text-right py-2 px-3">Applied</th>
+<th class="text-right py-2 px-3">Rem</th>
+<th class="text-right py-2 px-3">%</th>
+<th class="py-2 px-3 w-[240px]">Progress</th>
+</tr>
+</thead>
+<tbody id="ops-po-table-body">
+<tr><td class="text-center text-xs text-gray-400 py-6" colspan="11">Loading…</td></tr>
+</tbody>
+</table>
+</div>
+<!-- PO detail (optional inline) -->
+<div class="bg-gray-50 rounded-xl border p-3 text-sm mt-3 hidden" id="ops-po-detail"></div>
+</div>
+</div>
+</div>
+</div></section>
+<!-- ================= UID Intake ================= -->
+<section class="hidden" id="page-intake">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-5">
+<div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+<div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+<svg aria-hidden="true" class="heartbeat" focusable="false" height="18" viewbox="0 0 24 24" width="18">
+<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"></path>
+</svg>
+<div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button aria-label="Export XLSX" class="px-3 py-2 rounded-lg text-sm border" id="btn-export-day">Export XLSX</button>
+<button aria-label="Upload UIDs" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-applied">Upload UIDs</button>
+<button aria-label="Upload Bin Manifest" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-bins">Upload Bin Manifest</button>
+<input accept=".xlsx,.csv" class="hidden" id="file-bins" type="file"/>
+<input accept=".xlsx,.csv" class="hidden" id="file-upload-applied" type="file"/>
+<button aria-label="Delete Selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" id="btn-delete-selected">Delete Selected</button>
+</div>
+</div>
+<!-- Ops ribbon -->
+<div class="mt-3 bg-white border rounded-xl shadow p-3" id="ops-ribbon">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+<div class="flex gap-3">
+<div class="flex-1 border rounded-lg p-3">
+<div class="text-xs text-gray-500">Scans Today</div>
+<div class="text-2xl font-bold tabular-nums" id="ops-today">0</div>
+</div>
+<div class="flex-1 border rounded-lg p-3">
+<div class="text-xs text-gray-500">Last Hour</div>
+<div class="text-2xl font-bold tabular-nums" id="ops-hour">0</div>
+</div>
+</div>
+<div class="flex items-center gap-4 border rounded-lg p-3">
+<div id="ops-heart-small"></div>
+<div>
+<div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
+<div class="text-2xl font-bold tabular-nums" id="ops-rate">0</div>
+</div>
+</div>
+<div class="border rounded-lg p-3">
+<div class="text-sm font-semibold mb-1">Data Quality</div>
+<div class="flex items-center justify-between text-sm">
+<span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
+</div>
+<div class="flex items-center justify-between text-sm">
+<span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
+</div>
+<div class="text-xs text-gray-500 mt-2">Sync states</div>
+<div class="flex flex-wrap gap-2 mt-1" id="ops-sync-badges"></div>
+</div>
+<div class="border rounded-lg p-3">
+<div class="flex items-center justify-between">
+<div class="text-sm font-semibold">Alerts</div>
+<small class="text-gray-500">
+<span id="ops-last-updated">—</span>
+<span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
+<span class="w-2 h-2 rounded-full bg-gray-300" id="ops-dot"></span>SSE
+                </span>
+</small>
+</div>
+<ul aria-live="polite" class="list-disc ml-4 mt-1 text-sm" id="ops-alerts"><li class="text-gray-400">No alerts.</li></ul>
+</div>
+</div>
+</div>
+<!-- Intake Table -->
+<div class="mt-3 overflow-auto">
+<table class="w-full min-w-[1100px] border-collapse border">
+<thead class="bg-gray-100">
+<tr>
+<th class="th border px-2 py-1 text-left w-8"><input id="chk-all" type="checkbox"/></th>
+<th class="th border px-2 py-1 text-left">Date</th>
+<th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+<th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
+<th class="th border px-2 py-1 text-left">PO_Number</th>
+<th class="th border px-2 py-1 text-left">SKU_Code</th>
+<th class="th border px-2 py-1 text-left">UID</th>
+<th class="th border px-2 py-1 text-center">Sync</th>
+</tr>
+</thead>
+<tbody id="intake-body"></tbody>
+</table>
+</div>
+<div class="mt-3">
+<button class="px-3 py-2 rounded-lg border text-sm" id="btn-add-row">Add Row</button>
+</div>
+<!-- Quick Delete by UID -->
+<div class="mt-4 bg-white rounded-2xl border shadow p-4">
+<div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+<p class="text-xs text-gray-500 mb-2">
+    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
+  </p>
+<textarea class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2" id="uids-to-delete" placeholder="Paste UIDs here…" rows="3"></textarea>
+<div class="mt-2 flex items-center gap-2">
+<button class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700" id="btn-delete-uids">Delete UID(s)</button>
+<span class="text-xs text-gray-500" id="delete-uids-status"></span>
+</div>
+</div>
+</section>
+<!-- ================= Executive (Client) ================= -->
+<section class="hidden" id="page-exec">
+<div class="flex items-center justify-between mb-3">
+<div>
+<div class="text-2xl font-semibold">Executive Summary</div>
+<div class="text-xs text-rose-900/70 mt-0.5" id="exec-sub"></div>
+</div>
+<div class="flex items-center gap-2">
+<button class="cmd cmd--primary" id="btn-exec-doc">Download .doc</button>
+<button class="cmd" id="btn-exec-csv">PO×SKU CSV</button>
+</div>
+</div>
+</section>
+<!-- ================= Flow ================= -->
+<section class="hidden" id="page-flow"></section>
+</main>
+<!-- Footer health pill (shows Applied this week) -->
+<div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
+<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300" id="health-pill">
+<span class="inline-block w-2 h-2 rounded-full bg-amber-500" id="health-dot"></span>
+      Health: <span class="ml-1" id="vo-health">n/a</span>
+</span>
+<span id="vo-footer-text">Applied this week: 0</span>
+</div>
+  <script>
+    // ---------------------------
+    // ---------------------------
+// Small utilities (safe HTML, formatting)
+// ---------------------------
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function fmt(n, digits = 0) {
+  const x = Number(n);
+  if (!isFinite(x)) return '0';
+  return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+function pct(n, d, digits = 0) {
+  const nn = Number(n) || 0, dd = Number(d) || 0;
+  if (!dd) return '0%';
+  return (100 * nn / dd).toFixed(digits) + '%';
+}
+
+// Softer / matte palette for Ops insight bars
+const OPS_PLANNED_BG = 'rgba(156,163,175,0.25)'; // gray-400 @ 25%
+const OPS_PLANNED_FG = 'rgba(156,163,175,0.55)'; // gray-400 @ 55%
+const OPS_RECEIVED_FG = 'rgba(14,165,233,0.30)'; // sky-500 @ 30%
+const OPS_APPLIED_OPACITY = 0.72;               // applied overlay opacity
+
+// Bar row helper used by Ops insights (safe even if not used everywhere)
+function barRowHtml(label, val, denom, barColor) {
+  const v = Number(val) || 0, d = Number(denom) || 0;
+  const p = d > 0 ? Math.max(0, Math.min(100, 100 * v / d)) : 0;
+  const c = barColor || OPS_PLANNED_FG;
+  return `
+    <div class="flex items-center gap-3">
+      <div class="w-20 shrink-0 text-[11px] text-gray-500">${escapeHtml(label)}</div>
+      <div class="flex-1 h-2 rounded-full overflow-hidden" style="background:${OPS_PLANNED_BG};">
+        <div class="h-2 rounded-full" style="width:${p}%; background:${c};"></div>
+      </div>
+      <div class="w-24 text-right text-[11px] tabular-nums text-gray-700">${fmt(v)}</div>
+    </div>
+  `;
+}
+
+// Back-compat alias (older refactors called this progressHtml)
+function progressHtml(label, val, denom, barColor) {
+  return barRowHtml(label, val, denom, barColor);
+}
+
+// Single progress bar: received (soft) + applied (matte) over planned baseline
+function progressBarHtml(planned, received, applied) {
+  const p = Number(planned) || 0, r = Number(received) || 0, a = Number(applied) || 0;
+  const recPct = p > 0 ? Math.max(0, Math.min(100, 100 * r / p)) : 0;
+  const appPct = p > 0 ? Math.max(0, Math.min(100, 100 * a / p)) : 0;
+  return `
+    <div class="relative h-2.5 rounded-full overflow-hidden" style="background:${OPS_PLANNED_BG};">
+      <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
+      <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR}; opacity:${OPS_APPLIED_OPACITY};"></div>
+    </div>
+  `;
+}
+
+function shortTwoWords(name) {
+      const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+      const s = parts.slice(0, 2).join(' ');
+      return s || '—';
+    }
+  const BRAND = '#990033';
+  const APPLIED_COLOR = '#16a34a'; // matte green for applied
+const BASE_BPM = 40;
+  const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
+  const $ = (s)=>document.querySelector(s);
+  // Show "Month DD YYYY • <local TZ>" using the viewer's local timezone
+(function setNavToday(){
+  const d = new Date();
+  const month = d.toLocaleString('en-US', { month: 'long' });
+  const day   = String(d.getDate()).padStart(2, '0');
+  const year  = d.getFullYear();
+  const tzShort = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+    .formatToParts(d)
+    .find(p => p.type === 'timeZoneName')?.value || '';
+      const __el_vo_today = document.getElementById('vo-today'); if(__el_vo_today) __el_vo_today.textContent = `${month} ${day} ${year} • ${tzShort}`;
+})();
+const iso = (d) => {
+  const x = new Date(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, '0');
+  const day = String(x.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const mondayOf = (d=new Date()) => { const x=new Date(d); const day=x.getDay(); const diff=(day===0?-6:1)-day; x.setDate(x.getDate()+diff); x.setHours(0,0,0,0); return x; };
+const fmtInt = (n) => Number(n||0).toLocaleString();
+const toNum = (v) => Number(String(v ?? 0).toString().replace(/,/g, '')) || 0;
+const toUI = (isoStr) =>
+  (isoStr && typeof isoStr === 'string' && isoStr.includes('-'))
+    ? isoStr.split('-').reverse().join('-')
+    : (isoStr || '');
+
+// ---- Business timezone helpers (single source of truth: Asia/Shanghai) ----
+const BUSINESS_TZ = document.querySelector('meta[name="business-tz"]')?.content || 'Asia/Shanghai';
+
+// Format a Date into 'YYYY-MM-DD' in the given IANA TZ
+function ymdInTZ(d, tz = BUSINESS_TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d);
+  const get = k => parts.find(p => p.type === k)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+// Today as 'YYYY-MM-DD' in business TZ
+function todayInTZ(tz = BUSINESS_TZ) { return ymdInTZ(new Date(), tz); }
+
+// Day-of-week (0..6 Sun..Sat) for a given 'YYYY-MM-DD' in business TZ
+function dayOfWeekInTZ(ymd, tz = BUSINESS_TZ) {
+  const dt = new Date(ymd + 'T12:00:00Z'); // midday UTC avoids DST edges
+  const name = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: tz }).format(dt);
+  return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(name);
+}
+
+// Monday anchor (returns Monday 'YYYY-MM-DD' for the given day, in business TZ)
+function mondayOfInTZ(ymd, tz = BUSINESS_TZ) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const anchor = new Date(Date.UTC(y, m - 1, d));
+  const dow = dayOfWeekInTZ(ymd, tz);
+  const offset = dow === 0 ? -6 : (1 - dow);
+  anchor.setUTCDate(anchor.getUTCDate() + offset);
+  return ymdInTZ(anchor, tz);
+}
+
+// Convert a completed_at timestamp -> 'YYYY-MM-DD' in business TZ
+function ymdFromCompletedAtInTZ(completedAt, tz = BUSINESS_TZ) {
+  return completedAt ? ymdInTZ(new Date(completedAt), tz) : '';
+}
+
+function createHeart(size=24, color=BRAND, bpm=40){
+  const s='http://www.w3.org/2000/svg', svg=document.createElementNS(s,'svg');
+  svg.setAttribute('viewBox','0 0 24 24'); svg.setAttribute('width',size); svg.setAttribute('height',size);
+  const p=document.createElementNS(s,'path');
+  p.setAttribute('d','M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z');
+  p.setAttribute('fill', color); svg.appendChild(p);
+  svg.classList.add('heartbeat'); svg.style.animationDuration = `${(60/Math.max(40,bpm)).toFixed(2)}s`;
+  return svg;
+}
+  // API helpers
+  const state={weekStart:'', plan:[], records:[]};
+
+  async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
+  async function fetchPlan(w){
+  if(!apiBase) return [];
+  try {
+    return await api(`/plan/weeks/${w}`);
+  } catch {
+    return [];
+  }
+}
+
+  // Summary-first: dashboards never pull raw /records.
+  async function fetchSummary(fromYMD, toYMD, status='complete'){
+    if(!apiBase) return null;
+    try{
+      const q = new URLSearchParams();
+      if(fromYMD) q.set('from', fromYMD);
+      if(toYMD) q.set('to', toYMD);
+      if(status) q.set('status', status);
+      return await api(`/records/summary?${q.toString()}`);
+    }catch{ return null; }
+  }
+
+// --- Fetch bins for a week (business week start) ---
+async function fetchBins(ws) {
+  if (!apiBase) return [];
+  try {
+    const r = await api(`/bins/weeks/${ws}`);
+    return Array.isArray(r) ? r : (r.bins || []);
+  } catch {
+    return [];
+  }
+}
+
+// --- Fetch receiving rows for a week (used to estimate cartons-in and "approx received units") ---
+async function fetchReceiving(ws) {
+  if (!apiBase) return [];
+  try {
+    // Matches Flow/Receiving modules
+    const r = await api(`/receiving?weekStart=${encodeURIComponent(ws)}`);
+    return Array.isArray(r) ? r : (r.rows || r.data || []);
+  } catch {
+    return [];
+  }
+}
+
+
+// --- Compute bin QA (cross-check with applied records) ---
+function computeBinQA(ws, records=[], bins=[]) {
+  // stats from bins
+  const binMap = new Map(); // bin -> { units, weight }
+  let binsCount = 0, totalUnitsFromBins = 0, totalWeightKg = 0;
+
+  for (const b of bins) {
+    const id = String(b.mobile_bin || '').trim();
+    if (!id) continue;
+    binsCount++;
+    const u = Number(b.total_units ?? 0) || 0;
+    const w = Number(b.weight_kg ?? 0) || 0;
+    totalUnitsFromBins += u;
+    totalWeightKg += w;
+
+    const rec = binMap.get(id) || { units: 0, weight: 0 };
+    rec.units += u;
+    rec.weight += w;
+    binMap.set(id, rec);
+  }
+
+  // stats from applied records (this week)
+  const byBin = new Map(); // bin -> units counted from UIDs
+  for (const r of records || []) {
+    if (r.status !== 'complete') continue;
+    const bin = String(r.mobile_bin || '').trim();
+    if (!bin) continue;
+    byBin.set(bin, (byBin.get(bin) || 0) + 1);
+  }
+
+  // anomalies
+  const anomalies = [];
+  const suspicious = [];
+
+  // 1) bin exists in manifest but no UIDs, or vice versa
+  const manifestBins = new Set(binMap.keys());
+  const uidBins = new Set(byBin.keys());
+
+  // bins in manifest but zero UIDs
+  for (const b of manifestBins) {
+    const m = binMap.get(b);
+    const uids = byBin.get(b) || 0;
+    if (uids === 0) anomalies.push({ type: 'no_uids_for_manifest_bin', bin: b, units_manifest: m.units, weight_kg: m.weight });
+  }
+  // bins with UIDs but missing in manifest
+  for (const b of uidBins) {
+    if (!manifestBins.has(b)) anomalies.push({ type: 'uids_without_manifest', bin: b, uids: byBin.get(b) });
+  }
+
+  // 2) count mismatch (UIDs vs manifest units)
+  for (const b of manifestBins) {
+    const m = binMap.get(b);
+    const uids = byBin.get(b) || 0;
+    if (m.units && Math.abs(m.units - uids) > 0) {
+      anomalies.push({ type: 'units_mismatch', bin: b, units_manifest: m.units, uids });
+    }
+  }
+
+  // 3) weight plausibility per unit (very light or very heavy)
+  for (const [b, m] of binMap.entries()) {
+    if (!m.units || !m.weight) continue;
+    const per = m.weight / Math.max(1, m.units);
+    if (per < 0.005 || per > 5) {
+      suspicious.push({ type: 'weight_per_unit_outlier', bin: b, units: m.units, weight_kg: m.weight, kg_per_unit: per });
+    }
+  }
+
+  return {
+    ws,
+    binsCount,
+    totalUnitsFromBins,
+    totalWeightKg,
+    avgWeightPerBin: binsCount ? (totalWeightKg / binsCount) : 0,
+    totalsFromUIDs: Array.from(byBin.values()).reduce((s, v) => s + v, 0),
+    anomalies,
+    suspicious,
+    topOutliers: suspicious.sort((a,b) => Math.abs(b.kg_per_unit - 1) - Math.abs(a.kg_per_unit - 1)).slice(0,5),
+  };
+}
+
+
+  // ---------- Capsules ----------
+  function addDaysISO(s,days){const [y,m,d]=s.split('-').map(Number);const b=new Date(y,m-1,d);b.setDate(b.getDate()+days);return iso(b)}
+  function renderCapsules(baseISO, plannedTotal = 0, appliedTotal = 0, totalsByWeek = null) {
+  const r = $('#capsules');
+  if (!r) return;
+  r.classList.remove('hidden');
+  r.innerHTML = '';
+
+  const list = [-7, 0, 7, 14, 21].map(n => addDaysISO(baseISO, n));
+
+  list.forEach(id => {
+    const d = new Date(id + 'T00:00:00');
+    const day = String(d.getDate()).padStart(2, '0');
+    const mon = d.toLocaleString('en-US', { month: 'short' }).toUpperCase().slice(0, 3);
+
+    // Use precomputed totals if provided, otherwise fall back to current week numbers for the selected pill only
+    const stats =
+      (totalsByWeek && totalsByWeek[id]) ||
+      (id === state.weekStart
+        ? { planned: plannedTotal, applied: appliedTotal }
+        : { planned: 0, applied: 0 });
+
+    const el = document.createElement('button');
+    el.className = 'wkcap bg-white hover:scale-[1.02] transition';
+    el.style.borderColor = (id === state.weekStart ? BRAND : 'rgba(0,0,0,.12)');
+    el.innerHTML = `
+      <div class="m" style="color:${id === state.weekStart ? BRAND : '#6b7280'}">${mon}</div>
+      <div class="d">${day}</div>
+      <div class="t" id="cap-total-${id}">${fmtInt(stats.planned || 0)}</div>
+      <div class="bar"><div id="cap-bar-${id}"></div></div>
+    `;
+    el.onclick = () => { $('#week-start').value = id; setWeek(id); };
+    r.appendChild(el);
+
+    const p = (stats.planned > 0)
+      ? Math.min(100, Math.round(((stats.applied || 0) * 100) / stats.planned))
+      : 0;
+
+    const bar = el.querySelector(`#cap-bar-${id}`);
+    if (bar) bar.style.width = `${p}%`;
+  });
+}
+
+  // ---------- Aggregations ----------
+  // aggregate() supports:
+  // 1) raw records: { status:'complete', po_number, sku_code }
+  // 2) summary rows: { po, units } (from /records/summary by_po)
+  function aggregate(rows){
+    const byPO=new Map(),bySKU=new Map();
+    for(const r of (rows||[])){
+      if(!r) continue;
+      // summary row
+      if(('po' in r) && ('units' in r) && !('po_number' in r)){
+        const po=String(r.po||'').trim();
+        const u=Number(r.units||0)||0;
+        if(po) byPO.set(po,(byPO.get(po)||0)+u);
+        continue;
+      }
+      if(r.status!=='complete') continue;
+      const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim();
+      if(po) byPO.set(po,(byPO.get(po)||0)+1);
+      if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);
+    }
+    return {byPO,bySKU};
+  }
+  function joinPOProgress(plan, byPO){
+    const map=new Map();
+    for(const p of plan||[]){ const po=String(p.po_number||'').trim(); if(!po) continue; const rec=map.get(po)||{due:p.due_date,planned:0,applied:0}; rec.planned+=toNum(p.target_qty); if(rec.due!==p.due_date) rec.due = rec.due < p.due_date ? rec.due : p.due_date; map.set(po,rec); }
+    for(const [po,ap] of byPO.entries()){ const rec=map.get(po)||{due:'',planned:0,applied:0}; rec.applied+=ap; map.set(po,rec);}
+    const list=[]; for(const [po,rec] of map.entries()){ list.push({po,due:rec.due,planned:rec.planned,applied:rec.applied,pct:rec.planned>0?Math.round(rec.applied*100/rec.planned):100}); }
+    list.sort((a,b)=>String(a.due).localeCompare(String(b.due))); return list;
+  }
+
+  // ---------- Dashboard render ----------
+  function computeRisk(rows){
+  // Show top items with remaining > 0, regardless of week end
+  const out = [];
+  for (const r of rows || []) {
+    const planned = Number(r.planned || 0);
+    const applied = Number(r.applied || 0);
+    const remaining = Math.max(0, planned - applied);
+    if (remaining > 0) {
+      out.push({
+        key: r.po || r.sku || r.key,
+        due_date: r.due || r.due_date || '',
+        planned,
+        applied,
+        remaining,
+        pct: planned > 0 ? Math.round((applied / planned) * 100) : 0,
+      });
+    }
+  }
+  // Prioritize by remaining qty, then earliest due date if available
+  out.sort((a, b) => b.remaining - a.remaining ||
+                     (new Date(a.due_date || '9999-12-31')) -
+                     (new Date(b.due_date || '9999-12-31')));
+  return out.slice(0, 5);
+}
+  
+  function setFooterHealth(pct, appliedWeek){
+    const pill=$('#health-pill'), dot=$('#health-dot');
+    let cls='bg-amber-100 text-amber-900 border-amber-300', d='bg-amber-500', label='On-Plan';
+    if(pct>=100){cls='bg-green-100 text-green-900 border-green-300'; d='bg-green-500'; label='Ahead-of-Plan';}
+    else if(pct<80){cls='bg-rose-100 text-rose-900 border-rose-300'; d='bg-rose-500'; label='At-Risk';}
+    pill.className='inline-flex items-center gap-2 px-3 py-1 rounded-full border '+cls;
+    dot.className='inline-block w-2 h-2 rounded-full '+d;
+      const __el_vo_health = document.getElementById('vo-health'); if(__el_vo_health) __el_vo_health.textContent = label;
+      const __el_vo_footer_text = document.getElementById('vo-footer-text'); if(__el_vo_footer_text) __el_vo_footer_text.textContent = `Applied this week: ${fmtInt(appliedWeek)}`;
+  }
+
+  // ---------- Downloads ----------
+  function toCSV(header,rows){
+    const esc=v=>{v=String(v??''); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v;}
+    const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
+    return '\ufeff'+head+'\r\n'+body+'\r\n';
+  }
+function buildDiscrepancyPOSKU(plan, recRows){
+const byPS=new Map();
+const binsByPS=new Map();
+
+for(const r of recRows||[]){
+  if(!r) continue;
+
+  // Summary row: { po, sku, units }
+  if(('po' in r) && ('sku' in r) && ('units' in r) && !('po_number' in r)){
+    const po=String(r.po||'').trim();
+    const sku=String(r.sku||'').trim();
+    const u=Number(r.units||0)||0;
+    if(!po||!sku) continue;
+    const k=`${po}|||${sku}`;
+    byPS.set(k,(byPS.get(k)||0)+u);
+    continue;
+  }
+
+  // Raw record: { status, po_number, sku_code, mobile_bin }
+  if(r.status!=='complete') continue;
+  const po=String(r.po_number||'').trim();
+  const sku=String(r.sku_code||'').trim();
+  if(!po||!sku) continue;
+  const k=`${po}|||${sku}`;
+  byPS.set(k,(byPS.get(k)||0)+1);
+
+  const mb = String(r.mobile_bin || r.bin || '').trim();
+  if (mb) {
+    if (!binsByPS.has(k)) binsByPS.set(k, new Set());
+    binsByPS.get(k).add(mb);
+  }
+}
+
+
+  const seen=new Set(); const outRows=[];
+  for(const p of plan||[]){
+    const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim();
+    if(!po||!sku) continue;
+    const k=`${po}|||${sku}`;
+    if(seen.has(k)) continue;
+    seen.add(k);
+
+    const planned=toNum(p.target_qty), applied=byPS.get(k)||0;
+
+const binSet = binsByPS.get(k) || new Set();
+const binList = Array.from(binSet).sort();
+
+outRows.push({
+  'PO': po,
+  'SKU': sku,
+  'Supplier Name': p.supplier_name || '',
+  'Facility Name': p.facility_name || '',
+  'Freight Type': p.freight_type || '',
+  'Zendesk Ticket #': p.zendesk_ticket || '',
+  'Mobile Bin Count': binList.length,
+  'Mobile Bins': binList.join('; '),
+  'Planned': planned,
+  'Applied': applied,
+  'Discrepancy (Applied - Planned)': applied - planned
+});
+  }
+  return outRows;
+}
+
+function buildDiscrepancyPO(joined, plan){
+  // pick first non-empty meta per PO from the plan
+  const metaByPO = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    if (!po) continue;
+    if (!metaByPO.has(po)) {
+      metaByPO.set(po, {
+        supplier_name: p.supplier_name || '',
+        facility_name: p.facility_name || '',
+        freight_type: p.freight_type || '',
+        zendesk_ticket: p.zendesk_ticket || '',
+      });
+    }
+  }
+
+  return (joined || []).map(r => {
+    const m = metaByPO.get(r.po) || { supplier_name:'', facility_name:'', freight_type:'', zendesk_ticket:'' };
+    const planned = r.planned || 0;
+    const applied = r.applied || 0;
+
+    return {
+      'PO': r.po,
+      'Supplier Name': m.supplier_name,
+      'Facility Name': m.facility_name,
+      'Freight Type': m.freight_type,
+      'Zendesk Ticket #': m.zendesk_ticket,
+      'Planned': planned,
+      'Applied': applied,
+      'Discrepancy (Applied - Planned)': applied - planned
+    };
+  });
+}
+
+function buildShipmentSummary(plan = [], records = [], bins = []) {
+  const completed = (records || []).filter(r => r.status === 'complete');
+
+  const planByKey = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    const sku = String(p.sku_code || '').trim();
+    if (!po || !sku) continue;
+    planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  const binWeight = new Map();
+  for (const b of bins || []) {
+    const mb = String(b.mobile_bin ?? b.bin ?? '').trim();
+    if (!mb) continue;
+    const w = Number(b.gross_weight ?? b.weight ?? b.weight_kg ?? 0) || 0;
+    binWeight.set(mb, w);
+  }
+
+  const norm = (v) => {
+    const s = String(v ?? '').trim();
+    return s ? s : '(Unspecified)';
+  };
+
+  const groups = new Map();
+  const binAssignedGroup = new Map();
+
+  for (const r of completed) {
+    const po = String(r.po_number || '').trim();
+    const sku = String(r.sku_code || '').trim();
+    if (!po || !sku) continue;
+
+    const p = planByKey.get(`${po}|||${sku}`) || {};
+    const supplier = norm(p.supplier_name);
+    const zendesk  = norm(p.zendesk_ticket ?? p.zendesk_ticket_number ?? p.zendesk);
+    const freight  = norm(p.freight_type);
+    const facility = norm(p.facility_name);
+
+    const gkey = `${supplier}|||${zendesk}|||${freight}|||${facility}`;
+
+    if (!groups.has(gkey)) {
+      groups.set(gkey, {
+        'Supplier Name': supplier,
+        'Zendesk Ticket #': zendesk,
+        'Freight Type': freight,
+        'Facility Name': facility,
+        _poSet: new Set(),
+        _binSet: new Set(),
+        'Total Units Applied': 0,
+        'Gross Weight': 0
+      });
+    }
+
+    const g = groups.get(gkey);
+    g['Total Units Applied'] += 1;
+    g._poSet.add(po);
+
+    const mb = String(r.mobile_bin || r.bin || '').trim();
+    if (mb) {
+      g._binSet.add(mb);
+      const w = binWeight.get(mb) || 0;
+
+      if (!binAssignedGroup.has(mb)) {
+        binAssignedGroup.set(mb, gkey);
+        g['Gross Weight'] += w;
+      }
+    }
+  }
+
+  const out = [];
+  for (const g of groups.values()) {
+    const binCount = g._binSet.size;
+    out.push({
+      'Supplier Name': g['Supplier Name'],
+      'Zendesk Ticket #': g['Zendesk Ticket #'],
+      'Freight Type': g['Freight Type'],
+      'Facility Name': g['Facility Name'],
+      'Unique PO Count': g._poSet.size,
+      'Total Units Applied': g['Total Units Applied'],
+      'Total Mobile Bins': binCount,
+      'Gross Weight': round2(g['Gross Weight']),
+      'CBM': round3(binCount * 0.046)
+    });
+  }
+
+  out.sort((a, b) =>
+    String(a['Supplier Name']).localeCompare(String(b['Supplier Name'])) ||
+    String(a['Zendesk Ticket #']).localeCompare(String(b['Zendesk Ticket #'])) ||
+    String(a['Freight Type']).localeCompare(String(b['Freight Type'])) ||
+    String(a['Facility Name']).localeCompare(String(b['Facility Name']))
+  );
+
+  return out;
+}
+
+function buildShipmentDetail(plan = [], records = [], bins = []) {
+  const completed = (records || []).filter(r => r.status === 'complete');
+
+  const planByKey = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    const sku = String(p.sku_code || '').trim();
+    if (!po || !sku) continue;
+    planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  const binWeight = new Map();
+  for (const b of bins || []) {
+    const mb = String(b.mobile_bin ?? b.bin ?? '').trim();
+    if (!mb) continue;
+    const w = Number(b.gross_weight ?? b.weight ?? b.weight_kg ?? 0) || 0;
+    binWeight.set(mb, w);
+  }
+
+  const norm = (v) => {
+    const s = String(v ?? '').trim();
+    return s ? s : '(Unspecified)';
+  };
+
+  const groups = new Map();
+  const binAssignedGroup = new Map();
+
+  for (const r of completed) {
+    const po = String(r.po_number || '').trim();
+    const sku = String(r.sku_code || '').trim();
+    if (!po || !sku) continue;
+
+    const p = planByKey.get(`${po}|||${sku}`) || {};
+    const supplier = norm(p.supplier_name);
+    const zendesk  = norm(p.zendesk_ticket ?? p.zendesk_ticket_number ?? p.zendesk);
+    const freight  = norm(p.freight_type);
+    const facility = norm(p.facility_name);
+
+    const gkey = `${supplier}|||${zendesk}|||${freight}|||${facility}|||${po}`;
+
+    if (!groups.has(gkey)) {
+      groups.set(gkey, {
+        'Supplier Name': supplier,
+        'Zendesk Ticket #': zendesk,
+        'Freight Type': freight,
+        'Facility Name': facility,
+        'PO': po,
+        _binSet: new Set(),
+        'Total Units Applied': 0,
+        'Gross Weight': 0
+      });
+    }
+
+    const g = groups.get(gkey);
+    g['Total Units Applied'] += 1;
+
+    const mb = String(r.mobile_bin || r.bin || '').trim();
+    if (mb) {
+      g._binSet.add(mb);
+      const w = binWeight.get(mb) || 0;
+
+      if (!binAssignedGroup.has(mb)) {
+        binAssignedGroup.set(mb, gkey);
+        g['Gross Weight'] += w;
+      } else if (binAssignedGroup.get(mb) === gkey) {
+        // same group ok
+      } else {
+        // collision: do not double-count weight
+      }
+    }
+  }
+
+  const out = [];
+  for (const g of groups.values()) {
+    const binCount = g._binSet.size;
+    out.push({
+      'Supplier Name': g['Supplier Name'],
+      'Zendesk Ticket #': g['Zendesk Ticket #'],
+      'Freight Type': g['Freight Type'],
+      'Facility Name': g['Facility Name'],
+      'PO': g['PO'],
+      'Total Units Applied': g['Total Units Applied'],
+      'Total Mobile Bins': binCount,
+      'Gross Weight': round2(g['Gross Weight']),
+      'CBM': round3(binCount * 0.046)
+    });
+  }
+
+  out.sort((a, b) =>
+    String(a['Supplier Name']).localeCompare(String(b['Supplier Name'])) ||
+    String(a['Zendesk Ticket #']).localeCompare(String(b['Zendesk Ticket #'])) ||
+    String(a['Freight Type']).localeCompare(String(b['Freight Type'])) ||
+    String(a['Facility Name']).localeCompare(String(b['Facility Name'])) ||
+    String(a['PO']).localeCompare(String(b['PO']))
+  );
+
+  return out;
+}
+
+function round2(n){ return Math.round((Number(n)||0) * 100) / 100; }
+function round3(n){ return Math.round((Number(n)||0) * 1000) / 1000; }
+
+
+async function downloadAppliedWeek() {
+  const ws = state.weekStart;
+  const weDate = new Date(ws);
+  weDate.setDate(weDate.getDate() + 6);
+  const we = iso(weDate);
+
+  if (!apiBase) {
+    alert('API not configured');
+    return;
+  }
+
+  // At scale, never build this CSV in the browser.
+  // Stream it from the server (fast + safe for 2M+ rows).
+  const url = `${apiBase}/export/applied?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete`;
+
+  // Use a temporary <a> so the browser downloads the file without navigating away.
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Applied_UIDs_${ws}_to_${we}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+
+  function buildExecHTML({
+  ws, we,
+  plannedTotal, appliedTotal, pct,
+  uniqueBins,
+  topPOSKU,             // [{po, sku, planned, applied, pct}]
+  topBins,              // [{bin, units, uniqueSkus}]
+  insights,             // [string, ...]
+  binQA                  // { binsCount, totalUnitsFromBins, totalWeightKg, avgWeightPerBin, anomalies[], suspicious[], ... }
+}) {
+  const pretty = s => (s||'').split('-').reverse().join('-');
+
+  const rowsPOSKU = (topPOSKU||[])
+    .map(r=>`<tr>
+      <td>${r.po}</td>
+      <td>${r.sku}</td>
+      <td style="text-align:right">${(r.planned||0).toLocaleString()}</td>
+      <td style="text-align:right">${(r.applied||0).toLocaleString()}</td>
+      <td style="text-align:right">${r.pct}%</td>
+    </tr>`).join('');
+
+  const rowsBins = (topBins||[])
+    .map(r=>`<tr>
+      <td>${r.bin}</td>
+      <td style="text-align:right">${(r.units||0).toLocaleString()}</td>
+      <td style="text-align:right">${(r.uniqueSkus||0).toLocaleString()}</td>
+    </tr>`).join('');
+
+  const bullets = (insights||[])
+    .map(t=>`<li>${t}</li>`).join('');
+
+  // Bin summary rows
+  const binSummary = binQA ? `
+    <table style="width:100%;border-collapse:collapse;margin:8px 0 0 0;font-size:13px">
+      <tbody>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Bins (count)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.binsCount||0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Units (manifest)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.totalUnitsFromBins||0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Weight (kg, total)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.totalWeightKg||0).toFixed(1)}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Avg kg / bin</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.avgWeightPerBin||0).toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">UID Units (this week)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(binQA.totalsFromUIDs||0).toLocaleString()}</td></tr>
+        <tr><td style="padding:6px 4px;border:1px solid #eee">Anomalies (count)</td><td style="padding:6px 4px;border:1px solid #eee;text-align:right">${(((binQA.anomalies||[]).length) + ((binQA.suspicious||[]).length)).toLocaleString()}</td></tr>
+      </tbody>
+    </table>
+  ` : '<div style="color:#888">No bin manifest uploaded for this week.</div>';
+
+  const topOutliers = (binQA?.topOutliers || []).slice(0,5).map(x =>
+    `<li>Bin ${x.bin}: ${x.units.toLocaleString()} units, ${x.weight_kg.toFixed(1)} kg (${x.kg_per_unit.toFixed(3)} kg/unit)</li>`
+  ).join('');
+
+  return `<!doctype html><meta charset="utf-8">
+  <style>
+    @page { size: A4 landscape; margin: 16mm; }
+    body  { font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:#111; line-height:1.35; }
+    h1    { margin:0 0 8px; font-size:22px; color:${BRAND}; }
+    h2    { font-size:16px; margin:16px 0 8px; }
+    table { border-collapse:collapse; width:100%; }
+    th, td { border:1px solid #eee; padding:6px 4px; }
+    th    { text-align:left; }
+    .kpi  { margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  </style>
+
+  <div>
+    <h1>VAS Weekly Executive Summary</h1>
+    <div style="color:#555;font-size:12px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
+
+    <!-- KPIs -->
+    <table class="kpi">
+      <tr>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Planned</div>
+          <div style="font-size:20px;font-weight:700">${plannedTotal.toLocaleString()}</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Applied</div>
+          <div style="font-size:20px;font-weight:700">${appliedTotal.toLocaleString()}</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Completion</div>
+          <div style="font-size:20px;font-weight:700">${pct}%</div>
+        </td>
+        <td>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
+          <div style="font-size:20px;font-weight:700">${uniqueBins.toLocaleString()}</div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="grid">
+      <div>
+        <h2>Top Insights</h2>
+        <ul style="margin:0 0 16px 16px;padding:0">${bullets || '<li style="color:#888">No notable insights.</li>'}</ul>
+
+        <h2>Mobile Bin Summary</h2>
+        ${binSummary}
+        ${topOutliers ? `<div style="margin-top:8px"><strong>Outliers (kg/unit):</strong><ul>${topOutliers}</ul></div>` : ''}
+      </div>
+
+      <div>
+        <h2>PO × SKU — Applied (Top)</h2>
+        <table style="font-size:13px; margin-bottom:16px">
+          <thead>
+            <tr>
+              <th>PO #</th>
+              <th>SKU</th>
+              <th style="text-align:right">Planned</th>
+              <th style="text-align:right">Applied</th>
+              <th style="text-align:right">%</th>
+            </tr>
+          </thead>
+          <tbody>${rowsPOSKU || `<tr><td colspan="5" style="color:#888;padding:10px 4px">No PO × SKU rows found.</td></tr>`}</tbody>
+        </table>
+
+        <h2>Units by Mobile Bin (Top)</h2>
+        <table style="font-size:13px">
+          <thead>
+            <tr>
+              <th>Mobile Bin</th>
+              <th style="text-align:right">Units</th>
+              <th style="text-align:right">Unique SKUs</th>
+            </tr>
+          </thead>
+          <tbody>${rowsBins || `<tr><td colspan="3" style="color:#888;padding:10px 4px">No bin data found.</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ----- PO Progress table -----
+function renderPOProgress(rows){
+  const tbody = document.getElementById('po-progress-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!rows || !rows.length){
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-xs text-gray-400 py-3">No data</td></tr>';
+    return;
+  }
+
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'odd:bg-gray-50';
+    tr.innerHTML = `
+      <td class="py-1 pr-2">${r.po}</td>
+      <td class="py-1 pr-2">${r.due ? toUI(r.due) : ''}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.planned||0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.applied||0).toLocaleString()}</td>
+      <td class="py-1 text-right tabular-nums">${r.pct||0}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function supplierRingSVG(applied, planned) {
+  const a = toNum(applied);
+  const p = Math.max(1, toNum(planned)); // avoid divide by zero
+  const ratio = Math.min(a / p, 1);
+  const pct = Math.round((a * 100) / p);
+
+  const size = 78;
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = ratio * c;
+
+  // Using currentColor for strokes so Tailwind text colors can control it later
+  return `
+    <div class="flex items-center justify-center w-full">
+      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-label="Supplier progress ring">
+        <circle cx="${size/2}" cy="${size/2}" r="${r}"
+          fill="none" stroke="#E5E7EB" stroke-width="${stroke}" />
+        <circle cx="${size/2}" cy="${size/2}" r="${r}"
+          fill="none" stroke="#990033" stroke-width="${stroke}"
+          stroke-linecap="round"
+          stroke-dasharray="${dash} ${c}"
+          transform="rotate(-90 ${size/2} ${size/2})" />
+        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+          font-size="16" font-weight="700" fill="#111827">${pct}%</text>
+      </svg>
+    </div>
+  `;
+}
+
+function facilityBarHTML(applied, planned) {
+  const a = toNum(applied);
+  const p = Math.max(0, toNum(planned));
+  const ratio = p > 0 ? Math.min(a / p, 1) : 0;
+  const pct = p > 0 ? Math.round((a * 100) / p) : 0;
+
+  return `
+    <div class="w-full">
+      <div class="h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
+        <div class="h-full" style="background-color:${APPLIED_COLOR};width:${(ratio * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
+        <div class="tabular-nums">${fmtInt(a)} applied</div>
+        <div class="tabular-nums">${pct}%</div>
+      </div>
+    </div>
+  `;
+}
+
+function freightLanesHTML(plannedMap, appliedMap) {
+  // Prefer showing Air + Sea; include Other if it exists
+  const keysAll = Array.from(new Set([...(plannedMap?.keys?.() || []), ...(appliedMap?.keys?.() || [])]));
+
+  const normKey = (k) => String(k || '').toLowerCase();
+  const pick = (contains) => keysAll.find(k => normKey(k).includes(contains));
+
+  const airKey = pick('air') || 'Air';
+  const seaKey = pick('sea') || pick('ocean') || 'Sea';
+
+  // "Other" = everything not air/sea and not blank placeholder unless it’s the only thing
+  const otherKeys = keysAll.filter(k => k !== airKey && k !== seaKey);
+  const showOther = otherKeys.length > 0;
+
+  const lanes = [
+    { label: 'Air', key: airKey, icon: '✈️' },
+    { label: 'Sea', key: seaKey, icon: '🚢' },
+  ];
+
+  if (showOther) {
+    // If multiple others exist, roll them up into one lane
+    lanes.push({ label: 'Other', key: '__OTHER__', icon: '📦' });
+  }
+
+  function laneNumbers(k) {
+    if (k === '__OTHER__') {
+      const planned = otherKeys.reduce((s, kk) => s + (plannedMap.get(kk) || 0), 0);
+      const applied = otherKeys.reduce((s, kk) => s + (appliedMap.get(kk) || 0), 0);
+      return { planned, applied };
+    }
+    return { planned: plannedMap.get(k) || 0, applied: appliedMap.get(k) || 0 };
+  }
+
+  function laneRow(l) {
+    const { planned, applied } = laneNumbers(l.key);
+    const ratio = planned > 0 ? Math.min(applied / planned, 1) : 0;
+
+    return `
+      <div class="flex items-center gap-2">
+        <div class="w-7 text-center" aria-hidden="true">${l.icon}</div>
+        <div class="flex-1">
+          <div class="flex items-center justify-between text-[11px] text-gray-600">
+            <div class="font-semibold text-gray-800">${l.label}</div>
+            <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
+          </div>
+          <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
+            <div class="h-full" style="background-color:${APPLIED_COLOR};width:${(ratio * 100).toFixed(1)}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="w-full flex flex-col gap-2">
+      ${lanes.map(laneRow).join('')}
+    </div>
+  `;
+}
+
+function zendeskBulletHTML(applied, planned) {
+  const a = toNum(applied);
+  const p = toNum(planned);
+
+  // scale: use max of planned/applied so marker stays in view when applied > planned
+  const max = Math.max(1, p, a);
+  const appliedPct = Math.min((a / max) * 100, 100);
+  const markerPct = Math.min((p / max) * 100, 100);
+
+  const over = a > p ? (a - p) : 0;
+
+  return `
+    <div class="w-full">
+      <div class="text-[11px] text-gray-600 mb-2">
+        Target marker = Planned
+        ${over ? `<span class="ml-2 text-gray-900 font-semibold tabular-nums">Over by ${fmtInt(over)}</span>` : ``}
+      </div>
+      <div class="relative h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
+        <div class="h-full" style="background-color:${APPLIED_COLOR};width:${appliedPct.toFixed(1)}%"></div>
+        <div class="absolute top-[-2px] bottom-[-2px] w-[2px] bg-gray-700"
+             style="left:${markerPct.toFixed(1)}%"></div>
+      </div>
+      <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
+        <div class="tabular-nums">${fmtInt(a)} applied</div>
+        <div class="tabular-nums">${fmtInt(p)} planned</div>
+      </div>
+    </div>
+  `;
+}
+
+// ----- Progress Tiles (Supplier / Facility / Freight / Zendesk) -----
+function renderProgressTiles(plan = [], records = []) {
+  const tilesRoot = document.getElementById('ops-progress-tiles');
+  if (!tilesRoot) return;
+
+  // Support two modes:
+  // 1) Raw records: [{status, po_number, sku_code, ...}]
+  // 2) Summary-by-PO (preferred at scale): [{po, units, cartons_out?}]
+  const sample = (records || [])[0] || null;
+  const isSummaryByPO = Boolean(sample && ('po' in sample) && ('units' in sample) && !('po_number' in sample));
+
+  // Only count "applied" as completed units (raw mode)
+  const completed = isSummaryByPO ? [] : (records || []).filter(r => r.status === 'complete');
+
+  // Index plan by PO+SKU so we can map completed records to their plan metadata (raw mode)
+  const planByKey = new Map();
+  for (const p of plan || []) {
+    const po = String(p.po_number || '').trim();
+    const sku = String(p.sku_code || '').trim();
+    if (!po || !sku) continue;
+    planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  // In summary-by-PO mode, we need PO -> meta (supplier/facility/freight/zendesk)
+  const metaByPO = new Map();
+  if (isSummaryByPO) {
+    for (const p of plan || []) {
+      const po = String(p.po_number || '').trim();
+      if (!po || metaByPO.has(po)) continue;
+      metaByPO.set(po, p);
+    }
+  }
+
+  // Helper: normalize display values (blank -> (Unspecified))
+  const normVal = (v) => {
+    const s = String(v ?? '').trim();
+    return s ? s : '(Unspecified)';
+  };
+
+  // Build planned totals by field value
+  function plannedByField(field) {
+    const m = new Map();
+    for (const p of plan || []) {
+      const key = normVal(p?.[field]);
+      m.set(key, (m.get(key) || 0) + toNum(p.target_qty));
+    }
+    return m;
+  }
+
+  // Build applied totals by field value
+  function appliedByField(field) {
+    const m = new Map();
+    if (isSummaryByPO) {
+      for (const r of records || []) {
+        const po = String(r.po || '').trim();
+        const u = Number(r.units || 0) || 0;
+        if (!po || u <= 0) continue;
+        const p = metaByPO.get(po);
+        const key = normVal(p?.[field]);
+        m.set(key, (m.get(key) || 0) + u);
+      }
+    } else {
+      for (const r of completed) {
+        const po = String(r.po_number || '').trim();
+        const sku = String(r.sku_code || '').trim();
+        if (!po || !sku) continue;
+
+        const p = planByKey.get(`${po}|||${sku}`);
+        const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
+        m.set(key, (m.get(key) || 0) + 1);
+      }
+    }
+    return m;
+  }
+
+  function pickDefault(plannedMap, appliedMap) {
+    // default = highest planned; tie-breaker = highest applied; final = alpha
+    const keys = Array.from(new Set([...plannedMap.keys(), ...appliedMap.keys()]));
+    if (!keys.length) return '';
+    keys.sort((a, b) => {
+      const pa = plannedMap.get(a) || 0, pb = plannedMap.get(b) || 0;
+      if (pb !== pa) return pb - pa;
+      const aa = appliedMap.get(a) || 0, ab = appliedMap.get(b) || 0;
+      if (ab !== aa) return ab - aa;
+      return a.localeCompare(b);
+    });
+    return keys[0];
+  }
+
+  function fillSelect(selectId, keys, selected) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return null;
+
+    sel.innerHTML = '';
+    if (!keys.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No values';
+      sel.appendChild(opt);
+      return sel;
+    }
+
+    for (const k of keys) {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      sel.appendChild(opt);
+    }
+
+    sel.value = selected || keys[0];
+    return sel;
+  }
+
+  function updateTile(field, selectId, metricId, pctId, vizId) {
+    const plannedMap = plannedByField(field);
+    const appliedMap = appliedByField(field);
+
+    const keys = Array.from(new Set([...plannedMap.keys(), ...appliedMap.keys()]));
+    keys.sort((a, b) => a.localeCompare(b));
+
+    const defaultKey = pickDefault(plannedMap, appliedMap);
+    const sel = fillSelect(selectId, keys, defaultKey);
+
+    const metricEl = document.getElementById(metricId);
+    const pctEl = document.getElementById(pctId);
+    const vizEl = document.getElementById(vizId);
+
+    const render = () => {
+      const k = sel ? sel.value : defaultKey;
+      const planned = plannedMap.get(k) || 0;
+      const applied = appliedMap.get(k) || 0;
+      const pct = planned > 0 ? Math.round((applied * 100) / planned) : (plan.length ? 0 : 100);
+
+      if (metricEl) metricEl.textContent = `${fmtInt(applied)} / ${fmtInt(planned)}`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
+
+     // Supplier gets a circular progress ring; others stay as text for now
+if (vizEl) {
+  if (!planned) {
+    vizEl.textContent = 'No plan for selection';
+} else if (field === 'supplier_name') {
+  vizEl.innerHTML = supplierRingSVG(applied, planned);
+} else if (field === 'facility_name') {
+  vizEl.innerHTML = facilityBarHTML(applied, planned);
+} else if (field === 'freight_type') {
+  vizEl.innerHTML = freightLanesHTML(plannedMap, appliedMap);
+} else if (field === 'zendesk_ticket') {
+  vizEl.innerHTML = zendeskBulletHTML(applied, planned);
+} else {
+  vizEl.textContent = `Applied ${fmtInt(applied)} of ${fmtInt(planned)}`;
+}
+}
+
+    };
+
+    if (sel) sel.onchange = render;
+    render();
+  }
+
+  updateTile('supplier_name',  'supplier-filter', 'supplier-metric', 'supplier-pct', 'supplier-viz');
+  updateTile('facility_name',  'facility-filter', 'facility-metric', 'facility-pct', 'facility-viz');
+  updateTile('freight_type',   'freight-filter',  'freight-metric',  'freight-pct',  'freight-viz');
+  updateTile('zendesk_ticket', 'zendesk-filter',  'zendesk-metric',  'zendesk-pct',  'zendesk-viz');
+}
+
+
+
+// ----- Risk tables (PO / SKU) -----
+function renderRisk(list, selector){
+  const tbody = document.querySelector(selector);
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!list || !list.length){
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-xs text-gray-400 py-3">No items at risk this week.</td></tr>';
+    return;
+  }
+
+  list.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.className = 'odd:bg-gray-50';
+    tr.innerHTML = `
+      <td class="py-1 pr-2 truncate" title="${r.key||r.po||''}">${r.key||r.po||''}</td>
+      <td class="py-1 pr-2">${r.due_date ? toUI(r.due_date) : ''}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.planned||0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.applied||0).toLocaleString()}</td>
+      <td class="py-1 pr-2 text-right tabular-nums">${(r.remaining||0).toLocaleString()}</td>
+      <td class="py-1 text-right tabular-nums">${r.pct||0}%</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------- Actionable Top Insights (with Duplicates & Bin diversity) ----------
+function renderInsights(records, plan = [], weekStartISO = '') {
+  const ul   = document.getElementById('insights');
+  const mini = document.getElementById('insights-mini');
+  if (!ul) return;
+
+  // --- dates & helpers ---
+  const today = todayISO();
+  const ws    = weekStartISO || (typeof mondayOf === 'function' ? iso(mondayOf(new Date())) : today);
+  const wsDate = new Date(ws + 'T00:00:00');
+  const weDate = new Date(ws + 'T00:00:00'); weDate.setDate(weDate.getDate() + 6);
+  const we = iso(weDate);
+  const dayDiff = (a,b)=> Math.round((new Date(a+'T00:00:00') - new Date(b+'T00:00:00'))/86400000);
+  const clamp01 = n => (n < 1 ? 1 : n);
+
+  // --- applied aggregates (this week window only) ---
+  const rows = Array.isArray(records) ? records : [];
+  const isSummary = rows.length && ('po' in (rows[0] || {})) && ('units' in (rows[0] || {})) && !('po_number' in (rows[0] || {}));
+
+  let weekRows = [];
+  if (isSummary) {
+    // In summary-only mode, "records" is actually /records/summary.by_po already scoped to the week.
+    weekRows = rows;
+  } else {
+    const inWeek = (r) => {
+      if (!r || r.status !== 'complete') return false;
+      const dl = toISODate(r.date_local);
+      return dl && dl >= ws && dl <= we;
+    };
+    weekRows = rows.filter(inWeek);
+  }
+
+  // per-PO & per-SKU counts in week
+  const appliedPO  = new Map();
+  const appliedSKU = new Map();
+  for (const r of weekRows) {
+    if (isSummary) {
+      const po = String(r.po || '').trim();
+      const u = Number(r.units || 0) || 0;
+      if (po) appliedPO.set(po, (appliedPO.get(po) || 0) + u);
+    } else {
+      const po  = String(r.po_number||'').trim();
+      const sku = String(r.sku_code||'').trim();
+      if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
+      if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
+    }
+  }
+
+  // --- plan aggregates (planned totals & earliest due) ---
+  const planPO = new Map();   // po -> { planned, due }
+  const planSKU = new Map();  // sku -> { planned, due }
+  let plannedTotal = 0;
+
+  for (const p of plan || []) {
+    const po  = String(p.po_number||'').trim();
+    const sku = String(p.sku_code||'').trim();
+    const due = String(p.due_date||'').trim();
+    const qty = toNum(p.target_qty);
+    plannedTotal += qty;
+
+    if (po) {
+      const cur = planPO.get(po) || { planned:0, due: due || '' };
+      cur.planned += qty;
+      if (!cur.due || (due && new Date(due) < new Date(cur.due))) cur.due = due;
+      planPO.set(po, cur);
+    }
+    if (sku) {
+      const cur = planSKU.get(sku) || { planned:0, due: due || '' };
+      cur.planned += qty;
+      if (!cur.due || (due && new Date(due) < new Date(cur.due))) cur.due = due;
+      planSKU.set(sku, cur);
+    }
+  }
+
+  // --- priority lists (highest remaining, earliest due first) ---
+  function buildPriority(listMap, appliedMap, keyName) {
+    const rows = [];
+    for (const [key, v] of listMap.entries()) {
+      const planned = v.planned || 0;
+      const applied = appliedMap.get(key) || 0;
+      const remaining = Math.max(0, planned - applied);
+      rows.push({ [keyName]: key, planned, applied, remaining, due: v.due || '' });
+    }
+    rows.sort((a, b) =>
+      (b.remaining - a.remaining) || (new Date(a.due||'9999-12-31') - new Date(b.due||'9999-12-31'))
+    );
+    return rows;
+  }
+  const priorityPO  = buildPriority(planPO, appliedPO, 'po');
+  const prioritySKU = buildPriority(planSKU, appliedSKU, 'sku');
+
+
+// --- Mobile bins / Duplicate UIDs ---
+// These require raw records. In summary-only mode we skip these insights.
+const binsWeek = new Set();
+const binsByDiversity = [];
+let dupScanCount = 0;
+let dupPairs = [];
+let dupExamples = [];
+
+if (!isSummary) {
+  // Mobile bins: unique (this week) + top 5 by SKU diversity (this week)
+  for (const r of (weekRows || [])) {
+    const bin = String(r.mobile_bin || '').trim();
+    if (bin) binsWeek.add(bin);
+  }
+
+  // diversity across the week: bin -> set(sku)
+  const binSkuSet = new Map();
+  for (const r of (weekRows || [])) {
+    const bin = String(r.mobile_bin || '').trim();
+    const sku = String(r.sku_code  || '').trim();
+    if (!bin || !sku) continue;
+    if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+    binSkuSet.get(bin).add(sku);
+  }
+  binsByDiversity.push(
+    ...Array.from(binSkuSet.entries())
+      .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
+      .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
+      .slice(0, 5)
+  );
+
+  // Duplicate UID detection (this week)
+  const pairCounts = new Map();
+  for (const r of (weekRows || [])) {
+    const sku = String(r.sku_code||'').trim();
+    const uid = String(r.uid||'').trim();
+    if (!sku || !uid) continue;
+    const k = `${sku}||${uid}`;
+    pairCounts.set(k, (pairCounts.get(k)||0) + 1);
+  }
+  for (const [k, c] of pairCounts.entries()) {
+    if (c > 1) {
+      const [sku, uid] = k.split('||');
+      dupPairs.push({ sku, uid, count: c });
+      dupScanCount += c;
+    }
+  }
+  dupPairs.sort((a,b)=> b.count - a.count);
+  dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
+}
+
+  // --- Pace calculations (week + due-in-3-days horizon) ---
+  const daysElapsed       = clamp01(7 - clamp01(dayDiff(ws, today) * -1));
+  const appliedSoFar      = isSummary
+    ? Array.from(appliedPO.values()).reduce((s, v) => s + (Number(v) || 0), 0)
+    : (weekRows || []).length;
+  const avgPerDaySoFar    = Math.round(appliedSoFar / daysElapsed);
+  const daysLeftInWeek    = clamp01(dayDiff(we, today) + 1);
+  const remainingWeek     = Math.max(0, plannedTotal - appliedSoFar);
+  const needPerDayWeek    = Math.ceil(remainingWeek / daysLeftInWeek);
+
+  const due3Date = new Date(today + 'T00:00:00'); due3Date.setDate(due3Date.getDate() + 2);
+  const due3ISO  = iso(due3Date);
+  function sumPlannedDueBy(map) {
+    let sum = 0;
+    for (const v of map.values()) {
+      if (!v.due) continue;
+      if (v.due >= today && v.due <= due3ISO) sum += v.planned || 0;
+    }
+    return sum;
+  }
+  const plannedDue3 = sumPlannedDueBy(planPO);
+  let appliedAgainstDue3 = 0;
+  for (const [po, v] of planPO.entries()) {
+    if (v.due && v.due >= today && v.due <= due3ISO) {
+      appliedAgainstDue3 += appliedPO.get(po) || 0;
+    }
+  }
+  const remainingDue3   = Math.max(0, plannedDue3 - appliedAgainstDue3);
+  const daysLeftForDue3 = clamp01(Math.min(3, dayDiff(due3ISO, today) + 1));
+  const needPerDayDue3  = remainingDue3 ? Math.ceil(remainingDue3 / daysLeftForDue3) : 0;
+
+  // --- Build insight bullets (max 5) ---
+  const bullets = [];
+
+  // 1–2) Priority POs/SKUs to start
+  if (priorityPO.length && priorityPO[0].remaining > 0) {
+    const p = priorityPO[0];
+    bullets.push(`Start with PO ${p.po} (remaining ${p.remaining.toLocaleString()} • due ${p.due ? toUI(p.due) : 'n/a'})`);
+  }
+  if (prioritySKU.length && prioritySKU[0].remaining > 0) {
+    const s = prioritySKU[0];
+    bullets.push(`Focus SKU ${s.sku} (remaining ${s.remaining.toLocaleString()} • due ${s.due ? toUI(s.due) : 'n/a'})`);
+  }
+
+  // 3) Mobile bins: total unique (this week) + top 5 by SKU diversity (this week)
+if (binsByDiversity.length) {
+  const tops = binsByDiversity.map(b => `${b.bin} (${b.uniqueSkus})`).join(', ');
+  bullets.push(`Mobile bins (wk): ${binsWeek.size.toLocaleString()} • Top bins by SKU diversity (wk): ${tops}`);
+} else {
+  bullets.push(`Mobile bins (wk): ${binsWeek.size.toLocaleString()}`);
+}
+
+  // 4) Duplicate UID alert, if any
+  if (dupPairs.length) {
+    bullets.push(
+      `Duplicate UIDs detected: ${dupScanCount.toLocaleString()} scans across ${dupPairs.length} pairs ` +
+      `${dupExamples.length ? `(e.g., ${dupExamples.join(', ')})` : ''}`
+    );
+  } else {
+    bullets.push(`No duplicate UIDs detected this week.`);
+  }
+
+  // 5) Weekly pace vs target (and 3-day horizon if relevant)
+  const weekPace = `Weekly plan pace: need ~${needPerDayWeek.toLocaleString()}/day (current ${avgPerDaySoFar.toLocaleString()}/day)`;
+  if (remainingDue3 > 0) {
+    bullets.push(
+      `${weekPace} • Due≤3d: target ~${needPerDayDue3.toLocaleString()}/day (rem ${remainingDue3.toLocaleString()})`
+    );
+  } else {
+    bullets.push(weekPace);
+  }
+
+  // Render
+  ul.innerHTML = bullets.slice(0, 5).map(t => `<li>${t}</li>`).join('');
+  if (mini) mini.textContent = `Applied so far: ${appliedSoFar.toLocaleString()} • Remaining: ${remainingWeek.toLocaleString()}`;
+}
+
+
+
+function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate()+6); return iso(d); }
+
+function inWeekByDateLocal(r, ws){
+  if (!r || r.status !== 'complete') return false;
+  const we = weekEndISO(ws);                  // YYYY-MM-DD
+  const dl = String(r.date_local || '').trim();
+  return !!dl && dl >= ws && dl <= we;        // pure string compare on YYYY-MM-DD
+}
+
+function inWeekByCompletedAt(r, ws){
+  if (!r || r.status !== 'complete' || !r.completed_at) return false;
+  const ymd = ymdFromCompletedAtInTZ(r.completed_at); // business-day bucket
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+  const we  = iso(weD);
+  return ymd && ymd >= ws && ymd <= we;
+}
+
+  // ---------- setWeek ----------
+  async function setWeek(ws){
+    state.weekStart=ws; $('#week-start').value=ws;
+    const weDate=new Date(ws); weDate.setDate(weDate.getDate()+6); const we=iso(weDate);
+const [plan, summary, receiving] = await Promise.all([
+  fetchPlan(ws),
+  fetchSummary(ws, we, 'complete'),
+  fetchReceiving(ws)
+]);
+state.plan = Array.isArray(plan) ? plan : [];
+
+// Summary-first: for normal dashboard operation we keep only PO rollups.
+// (Raw records are loaded only for explicit drilldowns.)
+state.records = Array.isArray(summary?.by_po) ? summary.by_po : [];
+state.receiving = Array.isArray(receiving) ? receiving : [];
+
+const bins = await fetchBins(ws);
+state.bins = Array.isArray(bins) ? bins : [];
+// Bin QA requires raw records (mobile_bin). In summary-only mode we skip.
+state.binQA = computeBinQA(ws, [], state.bins);
+
+    const agg=aggregate(state.records);
+    const plannedTotal = state.plan.reduce((s,p)=> s + toNum(p.target_qty), 0);
+    const appliedTotal = Array.from(agg.byPO.values()).reduce((s,v)=> s+v, 0);
+    const pct = plannedTotal>0? Math.round(appliedTotal*100/plannedTotal) : (state.plan.length?0:100);
+    const _setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+
+    const setTxt = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+    setTxt('#planned-range', `${ws} – ${we}`);
+    setTxt('#applied-range', `${ws} – ${we}`);
+    setTxt('#planned-total', fmtInt(plannedTotal));
+    setTxt('#applied-total', fmtInt(appliedTotal));
+    setTxt('#pct-week', `${pct}%`);
+    setTxt('#avg-week', fmtInt(appliedTotal));
+    setTxt('#avg-day', fmtInt(Math.round((appliedTotal||0)/7)));
+    // Build capsule totals for the visible week pills [-1, 0, +1, +2, +3] relative to ws
+const capsuleIds = [-7, 0, 7, 14, 21].map(n => addDaysISO(ws, n));
+
+let plansByWeek = {};
+try {
+  const planLists = await Promise.all(capsuleIds.map(id => fetchPlan(id)));
+  planLists.forEach((pl, i) => {
+    plansByWeek[capsuleIds[i]] = Array.isArray(pl) ? pl : [];
+  });
+} catch (e) {
+  plansByWeek = {};
+}
+
+const totalsByWeek = {};
+try {
+  const summs = await Promise.all(capsuleIds.map(id => {
+    const end = addDaysISO(id, 6);
+    return fetchSummary(id, end, 'complete');
+  }));
+  capsuleIds.forEach((id, i) => {
+    const pTotal = (plansByWeek[id] || []).reduce((s, p) => s + toNum(p.target_qty), 0);
+    const aTotal = Number(summs[i]?.total_units || 0);
+    totalsByWeek[id] = { planned: pTotal, applied: aTotal };
+  });
+} catch {
+  capsuleIds.forEach(id => {
+    const pTotal = (plansByWeek[id] || []).reduce((s, p) => s + toNum(p.target_qty), 0);
+    totalsByWeek[id] = { planned: pTotal, applied: 0 };
+  });
+}
+
+// Render capsules with correct bars for ALL pills (not only the selected week)
+renderCapsules(ws, plannedTotal, appliedTotal, totalsByWeek);
+    setFooterHealth(pct, appliedTotal);
+
+    const poRows = joinPOProgress(state.plan, agg.byPO);
+    renderProgressTiles(state.plan, state.records);
+
+    const riskPO = computeRisk(poRows.map(r=>({po:r.po,due:r.due,planned:r.planned,applied:r.applied})));
+    // build per SKU progress
+    const perSKU=new Map();
+    for(const p of state.plan){
+      const sku=String(p.sku_code||'').trim(); if(!sku) continue;
+      const r=perSKU.get(sku)||{due:p.due_date,planned:0,applied:0};
+      r.planned+=toNum(p.target_qty);
+      if(r.due!==p.due_date) r.due = r.due < p.due_date ? r.due : p.due_date;
+      perSKU.set(sku,r);
+    }
+    for(const [sku,v] of agg.bySKU.entries()){const r=perSKU.get(sku)||{due:'',planned:0,applied:0}; r.applied+=v; perSKU.set(sku,r);}
+    const skuRows=Array.from(perSKU.entries()).map(([sku,r])=>({key:sku,due:r.due,planned:r.planned,applied:r.applied}));
+    const riskSKU = computeRisk(skuRows);
+    renderRisk(riskPO,'#risk-po-body');
+    renderRisk(riskSKU,'#risk-sku-body');
+
+// 👉 add/keep this:
+renderInsights(state.records, state.plan, state.weekStart);
+
+    // download buttons
+    $('#btn-dl-posku').onclick=async()=>{
+      // Summary-only: pull PO+SKU rollup (tiny compared to raw records)
+      // so the POSKU discrepancy CSV stays accurate at very high volumes.
+      const p = new URLSearchParams({ from: ws, to: we, status: 'complete' });
+      const resp = await api(`/summary/po_sku?${p.toString()}`).catch(()=>({}));
+      const rows=buildDiscrepancyPOSKU(state.plan, resp?.rows || []);
+      const csv=toCSV(
+  ['PO','SKU','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Planned','Applied','Discrepancy (Applied - Planned)'],
+  rows
+);
+
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_sku_discrepancy_${ws}.csv`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    };
+    $('#btn-dl-po').onclick=()=>{
+      const rows=buildDiscrepancyPO(poRows, state.plan);
+const csv=toCSV(
+  ['PO','SKU','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Mobile Bin Count','Mobile Bins','Planned','Applied','Discrepancy (Applied - Planned)'],
+  rows
+);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_discrepancy_${ws}.csv`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    };
+
+$('#btn-ship-summary').onclick = () => {
+  // Summary-only download (server-side aggregation)
+  const ws = state.weekStart;
+  api(`/summary/shipment_summary?weekStart=${encodeURIComponent(ws)}`)
+    .then(resp => {
+      const rows = (resp && resp.rows) ? resp.rows : [];
+      const csv = toCSV(
+        [
+          'Supplier Name',
+          'Zendesk Ticket #',
+          'Freight Type',
+          'Facility Name',
+          'Unique PO Count',
+          'Total Units Applied',
+          'Total Mobile Bins',
+          'Gross Weight',
+          'CBM'
+        ],
+        rows
+      );
+
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+      a.download=`shipment_report_summary_${ws}.csv`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    })
+    .catch(() => alert('Shipment Summary download failed.'));
+};
+
+$('#btn-ship-detail').onclick = () => {
+  // Summary-only download (server-side aggregation)
+  const ws = state.weekStart;
+  api(`/summary/shipment_detail?weekStart=${encodeURIComponent(ws)}`)
+    .then(resp => {
+      const rows = (resp && resp.rows) ? resp.rows : [];
+      const csv = toCSV(
+        [
+          'Supplier Name',
+          'Zendesk Ticket #',
+          'Freight Type',
+          'Facility Name',
+          'PO',
+          'Total Units Applied',
+          'Total Mobile Bins',
+          'Gross Weight',
+          'CBM'
+        ],
+        rows
+      );
+
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+      a.download=`shipment_report_detail_${ws}.csv`;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),250);
+    })
+    .catch(() => alert('Shipment Detail download failed.'));
+};
+
+$('#btn-dl-week-applied').onclick = downloadAppliedWeek;
+
+function generateExecDoc() {
+  const wsISO = state.weekStart;
+  const weD = new Date(wsISO); weD.setDate(weD.getDate() + 6);
+  const weISO = iso(weD);
+
+  const plannedTotal = (state.plan||[]).reduce((s,p)=> s + toNum(p.target_qty), 0);
+  const recs = (state.records||[]).filter(r => r.status === 'complete');
+  const appliedTotal = recs.length;
+  const pct = plannedTotal>0 ? Math.round(appliedTotal*100/plannedTotal) : (state.plan.length?0:100);
+
+  // PO×SKU aggregates
+  const planPOSKU = new Map();
+  for (const p of state.plan||[]) {
+    const po = String(p.po_number||'').trim();
+    const sku = String(p.sku_code||'').trim();
+    if (!po || !sku) continue;
+    const k = `${po}||${sku}`;
+    planPOSKU.set(k, (planPOSKU.get(k)||0) + toNum(p.target_qty));
+  }
+  const appliedPOSKU = new Map();
+  for (const r of recs) {
+    const po = String(r.po_number||'').trim();
+    const sku = String(r.sku_code||'').trim();
+    if (!po || !sku) continue;
+    const k = `${po}||${sku}`;
+    appliedPOSKU.set(k, (appliedPOSKU.get(k)||0) + 1);
+  }
+  const poskuRows = Array.from(appliedPOSKU.entries()).map(([k, applied]) => {
+    const [po, sku] = k.split('||');
+    const planned = planPOSKU.get(k) || 0;
+    const pct = planned>0 ? Math.round(applied*100/planned) : 100;
+    return { po, sku, planned, applied, pct };
+  }).sort((a,b)=> b.applied - a.applied).slice(0, 50);
+
+  // Mobile bins (units + diversity)
+  const binUnits = new Map();
+  const binSkuSet = new Map();
+  for (const r of recs) {
+    const bin = String(r.mobile_bin||'').trim();
+    const sku = String(r.sku_code||'').trim();
+    if (!bin) continue;
+    binUnits.set(bin, (binUnits.get(bin)||0) + 1);
+    if (sku) {
+      if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+      binSkuSet.get(bin).add(sku);
+    }
+  }
+  const uniqueBins = binUnits.size;
+  const topBins = Array.from(binUnits.entries())
+    .map(([bin, units]) => ({ bin, units, uniqueSkus: (binSkuSet.get(bin)||new Set()).size }))
+    .sort((a,b)=> b.units - a.units)
+    .slice(0, 25);
+
+  // Bin QA insight (if available)
+  const insights = [];
+  try {
+    if (state?.binQA && state.binQA.ws === wsISO) {
+      const q = state.binQA;
+      const aCount = (q.anomalies?.length || 0) + (q.suspicious?.length || 0);
+      const top3 = (q.topOutliers || []).slice(0,3).map(x => `${x.bin} (${(x.kg_per_unit).toFixed(3)} kg/unit)`).join(', ');
+      insights.push(
+        `Bin QA: ${q.binsCount.toLocaleString()} bins • ` +
+        `${q.totalUnitsFromBins.toLocaleString()} units • ` +
+        `${q.totalWeightKg.toFixed(1)} kg total • ` +
+        `Anomalies: ${aCount ? aCount : 'none'}${top3 ? ` (e.g., ${top3})` : ''}`
+      );
+    }
+  } catch {}
+
+  const leadPOSKU = poskuRows[0];
+  if (leadPOSKU) {
+    insights.push(`Highest volume: PO ${leadPOSKU.po} × SKU ${leadPOSKU.sku} — ${leadPOSKU.applied.toLocaleString()} applied (${leadPOSKU.pct}% of ${leadPOSKU.planned.toLocaleString()} planned).`);
+  }
+  if (uniqueBins) {
+    const tops = topBins.slice(0,5).map(b => `${b.bin} (${b.units.toLocaleString()})`).join(', ');
+    insights.push(`Mobile bins used: ${uniqueBins.toLocaleString()} • Top bins by units: ${tops}.`);
+  }
+  const avgPerDay = Math.round(appliedTotal/7);
+  const rem = Math.max(0, plannedTotal - appliedTotal);
+  insights.push(`Pace: ~${avgPerDay.toLocaleString()}/day • Remaining vs plan: ${rem.toLocaleString()}.`);
+
+  const html = buildExecHTML({
+    ws: wsISO, we: weISO,
+    plannedTotal, appliedTotal, pct,
+    uniqueBins,
+    topPOSKU: poskuRows,
+    topBins,
+    insights, binQA: state.binQA
+  });
+
+  const blob = new Blob([html], { type: 'application/msword' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `VAS_Executive_Summary_${wsISO}.doc`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 250);
+}
+
+// Bind both buttons to the same generator
+document.getElementById('btn-exec')?.addEventListener('click', generateExecDoc);
+document.getElementById('btn-exec-doc')?.addEventListener('click', generateExecDoc);
+
+// Optional: PO×SKU CSV from the Executive page
+document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
+  const rows = buildDiscrepancyPOSKU(state.plan, state.records);
+  const csv  = toCSV(['PO','SKU','Planned','Applied','Discrepancy (Applied - Planned)'], rows);
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+  a.download = `po_sku_week_${state.weekStart}.csv`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),250);
+});
+};
+
+  // ---------- Plan upload / zero (unchanged) ----------
+  $('#btn-upload-plan').onclick=()=>$('#file-plan').click();
+$('#file-plan').addEventListener('change', async (e) => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f || !apiBase) return;
+
+  const weekStart = $('#week-start').value;
+  let rows = [];
+
+  try {
+    if (/\.xlsx?$/i.test(f.name)) {
+      // Excel: read all rows using SheetJS
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    } else {
+      // CSV: parse with SheetJS to avoid truncation/edge cases
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    }
+  } catch (err) {
+    console.error('Parsing failed', err);
+    alert('Could not parse file');
+    return;
+  }
+
+  if (!rows.length) return alert('No rows found.');
+
+  // ---- Point B helpers ----
+  const normalize = (r) => {
+    const n = {};
+for (const k in r) {
+      const key = k.trim().toLowerCase().replace(/\s+/g, '_');
+      n[key] = r[k];
+    }
+    return n;
+  };
+
+
+  // Convert Excel serials / Dates / strings -> YYYY-MM-DD
+
+
+  const raw = rows.map(normalize);
+  console.log('[plan-upload] parsed rows:', raw.length);
+
+  const items = raw
+  .map(r => ({
+    po_number: String(r.po_number ?? r.po ?? '').trim(),
+    sku_code:  String(r.sku_code  ?? r.sku  ?? '').trim(),
+    start_date: weekStart,
+    due_date: toISODate(r.due_date ?? r.due ?? ''),
+    target_qty: toNum(r.target_qty ?? r.planned),
+
+    // NEW fields (pulled from spreadsheet columns)
+    supplier_name:  String(r.supplier_name ?? r.supplier ?? '').trim() || undefined,
+    facility_name:  String(r.facility_name ?? r.facility ?? '').trim() || undefined,
+    freight_type:   String(r.freight_type ?? r.freight ?? '').trim() || undefined,
+
+    // accept either "zendesk_ticket" or "zendesk_ticket_number" column name
+    zendesk_ticket: String(r.zendesk_ticket ?? r.zendesk_ticket_number ?? r.zendesk ?? '').trim() || undefined,
+  }))
+  .filter(r => r.po_number && r.sku_code);
+
+  console.log('[plan-upload] valid rows (PO+SKU):', items.length);
+  console.log('[plan-upload] rows with due_date:', items.filter(r => r.due_date).length);
+
+const putRes = await fetch(`${apiBase}/plan/weeks/${weekStart}`, {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(items)
+});
+if (!putRes.ok) {
+  const msg = await putRes.text().catch(() => 'Upload failed');
+  alert(msg);
+  return;
+}
+
+  alert(`Plan uploaded: ${items.length} rows`);
+  setWeek(weekStart);
+});
+  $('#btn-zero-plan').onclick=async()=>{
+    if(!apiBase) return alert('API not configured');
+    const ws=$('#week-start').value;
+    try{
+      let r=await fetch(`${apiBase}/plan/weeks/${ws}/zero`,{method:'POST'});
+      if(!r.ok&&r.status!==404){throw new Error(await r.text())}
+      if(r.status===404){await fetch(`${apiBase}/plan/weeks/${ws}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:'[]'})}
+      alert('Plan zeroed'); setWeek(ws);
+    }catch(e){alert('Zero failed: '+(e.message||e))}
+  };
+
+  // ===================== INTAKE (same features you validated) =====================
+  const intakeRows=[];
+  function newRow(){return {id:crypto.randomUUID(), selected:false, date_local:iso(new Date()), mobile_bin:'', sscc_label:'', po_number:'', sku_code:'', uid:'', status:'draft', sync:'pending', _pending:{}};}
+  function requiredFilled(r){return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;}
+  function syncClass(s){return s==='synced'?'bg-green-500':(s==='pending'?'bg-amber-500':'bg-gray-400');}
+  function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
+
+  function renderIntake(){
+    const tb=$('#intake-body'); tb.innerHTML='';
+    if(!intakeRows.length) intakeRows.push(newRow());
+    let drafts=0, synced=0;
+    intakeRows.forEach((r,i)=>{
+      const tr=document.createElement('tr'); tr.className=i%2?'bg-gray-50':'bg-white';
+      if(r.status!=='complete') drafts++; else synced++;
+      tr.innerHTML=`
+        <td class="border px-2 py-2"><input type="checkbox" ${r.selected?'checked':''} data-id="${r.id}" data-role="sel"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${toUI(r.date_local)}" data-id="${r.id}" data-f="date_local"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.mobile_bin}" data-id="${r.id}" data-f="mobile_bin"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.sscc_label}" data-id="${r.id}" data-f="sscc_label" placeholder="(optional)"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.po_number}" data-id="${r.id}" data-f="po_number"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.sku_code}" data-id="${r.id}" data-f="sku_code"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.uid}" data-id="${r.id}" data-f="uid" data-last="1"/></td>
+        <td class="border px-2 py-2 text-center"><span class="dot ${syncClass(r.sync)}"></span></td>`;
+      tb.appendChild(tr);
+    });
+
+    tb.querySelectorAll('input[data-role="sel"]').forEach(chk=>{
+      chk.addEventListener('change',e=>{
+        const id=e.target.dataset.id; const row=intakeRows.find(x=>x.id===id); if(row){row.selected=e.target.checked;}
+        $('#chk-all').checked = intakeRows.length && intakeRows.every(r=>r.selected);
+      });
+    });
+
+    tb.querySelectorAll('input[data-f]').forEach(inp=>{
+      const id=inp.dataset.id, f=inp.dataset.f;
+      if(f==='uid'){
+        inp.addEventListener('keydown',(ev)=>{
+          if(ev.key==='Tab' && !ev.shiftKey){
+            const idx=intakeRows.findIndex(x=>x.id===id);
+            if(idx===intakeRows.length-1){ setTimeout(()=>{ intakeRows.push(newRow()); renderIntake(); },0); }
+          }
+        });
+      }
+      inp.addEventListener('input',e=>{
+        const row=intakeRows.find(x=>x.id===id); if(!row) return;
+        if (f === 'uid') {
+  row[f] = String(e.target.value ?? '');
+} else if (f === 'date_local') {
+  row[f] = toISODate(String(e.target.value || '').trim());
+} else {
+  row[f] = String(e.target.value || '').trim();
+} // UID verbatim
+        row.status = requiredFilled(row) ? 'complete' : 'draft';
+        row.sync = 'pending';
+      });
+      inp.addEventListener('change', async e=>{
+        const row=intakeRows.find(x=>x.id===id); if(!row) return;
+        if(!apiBase || !requiredFilled(row)){ renderIntake(); return; }
+        try{
+          const res=await fetch(`${apiBase}/records`,{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({
+              id:row.id, date_local:row.date_local, mobile_bin:row.mobile_bin, sscc_label:row.sscc_label,
+              po_number:row.po_number, sku_code:row.sku_code, uid:row.uid
+            })
+          });
+          const j=await res.json().catch(()=>({}));
+          if(res.ok && j.ok){ row.status='complete'; row.sync='synced'; }
+          else { row.sync='pending'; }
+        }catch{ row.sync='pending'; }
+        renderIntake();
+        await loadOpsMetrics(); await refreshDashboardTotals();
+await setWeek(state.weekStart);   // 🔄 keep state.records in sync
+      });
+    });
+
+    // ribbon quick badges (guarded: these elements may not exist on every page)
+    const elDrafts = $('#ops-drafts');
+    if(elDrafts) elDrafts.textContent = drafts;
+    const elBadges = $('#ops-sync-badges');
+    if(elBadges) {
+      elBadges.innerHTML =
+        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
+         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
+    }
+  }
+
+  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
+  $('#btn-delete-selected').onclick=async()=>{
+    const selected=intakeRows.filter(r=>r.selected);
+    if(!selected.length) return alert('Select at least one row.');
+    if(!confirm(`Delete ${selected.length} row(s)?`)) return;
+
+    if(apiBase){
+      const pairs=selected.filter(r=>r.uid && r.sku_code).map(r=>({uid:r.uid, sku_code:r.sku_code}));
+      if(pairs.length){
+        try{ await fetch(`${apiBase}/records/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pairs)}); }catch(e){ console.warn('Server delete error',e); }
+      }
+    }
+    for(let i=intakeRows.length-1;i>=0;i--){ if(intakeRows[i].selected) intakeRows.splice(i,1); }
+    if(!intakeRows.length) intakeRows.push(newRow());
+    renderIntake();
+    await loadOpsMetrics(); await refreshDashboardTotals();
+  };
+  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+
+function toISODate(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return iso(d);
+  }
+  if (v instanceof Date) return iso(v);
+  const str = String(v).trim();
+  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    const [_, d, mth, y] = m;
+    const yyyy = y.length === 2 ? '20' + y : y;
+    return `${yyyy}-${mth.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const d2 = new Date(str);
+  return isNaN(d2) ? '' : iso(d2);
+}
+
+  // Upload UIDs → table → sync (unchanged)
+  (function wireUploadUIDs(){
+    const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
+    btn.onclick=()=>file.click();
+    file.addEventListener('change', async (e)=>{
+      const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
+      try{
+        let rows=[];
+        if(/\.xlsx?$/i.test(f.name)){
+          const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:'array'}); const ws=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}); rows=ws;
+        }else{
+          const text=await f.text(); const lines=text.split(/\r?\n/).filter(Boolean);
+          const hdr=lines.shift().split(',').map(s=>s.trim()); rows=lines.map(l=>l.split(',')).map(c=>{const o={};hdr.forEach((h,i)=>o[h]=c[i]??'');return o;});
+        }
+        const normRow=(r)=>{const n={}; for(const k in r){
+          const key = k.trim().toLowerCase().replace(/\s+/g,'_');
+          n[key] = r[k];
+        }
+          const pick=(...a)=>{for(const x of a){const v=n[x]; if(v!=null && String(v).trim()!=='') return String(v).trim();} return '';}
+          const pickRaw=(...a)=>{for(const x of a){ if(x in n) return String(n[x]??''); } return '';}
+          return {
+  date_local: toISODate(pick('date_local','date')),
+  mobile_bin: pick('mobile_bin','mobile_bin_(box)','mobile_bin (box)'),
+  sscc_label: pick('sscc_label','sscc','sscc_label (box)'),
+  po_number: pick('po_number','po','po#'),
+  sku_code:  pick('sku_code','sku'),
+  uid:       pickRaw('uid','u_id','u id')
+};
+
+};
+
+const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==''));
+        if(!items.length) return alert('No valid rows found (need PO_Number, SKU_Code, UID).');
+
+        // Build UI rows & a bulk payload for the backend
+        const payload = [];
+        for (const r of items) {
+          const ui = newRow();
+          ui.date_local  = r.date_local || iso(new Date()); // r.date_local is already YYYY-MM-DD
+          ui.mobile_bin  = r.mobile_bin || '';
+          ui.sscc_label  = r.sscc_label || '';
+          ui.po_number   = r.po_number;
+          ui.sku_code    = r.sku_code;
+          ui.uid         = r.uid; // verbatim
+          ui.status      = requiredFilled(ui) ? 'complete' : 'draft';
+          ui.sync        = 'pending';
+          intakeRows.push(ui);
+
+          // Always send to backend; backend will validate required fields
+          payload.push({
+            date_local: ui.date_local,
+            mobile_bin: ui.mobile_bin,
+            sscc_label: ui.sscc_label,
+            po_number:  ui.po_number,
+            sku_code:   ui.sku_code,
+            uid:        ui.uid
+          });
+        }
+
+        if (apiBase && payload.length) {
+          try {
+            const res = await fetch(`${apiBase}/records/import`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const j = await res.json().catch(() => ({}));
+
+            if (res.ok && j.ok) {
+              const insertedCount = j.inserted ?? payload.length;
+              const rejectedCount = j.rejected ?? 0;
+              const newlyAdded = intakeRows.slice(-items.length);
+
+              // Mark UI rows as synced if they look complete on the client side
+              for (const ui of newlyAdded) {
+                if (requiredFilled(ui)) {
+                  ui.sync = 'synced';
+                  ui.status = 'complete';
+                }
+              }
+
+              if (rejectedCount) {
+                console.warn('Some rows were rejected by the server', j.errors || []);
+                alert(`Upload finished.\nInserted: ${insertedCount}\nRejected: ${rejectedCount}`);
+              }
+            } else {
+              alert('Upload failed on server.');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Upload failed: ' + (err?.message || err));
+          }
+        }
+
+        renderIntake();
+        await loadOpsMetrics();
+        await refreshDashboardTotals();
+
+      }catch(err){ console.error(err); alert('Upload failed: '+(err?.message||err)); }
+    });
+  })();
+
+
+// ===== Upload Bin Manifest (intake page) =====
+(function wireUploadBins(){
+  const btn  = document.getElementById('btn-upload-bins');
+  const file = document.getElementById('file-bins');
+  if (!btn || !file) return;
+
+  btn.onclick = () => file.click();
+
+  function toNumberOrNull(v) {
+    const n = Number(String(v ?? '').toString().replace(/,/g,'').trim());
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Flexible header mapping
+  function normalizeRow(r) {
+    const n = {};
+    for (const k in r) n[k.toLowerCase().replace(/\s+/g,'_')] = r[k];
+    const pick = (...keys) => {
+      for (const k of keys) {
+        const v = n[k];
+        if (v != null && String(v).trim() !== '') return String(v).trim();
+      }
+      return '';
+    };
+    // Expected columns (lenient): mobile_bin, bin_id, total_units, units, weight_kg, weight, date
+    const id   = pick('mobile_bin','bin_id','bin','bin_no','bin_number');
+    const unitsRaw = pick('total_units','units','qty','quantity');
+    const weightRaw= pick('weight_kg','weight','kg');
+    const dateRaw  = pick('date','date_local','created_at');
+
+    return {
+      mobile_bin: id,
+      total_units: toNumberOrNull(unitsRaw),
+      weight_kg: toNumberOrNull(weightRaw),
+      date_local: toISODate(dateRaw) || todayInTZ()     // default to business day
+    };
+  }
+
+  // lightweight front-end validation
+  function validateBin(b) {
+    const errs = [];
+    if (!b.mobile_bin) errs.push('Missing mobile_bin');
+    if (b.total_units != null && b.total_units < 0) errs.push('total_units < 0');
+    if (b.weight_kg != null && b.weight_kg < 0) errs.push('weight_kg < 0');
+    // soft plausibility (don’t block upload—backend will enforce)
+    if (b.total_units != null && b.weight_kg != null) {
+      const perUnit = b.weight_kg / Math.max(1, b.total_units);
+      if (perUnit < 0.001 || perUnit > 10) {
+        // mark as suspicious; let backend record and flag
+        b._suspicious = true;
+      }
+    }
+    return errs;
+  }
+
+  file.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f || !apiBase) return;
+
+    try {
+      // Parse CSV/XLSX using SheetJS (already loaded on page)
+      let rows = [];
+      if (/\.xlsx?$/i.test(f.name)) {
+        const buf = await f.arrayBuffer();
+        const wb  = XLSX.read(buf, { type: 'array' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      } else {
+        const buf = await f.arrayBuffer();
+        const wb  = XLSX.read(new Uint8Array(buf), { type: 'array' });
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+      }
+
+      if (!rows.length) { alert('No rows found in manifest.'); return; }
+
+      const ws = state.weekStart;   // current Monday anchor (business TZ)
+      const items = rows.map(normalizeRow)
+        .filter(r => r.mobile_bin); // require at least an ID
+
+      // Client-side validate and split into valid + rejected (still send valid)
+      const rejected = [];
+      for (const it of items) {
+        const errs = validateBin(it);
+        if (errs.length) rejected.push({ it, errs });
+      }
+      const valid = items.filter(it => !rejected.find(x => x.it === it));
+
+      if (!valid.length) {
+        alert('No valid bin rows to upload.');
+        return;
+      }
+
+      // Send to backend (bulk upsert)
+      const resp = await fetch(`${apiBase}/bins/weeks/${ws}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(valid)
+      });
+      if (!resp.ok) {
+        const msg = await resp.text().catch(()=> 'Upload failed');
+        alert(msg);
+        return;
+      }
+
+      const summary = await resp.json().catch(()=> ({}));
+      const ok = summary?.ok ?? true;
+      alert(ok
+        ? `Bin manifest uploaded: ${valid.length} row(s).${rejected.length ? `  Rejected: ${rejected.length}` : ''}`
+        : `Upload finished with warnings. Accepted: ${valid.length}${rejected.length ? `, Rejected: ${rejected.length}` : ''}`
+      );
+
+      // Refresh week so bin QA & insights update
+      await setWeek(state.weekStart);
+    } catch (err) {
+      console.error(err);
+      alert('Upload failed: ' + (err?.message || err));
+    }
+  });
+})();
+
+  // ---------- Ops metrics & Ops Pulse ----------
+  function todayISO(){ return todayInTZ(); }
+async function loadOpsMetrics() {
+  if (!apiBase) return;
+  try {
+    // Summary-first: tiny endpoint backed by indexed queries.
+    const stats = await api(`/summary/ops`);
+    const scansToday = Number(stats?.scans_today || 0);
+    const lastHour   = Number(stats?.last_hour || 0);
+    const rate30m    = Number(stats?.last_30m || 0);
+    const drafts     = Number(stats?.drafts || 0);
+    const dupes      = Number(stats?.dupes || 0);
+    const syncCounts = (stats && typeof stats.sync_counts === 'object' && stats.sync_counts) ? stats.sync_counts : {};
+
+      const __el_ops_today = document.getElementById('ops-today'); if(__el_ops_today) __el_ops_today.textContent = scansToday.toLocaleString();
+      const __el_ops_hour = document.getElementById('ops-hour'); if(__el_ops_hour) __el_ops_hour.textContent = lastHour.toLocaleString();
+      const __el_ops_rate = document.getElementById('ops-rate'); if(__el_ops_rate) __el_ops_rate.textContent = (rate30m * 2).toLocaleString();
+      const __el_ops_drafts = document.getElementById('ops-drafts'); if(__el_ops_drafts) __el_ops_drafts.textContent = drafts.toLocaleString();
+      const __el_ops_dupes = document.getElementById('ops-dupes'); if(__el_ops_dupes) __el_ops_dupes.textContent = dupes.toLocaleString();
+      const __el_ops_last_updated = document.getElementById('ops-last-updated'); if(__el_ops_last_updated) __el_ops_last_updated.textContent = new Date().toLocaleTimeString();
+
+    // Pulse animation + hearts
+    const bpm = Math.max(40, Math.min(200, rate30m * 2));
+      const __el_intake_bpm = document.getElementById('intake-bpm'); if(__el_intake_bpm) __el_intake_bpm.textContent = bpm;
+
+    const small = $('#ops-heart-small');
+    if (small) {
+      small.innerHTML = '';
+      small.appendChild(createHeart(18, BRAND, bpm));
+    }
+
+    const big = $('#ops-heart');
+    if (big) {
+      big.innerHTML = '';
+      big.appendChild(createHeart(24, BRAND, bpm));
+      const __el_ops_bpm = document.getElementById('ops-bpm'); if(__el_ops_bpm) __el_ops_bpm.textContent = bpm;
+      const delta = bpm - 40;
+      const __el_ops_extra = document.getElementById('ops-extra'); if(__el_ops_extra) __el_ops_extra.textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
+    }
+
+    const wrap = $('#ops-sync-badges');
+    if (wrap) {
+      wrap.innerHTML = '';
+      Object.entries(syncCounts)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([name, count]) => {
+          const span = document.createElement('span');
+          span.className =
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
+            (name === 'synced'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : name === 'pending'
+              ? 'border-amber-200 bg-amber-50 text-amber-700'
+              : 'border-gray-200 bg-gray-50 text-gray-700');
+          span.textContent = `${name}: ${count}`;
+          wrap.appendChild(span);
+        });
+    }
+
+    const alerts = [];
+    if (drafts > 0)
+      alerts.push(
+        `There ${drafts === 1 ? 'is' : 'are'} ${drafts} draft${
+          drafts === 1 ? '' : 's'
+        } to complete.`
+      );
+    if (dupes > 0)
+      alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
+    $('#ops-alerts').innerHTML = alerts.length
+      ? alerts.map((t) => `<li>${t}</li>`).join('')
+      : '<li class="text-gray-400">No alerts.</li>';
+  } catch (e) {
+    console.warn('Ops ribbon metrics load failed:', e);
+  }
+}
+
+  
+  // Coalesce scan SSE updates to avoid UI hangs when scan events are frequent.
+  let __opsRefreshTimer = null;
+  let __opsRefreshRunning = false;
+  let __opsRefreshPending = false;
+  let __opsRefreshLast = 0;
+
+  function scheduleOpsRefresh() {
+    if (!apiBase) return;
+    if (document.hidden) return;
+    __opsRefreshPending = true;
+
+    if (__opsRefreshTimer) return;
+    const minGapMs = 1500; // at most ~1 refresh per 1.5s
+    const wait = Math.max(0, minGapMs - (Date.now() - __opsRefreshLast));
+
+    __opsRefreshTimer = setTimeout(runOpsRefresh, wait);
+  }
+
+  async function runOpsRefresh() {
+    __opsRefreshTimer = null;
+
+    if (__opsRefreshRunning) {
+      __opsRefreshPending = true;
+      return;
+    }
+
+    if (!__opsRefreshPending) return;
+    __opsRefreshPending = false;
+
+    __opsRefreshRunning = true;
+    __opsRefreshLast = Date.now();
+
+    try {
+      // Yield once so clicks/paint can happen.
+      await new Promise((r) => setTimeout(r, 0));
+      await loadOpsMetrics();
+      await refreshDashboardTotals();
+    } catch (e) {
+      console.warn('Ops refresh failed:', e);
+    } finally {
+      __opsRefreshRunning = false;
+      if (__opsRefreshPending) scheduleOpsRefresh();
+    }
+  }
+
+  function startSSE(){
+    if(!apiBase) return;
+    try{
+      const ev=new EventSource(`${apiBase}/events/scan`);
+      $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
+      ev.onmessage=()=>{ scheduleOpsRefresh(); };
+      ev.onerror = ()=>{
+        try{ev.close();}catch{}
+        $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500');
+        setTimeout(startSSE,3000);
+      };
+
+      // Refresh once when tab becomes visible again.
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleOpsRefresh();
+      });
+    }catch{}
+  }
+
+
+  // ---------- Dashboard weekly refresh from completion timestamps ----------
+async function refreshDashboardTotals(){
+  if(!apiBase) return;
+  const ws = state.weekStart;
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+  const we  = iso(weD);
+
+  const summary = await fetchSummary(ws, we, 'complete');
+  const summaryReceived = await fetchSummary(ws, we, 'received');
+  state._summary_complete = summary;
+  state._summary_received = summaryReceived;
+  const appliedTotal = Number(summary?.total_units || 0);
+  const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
+  const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
+  // Week totals side panel (Ops)
+  try{
+    const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
+    const byPORecv = (summaryReceived?.by_po || {});
+    const poReceived = new Set(Object.keys(byPORecv));
+
+    const appliedTotal2 = Number(summary?.total_units || 0);
+
+    // Approximate received units using cartons-in by PO (same principle as Flow):
+    // - If planned cartons are available, scale planned units by cartons_in / planned_cartons.
+    // - If planned cartons are missing, treat any cartons_in>0 as fully received (planned units).
+    let receivedTotal = 0;
+    for (const p of (state.plan||[])){
+      const po = String(p.po_number||'').trim();
+      if(!po) continue;
+      const planned = toNum(p.target_qty);
+      const plannedCartons = toNum(p.planned_cartons ?? p.cartons_planned ?? p.planned_carton_count ?? p.planned_cartons_count);
+      const cartonsInPO = toNum(byPORecv[po]?.cartons_in ?? byPORecv[po]?.cartons_out);
+      if(planned<=0) continue;
+      if(plannedCartons>0){
+        const ratio = Math.min(1, cartonsInPO / plannedCartons);
+        receivedTotal += planned * ratio;
+      } else if(cartonsInPO>0){
+        receivedTotal += planned;
+      }
+    }
+    receivedTotal = Math.round(receivedTotal);
+
+    const unitOf = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
+    };
+
+    // "Cartons in" approximated as distinct mobile bins for RECEIVED status
+    const cartonsIn  = Object.values(byPORecv).reduce((s,o)=>s + (Number(o?.cartons_in ?? o?.cartons_out)||0), 0);
+    // "Cartons out" as distinct mobile bins for COMPLETE status
+    const cartonsOut = Object.values(summary?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
+
+    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
+    const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
+
+    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
+
+    setTxt('#ops-week-of', state.weekStart || '—');
+    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
+    setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
+    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
+    setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
+    setTxt('#ops-week-cartons-in', cartonsIn.toLocaleString());
+    setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
+    state.weekCartonsIn = cartonsIn;
+    state.weekCartonsOut = cartonsOut;
+    setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
+    setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
+
+    const pctNow = plannedTotal>0?Math.round(appliedTotal2*100/plannedTotal):(state.plan.length?0:100);
+    const h=$('#ops-week-health');
+    if(h){
+      let label = 'On-Plan';
+      if(pctNow < 75) label='At-Risk';
+      if(pctNow < 50) label='Delayed';
+      h.textContent = label;
+    }
+  }catch{}
+  // PO progress tile (totals + table)
+  try{
+    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
+    const plannedTotal2 = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
+    const receivedTotal2 = Number(summaryReceived?.total_units || 0);
+    const appliedTotal3 = Number(summary?.total_units || 0);
+
+    setTxt('#ops-po-planned-total', plannedTotal2.toLocaleString());
+    setTxt('#ops-po-planned-total-2', plannedTotal2.toLocaleString());
+    setTxt('#ops-po-received-total', receivedTotal2.toLocaleString());
+    setTxt('#ops-po-applied-total', appliedTotal3.toLocaleString());
+
+    const pctR = plannedTotal2>0 ? Math.min(100, Math.round(receivedTotal2*100/plannedTotal2)) : 0;
+    const pctA = plannedTotal2>0 ? Math.min(100, Math.round(appliedTotal3*100/plannedTotal2)) : 0;
+
+    const br=$('#ops-po-received-bar'); if(br) br.style.width = pctR + '%';
+    const ba=$('#ops-po-applied-bar'); if(ba) ba.style.width = pctA + '%';
+
+    const unitOf = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
+    };
+
+    // Build PO rows from plan + summaries
+    const planByPO = new Map(); // po -> {planned, supplier, facility, freight, zendesk}
+    for(const p of (state.plan||[])){
+      const po = String(p.po_number||'').trim();
+      if(!po) continue;
+      const r = planByPO.get(po) || {
+        po,
+        planned: 0,
+        supplier: String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim(),
+        facility: String(p.facility_name||'').trim(),
+        freight: String(p.freight_type||'').trim(),
+        zendesk: String(p.zendesk_ticket||'').trim(),
+      };
+      r.planned += toNum(p.target_qty);
+      // Prefer first non-empty meta
+      if(!r.supplier && (p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)) r.supplier = String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory).trim();
+      if(!r.facility && p.facility_name) r.facility = String(p.facility_name).trim();
+      if(!r.freight && p.freight_type) r.freight = String(p.freight_type).trim();
+      if(!r.zendesk && p.zendesk_ticket) r.zendesk = String(p.zendesk_ticket).trim();
+      planByPO.set(po, r);
+    }
+
+    const byPOComplete = summary?.by_po || {};
+    const byPOReceived = summaryReceived?.by_po || {};
+
+    const rows = [];
+    for(const [po, r] of planByPO.entries()){
+      const planned = Number(r.planned||0);
+      const received = unitOf(byPOReceived[po]);
+      const applied = unitOf(byPOComplete[po]);
+      const rem = Math.max(0, planned - applied);
+      const pct = planned>0 ? Math.min(100, Math.round(applied*100/planned)) : 0;
+      rows.push({po, supplier:r.supplier, facility:r.facility, freight:r.freight, zendesk:r.zendesk, planned, received, applied, rem, pct});
+    }
+    rows.sort((a,b)=> (b.pct - a.pct) || (b.planned - a.planned) || a.po.localeCompare(b.po));
+    state._ops_po_rows = rows;
+
+    function renderTable(filterTerm){
+      const body = $('#ops-po-table-body'); if(!body) return;
+      const term = String(filterTerm||'').trim().toUpperCase();
+      const list = term ? rows.filter(x=> x.po.toUpperCase().includes(term)) : rows;
+
+      if(!list.length){
+        body.innerHTML = '<tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">No matching POs.</td></tr>';
+        return;
+      }
+
+      const fmt = (n)=> (Number(n)||0).toLocaleString();
+      const esc = (s)=> String(s||'—').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+      body.innerHTML = list.slice(0, 500).map(r=>{
+        const wR = r.planned>0 ? Math.min(100, Math.round(r.received*100/r.planned)) : 0;
+        const wA = r.planned>0 ? Math.min(100, Math.round(r.applied*100/r.planned)) : 0;
+        return `<tr class="border-t">
+          <td class="py-2 px-3 font-medium">${esc(r.po)}</td>
+          <td class="py-2 px-3">${esc(r.supplier)}</td>
+          <td class="py-2 px-3">${esc(r.facility)}</td>
+          <td class="py-2 px-3">${esc(r.freight)}</td>
+          <td class="py-2 px-3">${esc(r.zendesk)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.planned)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.received)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.applied)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.rem)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${r.pct}%</td>
+          <td class="py-2 px-3">
+            <div class="h-2 bg-gray-100 rounded-full overflow-hidden relative">
+              <div class="h-full bg-emerald-500" style="width:${wR}%"></div>
+              <div class="h-full" style="width:${wA}%; background:${APPLIED_COLOR};opacity:.75; position:absolute; top:0; left:0;"></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Bind search once
+    if(!state._ops_po_bound){
+      state._ops_po_bound = true;
+      const input = $('#ops-po-search');
+      const clear = $('#ops-po-clear');
+      if(input){
+        input.addEventListener('input', ()=> renderTable(input.value));
+        input.addEventListener('change', ()=> renderTable(input.value));
+      }
+      if(clear && input){
+        clear.addEventListener('click', ()=>{ input.value=''; renderTable(''); });
+      }
+    }
+
+    // Initial render
+    const input = $('#ops-po-search');
+    renderTable(input ? input.value : '');
+
+  }catch{}
+
+
+
+      const __el_planned_total = document.getElementById('planned-total'); if(__el_planned_total) __el_planned_total.textContent = plannedTotal.toLocaleString();
+      const __el_applied_total = document.getElementById('applied-total'); if(__el_applied_total) __el_applied_total.textContent = appliedTotal.toLocaleString();
+      const __el_pct_week = document.getElementById('pct-week'); if(__el_pct_week) __el_pct_week.textContent = pct+'%';
+      const __el_avg_week = document.getElementById('avg-week'); if(__el_avg_week) __el_avg_week.textContent = appliedTotal.toLocaleString();
+      const __el_avg_day = document.getElementById('avg-day'); if(__el_avg_day) __el_avg_day.textContent = Math.round((appliedTotal||0)/7).toLocaleString();
+  setFooterHealth(pct, appliedTotal);
+}
+
+  // ---------- Simple Search ----------
+  (function attachSearch(){
+    const el=$('#search-input'); if(!el) return; let t=null;
+    el.addEventListener('input',(e)=>{
+      clearTimeout(t);
+      t=setTimeout(()=>{
+        const term=String(e.target.value||'').trim();
+        const wrap=$('#search-results'); if(!term){wrap.classList.add('hidden'); wrap.innerHTML=''; return;}
+        const agg=aggregate(state.records); const rows=[];
+        const plannedPO=state.plan.filter(p=>String(p.po_number).trim()===term).reduce((s,p)=>s+toNum(p.target_qty),0);
+        let appliedPO=0; for(const [k,v] of agg.byPO.entries()){ if(k===term) appliedPO+=v; }
+        if(plannedPO||appliedPO) rows.push({scope:'PO',planned:plannedPO,applied:appliedPO,pct:plannedPO>0?Math.round((appliedPO/plannedPO)*100):0});
+        const plannedSKU=state.plan.filter(p=>String(p.sku_code).trim()===term).reduce((s,p)=>s+toNum(p.target_qty),0);
+        let appliedSKU=0; for(const [k,v] of agg.bySKU.entries()){ if(k===term) appliedSKU+=v; }
+        if(plannedSKU||appliedSKU) rows.push({scope:'SKU',planned:plannedSKU,applied:appliedSKU,pct:plannedSKU>0?Math.round((appliedSKU/plannedSKU)*100):0});
+        wrap.classList.remove('hidden');
+        // Rich cards + PO details table
+        const cards = [];
+        const poPlanRows = state.plan.filter(p=>String(p.po_number).trim()===term);
+        const skuPlanRows = state.plan.filter(p=>String(p.sku_code).trim()===term);
+
+        function safe(v){ return (v===undefined||v===null||v==='') ? '—' : String(v); }
+        function sumQty(list){ return list.reduce((s,p)=>s+toNum(p.target_qty),0); }
+
+        if (poPlanRows.length){
+          const sample = poPlanRows[0] || {};
+          const z = safe(sample.zendesk_ticket || sample.zendesk || sample.ticket);
+          const plannedU = sumQty(poPlanRows);
+          const pctPO = plannedU>0 ? Math.round(appliedPO*100/plannedU) : 0;
+
+          cards.push(`
+            <div class="bg-gray-50 rounded-xl p-3 border">
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-500">PO</div>
+                <div class="text-xs font-semibold">${safe(term)}</div>
+              </div>
+              <div class="mt-2 text-sm leading-6">
+                <div><span class="text-gray-500">Supplier:</span> <span class="font-medium">${safe(sample.supplier)}</span></div>
+                <div><span class="text-gray-500">Facility:</span> <span class="font-medium">${safe(sample.facility)}</span></div>
+                <div><span class="text-gray-500">Freight:</span> <span class="font-medium">${safe(sample.freight_type)}</span></div>
+                <div><span class="text-gray-500">Zendesk:</span> <span class="font-medium">${z}</span></div>
+              </div>
+              <div class="mt-2 text-sm">
+                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(plannedU)}</span></div>
+                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedPO)}</span></div>
+                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctPO}%</span></div>
+              </div>
+            </div>
+          `);
+
+          // PO details table
+          const tbody = $('#ops-po-detail-body');
+          const title = $('#ops-po-detail-title');
+          if (tbody){
+            title.textContent = String(term);
+            const skuCount = new Set(poPlanRows.map(r=>String(r.sku_code).trim()).filter(Boolean)).size;
+            const fields = [
+              ['PO #', term],
+              ['Supplier', safe(sample.supplier)],
+              ['Facility', safe(sample.facility)],
+              ['Freight type', safe(sample.freight_type)],
+              ['Zendesk ticket', z],
+              ['Planned units', fmtInt(plannedU)],
+              ['Applied units', fmtInt(appliedPO)],
+              ['Completion', pctPO+'%'],
+              ['SKUs (count)', String(skuCount)],
+            ];
+            tbody.innerHTML = fields.map(([k,v])=>`<tr><td class="py-1 pr-2 text-gray-500">${k}</td><td class="py-1 font-medium">${v}</td></tr>`).join('');
+          }
+        } else {
+          // Clear PO details if not a PO match
+          const tbody = $('#ops-po-detail-body');
+          const title = $('#ops-po-detail-title');
+          if (tbody){
+            title.textContent='—';
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-xs text-gray-400 py-3">Search a PO to load details.</td></tr>';
+          }
+        }
+
+        if (skuPlanRows.length){
+          const planned = sumQty(skuPlanRows);
+          const pctSKU = planned>0 ? Math.round(appliedSKU*100/planned) : 0;
+          cards.push(`
+            <div class="bg-gray-50 rounded-xl p-3 border">
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-500">SKU</div>
+                <div class="text-xs font-semibold">${safe(term)}</div>
+              </div>
+              <div class="mt-2 text-sm leading-6">
+                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(planned)}</span></div>
+                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedSKU)}</span></div>
+                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctSKU}%</span></div>
+                <div><span class="text-gray-500">POs (count):</span> <span class="font-semibold tabular-nums">${new Set(skuPlanRows.map(r=>String(r.po_number).trim()).filter(Boolean)).size}</span></div>
+              </div>
+            </div>
+          `);
+        }
+
+        // fallback to simple rows if no plan context
+        if (!cards.length && rows.length){
+          cards.push(...rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`));
+        }
+
+        wrap.innerHTML = cards.length ? cards.join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
+      },300);
+    });
+  })();
+
+// ========== Delete UIDs (simple utility) ==========
+async function deleteUIDs() {
+  const ta = document.getElementById('uids-to-delete');
+  const status = document.getElementById('delete-uids-status');
+  if (!ta) return;
+  const raw = ta.value.trim();
+  if (!raw) {
+    alert('Please enter at least one UID.');
+    return;
+  }
+
+  // Split by commas, spaces, or newlines
+  const list = raw.split(/[\s,]+/).filter(Boolean);
+  if (!list.length) return alert('No valid UIDs found.');
+
+  if (!confirm(`Delete ${list.length} UID record(s)?`)) return;
+
+  status.textContent = 'Deleting...';
+
+  try {
+    // Send to backend
+    const res = await fetch(`${apiBase}/records/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(list.map(uid => ({ uid }))) // only UID is needed
+    });
+
+    if (!res.ok) throw new Error(await res.text());
+    // If your API returns {deleted:n}, you can show that instead:
+const body = await res.json().catch(()=>({}));
+const n = typeof body.total_deleted === 'number' ? body.total_deleted : list.length;
+status.textContent = `Deleted ${n} UID(s) successfully.`;
+if (Array.isArray(body.results) && body.results.length) {
+  const lines = body.results.map(r =>
+    `${r.uid}${r.sku_code ? ` (${r.sku_code})` : ''}: ${r.deleted}`
+  );
+  status.textContent += `  [ ${lines.join(' · ')} ]`;
+}
+
+    ta.value = '';
+
+    // Refresh dashboard + intake metrics
+await loadOpsMetrics();
+await refreshDashboardTotals();
+await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
+
+  } catch (e) {
+    console.error(e);
+    status.textContent = 'Error deleting: ' + (e.message || e);
+  }
+}
+
+// ---------- Routing & Init ----------
+(function init(){
+  const ws = mondayOfInTZ(todayInTZ());
+  $('#week-start').value = ws;
+  setWeek(ws);
+
+function syncNav() {
+  const hash = (location.hash || '#dashboard');
+  const dash   = document.getElementById('nav-dash');
+  const intake = document.getElementById('nav-intake');
+  const exec   = document.getElementById('nav-exec');
+  const recv   = document.getElementById('nav-receiving');
+  const flow   = document.getElementById('nav-flow');
+  if (!dash || !intake || !exec || !recv || !flow) return;
+
+  [dash, intake, exec, recv, flow].forEach(el => {
+    el.classList.remove('active');
+    el.removeAttribute('aria-current');
+  });
+
+if (hash === '#receiving') {
+  recv.classList.add('active');
+  recv.setAttribute('aria-current', 'page');
+} else if (hash === '#intake') {
+  intake.classList.add('active');
+  intake.setAttribute('aria-current', 'page');
+} else if (hash === '#exec') {
+  exec.classList.add('active');
+  exec.setAttribute('aria-current', 'page');
+} else if (hash === '#flow') {
+  flow.classList.add('active');
+  flow.setAttribute('aria-current', 'page');
+} else {
+  dash.classList.add('active');
+  dash.setAttribute('aria-current', 'page');
+}
+}
+
+  function show(hash){
+  document.getElementById('page-dashboard')?.classList.add('hidden');
+  document.getElementById('page-intake')?.classList.add('hidden');
+  document.getElementById('page-exec')?.classList.add('hidden');
+  document.getElementById('page-receiving')?.classList.add('hidden');
+  document.getElementById('page-flow')?.classList.add('hidden');
+
+
+if (hash === '#receiving') {
+  document.getElementById('page-receiving')?.classList.remove('hidden');
+} else if (hash === '#intake') {
+  document.getElementById('page-intake')?.classList.remove('hidden');
+} else if (hash === '#exec') {
+  document.getElementById('page-exec')?.classList.remove('hidden');
+  try {
+    const ws = state.weekStart;
+    const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+    const we = iso(weD);
+    const sub = document.getElementById('exec-sub');
+    if (sub) sub.textContent = `${ws} – ${we}`;
+  } catch {}
+} else if (hash === '#flow') {
+  document.getElementById('page-flow')?.classList.remove('hidden');
+} else {
+  document.getElementById('page-dashboard')?.classList.remove('hidden');
+}
+syncNav();
+}
+
+  
+/* ================= Ops right panel wiring (downloads + insights) ================= */
+function wireOpsDownloads(){
+  // mirror old buttons into the new right-panel tile
+  const map = [
+    ['ops-dl-posku','btn-dl-posku'],
+    ['ops-dl-po','btn-dl-po'],
+    ['ops-dl-ship-summary','btn-ship-summary'],
+    ['ops-dl-ship-detail','btn-ship-detail'],
+    ['ops-dl-week-applied','btn-dl-week-applied'],
+  ];
+  for(const [newId, oldId] of map){
+    const a=document.getElementById(newId), b=document.getElementById(oldId);
+    if(a && b){
+      a.onclick = () => b.click();
+    }
+  }
+  const mb=document.getElementById('ops-dl-mobile-bin');
+  if(mb) mb.onclick = downloadMobileBins;
+}
+
+function downloadMobileBins(){
+  try{
+    const bins = Array.isArray(state.bins) ? state.bins : [];
+    const plan = Array.isArray(state.plan) ? state.plan : [];
+    const poToSupplier = new Map(plan.map(p => [String(p.po_number||p.po||'').trim(), String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()]));
+    const rows = [];
+    for(const b of bins){
+      const po = String(b.po_number || b.po || b.poNumber || '').trim();
+      const supplier = String(b.supplier || poToSupplier.get(po) || '').trim();
+      const mobileBin = String(b.mobile_bin || b.mobileBin || '').trim();
+      const weight = Number(b.weight_kg ?? b.weight ?? 0) || 0;
+      const units  = Number(b.total_units ?? b.units ?? 0) || 0;
+      if(!mobileBin) continue;
+      rows.push({Supplier:supplier, PO:po, Mobile_Bin_Number:mobileBin, Weight_kg:weight, Units:units});
+    }
+    rows.sort((a,b)=> (a.Supplier||'').localeCompare(b.Supplier||'') || (a.PO||'').localeCompare(b.PO||'') || (a.Mobile_Bin_Number||'').localeCompare(b.Mobile_Bin_Number||''));
+    const csv = toCsv(rows, ['Supplier','PO','Mobile_Bin_Number','Weight_kg','Units']);
+    downloadBlob(csv, `mobile_bins_${state.weekStart||'week'}.csv`, 'text/csv');
+  }catch(err){
+    console.error('mobile bin export failed', err);
+    toast('Mobile bin download failed');
+  }
+}
+
+function renderOpsInsights(view){
+  const sub = document.getElementById('ops-insights-subtitle');
+  const root = document.getElementById('ops-insights-content');
+  if(!root) return;
+
+  const plan = Array.isArray(state.plan) ? state.plan : [];
+  const recs = Array.isArray(state.records) ? state.records : []; // /records/summary (applied units etc)
+  const receiving = Array.isArray(state.receiving) ? state.receiving : []; // /receiving (cartons_in/out + received timestamps)
+  const bins = Array.isArray(state.bins) ? state.bins : []; // /records (mobile bins for cartons-out + mobile-bin download)
+
+  const toNum = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const norm = (s)=>String(s||'').trim();
+  const esc = (s)=>String(s??'').replace(/[&<>"']/g, ch=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
+  const plannedCartonsFromPlan = (p)=>{
+    // try common keys; fallback 0 (cannot compute approx received units)
+    return toNum(p.cartons_in || p.cartons || p.carton_qty || p.planned_cartons || p.planned_cartons_in || p.cartons_planned);
+  };
+
+  // Applied units per PO (from /records/summary by_po)
+  const poToApplied = new Map(recs.map(r => [norm(r.po||r.po_number||r.poNumber), toNum(r.units||r.total_units||0)]));
+
+  // Cartons-in per PO from bins: distinct mobile_bin per PO
+  // Cartons-in by PO comes from /receiving (same source as Flow/Receiving pages).
+  // We use this to estimate "Approx received units" at PO level.
+  const poToCartonsIn = new Map();
+  const poReceivedAt = new Map();
+  for (const r of receiving) {
+    const po = String(r.po_number ?? r.po ?? '').trim();
+    if (!po) continue;
+
+    const receivedAt = r.received_at ?? r.receivedAt ?? r.received_timestamp ?? r.receivedTimestamp ?? null;
+    if (receivedAt) poReceivedAt.set(po, receivedAt);
+
+    const ciRaw =
+      r.cartons_in ??
+      r.cartonsIn ??
+      r.cartons_received ??
+      r.cartonsReceived ??
+      r.cartons_in_qty ??
+      r.cartonsInQty ??
+      r.cartons_in_count ??
+      r.cartonsInCount ??
+      0;
+
+    const ci = Number(ciRaw);
+    if (Number.isFinite(ci) && ci > 0) {
+      poToCartonsIn.set(po, (poToCartonsIn.get(po) || 0) + ci);
+    }
+  }
+
+  // Build per-PO planned + meta (so we don’t double count applied in grouped views)
+  const poPlan = new Map(); // po -> {plannedUnits, plannedCartons, supplier, facility, freight, zendesk}
+  for(const p of plan){
+    const po = norm(p.po_number||p.po);
+    if(!po) continue;
+    const cur = poPlan.get(po) || {
+      plannedUnits:0, plannedCartons:0,
+      supplier: norm(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'Unspecified') || 'Unspecified',
+      facility: norm(p.facility||'Unspecified') || 'Unspecified',
+      freight: norm(p.freight_type||p.freight||'Unspecified') || 'Unspecified',
+      zendesk: norm(p.zendesk_ticket||p.zendesk||'Unspecified') || 'Unspecified'
+    };
+    cur.plannedUnits += toNum(p.target_qty||p.planned_units||0);
+    cur.plannedCartons += plannedCartonsFromPlan(p);
+    // keep first non-empty values as canonical
+    cur.supplier = cur.supplier || (norm(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)||'Unspecified');
+    cur.facility = cur.facility || (norm(p.facility)||'Unspecified');
+    cur.freight  = cur.freight  || (norm(p.freight_type||p.freight)||'Unspecified');
+    cur.zendesk  = cur.zendesk  || (norm(p.zendesk_ticket||p.zendesk)||'Unspecified');
+    poPlan.set(po, cur);
+  }
+
+  // Derive per-PO received units (approx) from cartons-in, per your definition:
+  // approxReceivedUnits = plannedUnits * (receivedCartonsIn / plannedCartonsIn) capped to 1
+  const poDerived = new Map(); // po -> {planned, received, applied, ...meta}
+  for(const [po, p] of poPlan.entries()){
+    const planned = p.plannedUnits;
+    const plannedCartons = p.plannedCartons;
+    const cartonsIn = poToCartonsIn.get(po) || 0;
+    let received = 0;
+    if(planned>0){
+      if(poReceivedAt.has(po)) { received = planned; }
+      else if(plannedCartons>0 && cartonsIn>0){ received = planned * Math.min(1, cartonsIn/plannedCartons); }
+      else if(cartonsIn>0){ received = planned; }
+    }
+    received = Math.round(received);
+    const applied = poToApplied.get(po) || 0;
+    poDerived.set(po, {planned, received, applied, cartonsIn, plannedCartons, ...p});
+  }
+
+  // Special carton view (kept)
+  if(view==='carton'){
+    const ci = Number(state.weekCartonsIn||0)||0;
+    const co = Number(state.weekCartonsOut||0)||0;
+    const max = Math.max(ci, co, 1);
+    root.innerHTML = `
+      <div class="bg-gray-50 rounded-xl border p-3">
+        <div class="text-sm font-semibold mb-2">Cartons in vs cartons out</div>
+        <div class="flex items-end gap-4 h-28">
+          <div class="flex-1">
+            <div class="text-xs text-gray-500 mb-1">In</div>
+            <div class="w-full bg-gray-100 rounded-xl overflow-hidden" style="height:92px;">
+              <div style="height:${Math.round(92*ci/max)}px; margin-top:${92-Math.round(92*ci/max)}px; background:#10b981;"></div>
+            </div>
+            <div class="text-sm font-semibold tabular-nums mt-2">${fmtInt(ci)}</div>
+          </div>
+          <div class="flex-1">
+            <div class="text-xs text-gray-500 mb-1">Out</div>
+            <div class="w-full bg-gray-100 rounded-xl overflow-hidden" style="height:92px;">
+              <div style="height:${Math.round(92*co/max)}px; margin-top:${92-Math.round(92*co/max)}px; background:${APPLIED_COLOR};opacity:.75;"></div>
+            </div>
+            <div class="text-sm font-semibold tabular-nums mt-2">${fmtInt(co)}</div>
+          </div>
+        </div>
+        <div class="text-xs text-gray-500 mt-3">Cartons out uses distinct mobile bins (summary). Next: largest delta by supplier.</div>
+      </div>
+    `;
+    if(sub) sub.textContent = 'Carton view';
+    return;
+  }
+
+  const groupKey = (x)=>{
+    if(view==='supplier') return x.supplier;
+    if(view==='facility') return x.facility;
+    if(view==='zendesk') return x.zendesk;
+    if(view==='freight') return x.freight;
+    return '—';
+  };
+
+  // Aggregate by selected dimension (planned/received/applied) + freight split for supplier
+  const agg = new Map(); // key -> {planned, received, applied, air:{...}, sea:{...}}
+  for(const x of poDerived.values()){
+    const key = groupKey(x) || 'Unspecified';
+    const cur = agg.get(key) || {planned:0, received:0, applied:0, freight:{}};
+    cur.planned += x.planned;
+    cur.received += x.received;
+    cur.applied += x.applied;
+    if(view==='supplier'){
+      const f = (x.freight||'Unspecified').toLowerCase();
+      const bucket = f.includes('air') ? 'Air' : (f.includes('sea') ? 'Sea' : 'Other');
+      cur.freight[bucket] = cur.freight[bucket] || {planned:0, received:0, applied:0};
+      cur.freight[bucket].planned += x.planned;
+      cur.freight[bucket].received += x.received;
+      cur.freight[bucket].applied += x.applied;
+    }
+    agg.set(key, cur);
+  }
+
+  const items=[...agg.entries()].map(([k,v])=>{
+    const pct = v.planned>0 ? (100*v.applied/v.planned) : 0;
+    const rem = Math.max(0, v.planned - v.applied);
+    return {k, ...v, pct, rem};
+  }).sort((a,b)=> b.rem - a.rem).slice(0, 12);
+
+  const bar = (label, val, planned, color)=>{
+    const pct = planned>0 ? Math.max(0, Math.min(100, 100*val/planned)) : 0;
+    return `
+      <div class="flex items-center gap-3">
+        <div class="w-20 shrink-0 text-xs text-gray-500">${label}</div>
+        <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+          <div class="h-2 rounded-full" style="width:${pct}%; background:${color};"></div>
+        </div>
+        <div class="w-24 text-right text-xs tabular-nums">${fmtInt(Math.round(val))}</div>
+      </div>
+    `;
+  };
+
+  if(sub){
+    const label = view==='supplier'?'Supplier view':view==='facility'?'Facility view':view==='zendesk'?'Zendesk view':view==='freight'?'Freight view':'—';
+    sub.textContent = label;
+  }
+
+  if(items.length===0){
+    root.innerHTML = `<div class="text-sm text-gray-600">No data for this week.</div>`;
+    return;
+  }
+
+  // Normalized PO-level rows used by multiple insight views
+  // NOTE: Facility view relies on `rows`.
+  const rows = Array.from(poDerived.values());
+
+  
+  // ----- Render -----
+  if(view==='supplier'){
+    // Build PO state counts per supplier
+    const poCounts = new Map(); // supplier -> {total, complete, partial, notSent}
+    for(const [po,x] of poDerived.entries()){
+      const key = x.supplier || 'Unspecified';
+      const cur = poCounts.get(key) || {total:0, complete:0, partial:0, notSent:0};
+      cur.total += 1;
+      const planned = x.planned||0, received = x.received||0, applied = x.applied||0;
+      if(received<=0) cur.notSent += 1;
+      else if(planned>0 && applied>=planned) cur.complete += 1;
+      else cur.partial += 1;
+      poCounts.set(key, cur);
+    }
+
+    const cards = [...agg.entries()].map(([k,v])=>{
+      const planned = v.planned||0, received=v.received||0, applied=v.applied||0;
+      const pct = planned>0 ? (100*applied/planned) : 0;
+      const rem = Math.max(0, planned - applied);
+      const counts = poCounts.get(k) || {total:0, complete:0, partial:0, notSent:0};
+      // Freight split (Air/Sea/Other) completion
+      const freightChips = ['Air','Sea','Other'].map(b=>{
+        const fv=v.freight?.[b];
+        if(!fv || !(fv.planned>0)) return '';
+        const fpct = Math.round(100*(fv.applied||0)/(fv.planned||1));
+        const label = b==='Other' ? 'Other' : b;
+        return `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]">${label} ${fpct}%</span>`;
+      }).join('');
+
+      // status badge
+      const badge =
+        planned<=0 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px] text-gray-600">No plan</span>` :
+        (pct>=90 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#16a34a;color:#16a34a;">On track</span>` :
+         pct>=75 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#f59e0b;color:#b45309;">At risk</span>` :
+                  `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#ef4444;color:#b91c1c;">Delayed</span>`);
+
+      const bar2 = (label, val, denom, color)=>{
+        const p = denom>0 ? Math.max(0, Math.min(100, 100*val/denom)) : 0;
+        return `
+          <div class="flex items-center gap-2">
+            <div class="w-16 text-[11px] text-gray-500">${label}</div>
+            <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div class="h-2 rounded-full" style="width:${p}%; background:${color};"></div>
+            </div>
+            <div class="w-20 text-right text-[11px] tabular-nums text-gray-700">${fmtInt(Math.round(val))}</div>
+          </div>
+        `;
+      };
+
+      return {k, planned, received, applied, pct, rem, counts, freightChips, badge, bar2};
+    }).sort((a,b)=> b.rem - a.rem).slice(0, 20);
+
+    root.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        ${cards.map(it=>{
+          const planned = it.planned||0, received=it.received||0, applied=it.applied||0;
+          const pct = planned>0 ? Math.round(100*applied/planned) : 0;
+          const remaining = Math.round(Math.max(0, planned-applied));
+          const recPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*received/planned))) : 0;
+          const appPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*applied/planned))) : 0;
+          const fullName = String(it.k||'Unspecified');
+          const shortName = fullName.split(/\s+/).slice(0,2).join(' ') || fullName;
+          return `
+            <div class="rounded-2xl border bg-white p-3 shadow-sm">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div class="text-sm font-semibold truncate" title="${esc(fullName)}">${esc(shortName)}</div>
+                    ${it.badge}
+                  </div>
+                  <div class="text-[11px] text-gray-500 mt-0.5">
+                    Completion <span class="font-medium">${pct}%</span> • Remaining <span class="font-medium">${fmtInt(remaining)}</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm font-semibold tabular-nums">${fmtInt(Math.round(applied))}</div>
+                  <div class="text-[11px] text-gray-500 tabular-nums">/ ${fmtInt(Math.round(planned))}</div>
+                </div>
+              </div>
+
+              <!-- Single progress bar: received (light) + applied (solid) over planned baseline -->
+              <div class="mt-3">
+                <div class="relative h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
+                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR};opacity:.75;"></div>
+                </div>
+                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+                  <div class="flex gap-3">
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#9ca3af"></span>Planned ${fmtInt(Math.round(planned))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmtInt(Math.round(received))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR};opacity:.75"></span>App ${fmtInt(Math.round(applied))}</span>
+                  </div>
+                  <div class="text-gray-600">${pct}%</div>
+                </div>
+              </div>
+
+              <div class="mt-2 flex items-center justify-between gap-3">
+                <div class="text-[11px] text-gray-500">
+                  POs: <span class="font-medium text-gray-700">${it.counts.total}</span>
+                  &nbsp;•&nbsp; <span class="text-gray-700">✓</span> ${it.counts.complete}
+                  &nbsp;<span class="text-gray-700">⚠</span> ${it.counts.partial}
+                  &nbsp;<span class="text-gray-700">⛔</span> ${it.counts.notSent}
+                </div>
+                <div class="flex gap-2 items-center">
+                  ${it.freightChips || ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="text-[11px] text-gray-500 mt-3">Received units are approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0. Complete = applied ≥ planned.</div>
+    `;
+    return;
+  }
+
+  // ----- Facility cards -----
+  if(view==='facility'){
+    // For each facility: totals + counts of suppliers/zendesks + top suppliers/tickets by remaining
+    const meta = new Map();
+    for (const r of rows){
+      const f = (r.facility||'Unspecified').toString();
+      let m = meta.get(f);
+      if(!m){
+        m = { facility:f, planned:0, received:0, applied:0, posTotal:0, posNotSent:0,
+              suppliers:new Set(), zendesks:new Set(),
+              bySup:new Map(), byZend:new Map() };
+        meta.set(f,m);
+      }
+      m.planned += (r.planned_units||0);
+      m.received += (r.received_units||0);
+      m.applied += (r.applied_units||0);
+      m.posTotal += 1;
+      if((r.cartons_in||0) <= 0) m.posNotSent += 1;
+
+      if(r.supplier && r.supplier!=='Unspecified') m.suppliers.add(r.supplier);
+      if(r.zendesk) m.zendesks.add(r.zendesk);
+
+      // supplier rollup per facility
+      const sKey = (r.supplier||'Unspecified').toString();
+      const sr = m.bySup.get(sKey) || { supplier:sKey, planned:0, received:0, applied:0, pos:0 };
+      sr.planned += (r.planned_units||0);
+      sr.received += (r.received_units||0);
+      sr.applied += (r.applied_units||0);
+      sr.pos += 1;
+      m.bySup.set(sKey,sr);
+
+      // zendesk rollup per facility
+      const zKey = (r.zendesk||'—').toString();
+      if(zKey && zKey!=='—'){
+        const zr = m.byZend.get(zKey) || { zendesk:zKey, planned:0, received:0, applied:0, pos:0 };
+        zr.planned += (r.planned_units||0);
+        zr.received += (r.received_units||0);
+        zr.applied += (r.applied_units||0);
+        zr.pos += 1;
+        m.byZend.set(zKey,zr);
+      }
+    }
+
+    const facCards = [...meta.values()]
+      .sort((a,b)=> (b.planned - a.planned) || a.facility.localeCompare(b.facility));
+
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-3';
+
+    for (const f of facCards){
+      const pctDone = f.planned>0 ? Math.round((f.applied/f.planned)*100) : 0;
+      const rem = Math.max(0, f.planned - f.applied);
+
+      const statusPill = (()=> {
+        if(pctDone>=98) return '<span class="ml-2 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">On track</span>';
+        if(pctDone>=85) return '<span class="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">At risk</span>';
+        return '<span class="ml-2 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">Delayed</span>';
+      })();
+
+      const topSup = [...f.bySup.values()]
+        .map(s=>({ supplier:s.supplier, rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0, pos:s.pos||0 }))
+        .filter(x=>x.planned>0)
+        .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
+        .slice(0,3);
+
+      const topZend = [...f.byZend.values()]
+        .map(z=>({ zendesk:z.zendesk, rem: Math.max(0,(z.planned||0)-(z.applied||0)), planned:z.planned||0, pos:z.pos||0 }))
+        .filter(x=>x.planned>0)
+        .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
+        .slice(0,3);
+
+      const card = document.createElement('div');
+      card.className = 'rounded-2xl border border-gray-200 bg-white p-3 shadow-sm';
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center">
+              <div class="font-semibold text-sm truncate">${escapeHtml(f.facility)}</div>
+              ${statusPill}
+            </div>
+            <div class="mt-1 text-[12px] text-gray-500">
+              Completion ${pctDone}% • Remaining ${fmt(rem)} • PO’s not sent ${fmt(f.posNotSent)}/${fmt(f.posTotal)}
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-sm font-semibold">${fmt(f.applied)}</div>
+            <div class="text-[12px] text-gray-500">/ ${fmt(f.planned)}</div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          ${progressBarHtml(f.planned, f.received, f.applied)}
+          <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+            <div class="flex gap-3 flex-wrap">
+              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#9ca3af"></span>Planned ${fmt(f.planned)}</span>
+              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmt(f.received)}</span>
+              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}; opacity:.75"></span>App ${fmt(f.applied)}</span>
+            </div>
+            <div class="text-gray-600">${pctDone}%</div>
+          </div>
+        </div>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-gray-600">
+          <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">👥</span> Suppliers <b class="ml-1">${fmt(f.suppliers.size || 0)}</b></span>
+          <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">🎫</span> Zendesk <b class="ml-1">${fmt(f.zendesks.size || 0)}</b></span>
+        </div>
+
+        ${(topZend.length || topSup.length) ? `
+          <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
+            ${topZend.length ? `
+              <div>
+                <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining tickets</div>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  ${topZend.map(z=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
+                    <span class="mr-1">🎫</span> ${escapeHtml(z.zendesk)} • <b class="ml-1">${fmt(z.rem)}</b>
+                  </span>`).join('')}
+                </div>
+              </div>
+            `:''}
+
+            ${topSup.length ? `
+              <div>
+                <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining suppliers</div>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  ${topSup.map(s=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
+                    <span class="mr-1">🏭</span> ${escapeHtml(s.supplier)} • <b class="ml-1">${fmt(s.rem)}</b>
+                  </span>`).join('')}
+                </div>
+              </div>
+            `:''}
+          </div>
+        `:''}
+      `;
+      grid.appendChild(card);
+    }
+
+    insightsBody.appendChild(grid);
+    return;
+  }
+
+  
+  // ----- Freight cards -----
+  if(view==='freight'){
+    // Buckets: Air / Sea / Other. Show totals + supplier + PO counts.
+    const buckets = new Map([['Air', {k:'Air', planned:0, received:0, applied:0, pos:new Set(), suppliers:new Set()}],
+                             ['Sea', {k:'Sea', planned:0, received:0, applied:0, pos:new Set(), suppliers:new Set()}],
+                             ['Other', {k:'Other', planned:0, received:0, applied:0, pos:new Set(), suppliers:new Set()}]]);
+    for(const r of rows){
+      const f = (r.freight||'').toString().toLowerCase();
+      const key = f.includes('air') ? 'Air' : (f.includes('sea') ? 'Sea' : 'Other');
+      const b = buckets.get(key);
+      b.planned += (r.planned_units||0);
+      b.received += (r.received_units||0);
+      b.applied += (r.applied_units||0);
+      if(r.po_number) b.pos.add(r.po_number);
+      if(r.supplier && r.supplier!=='Unspecified') b.suppliers.add(r.supplier);
+    }
+
+    const arr = [...buckets.values()].sort((a,b)=> (b.planned-a.planned) || a.k.localeCompare(b.k));
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-1 md:grid-cols-3 gap-3';
+
+    for(const b of arr){
+      const pctDone = b.planned>0 ? Math.round((b.applied/b.planned)*100) : 0;
+      const poCount = b.pos.size;
+      const supCount = b.suppliers.size;
+      const rem = Math.max(0, b.planned - b.applied);
+
+      const card = document.createElement('div');
+      card.className = 'rounded-2xl border border-gray-200 bg-white p-3 shadow-sm';
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="text-sm font-semibold">${escapeHtml(b.k)}</div>
+            <div class="mt-0.5 text-[12px] text-gray-500">Completion ${pctDone}% • Remaining ${fmt(rem)}</div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-sm font-semibold">${fmt(b.applied)}</div>
+            <div class="text-[12px] text-gray-500">/ ${fmt(b.planned)}</div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          ${progressBarHtml(b.planned, b.received, b.applied)}
+          <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+            <div class="flex gap-3 flex-wrap">
+              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#9ca3af"></span>Planned ${fmt(b.planned)}</span>
+              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmt(b.received)}</span>
+              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}; opacity:.75"></span>App ${fmt(b.applied)}</span>
+            </div>
+            <div class="text-gray-600">${pctDone}%</div>
+          </div>
+        </div>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-gray-600">
+          <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5">Suppliers <b class="ml-1">${fmt(supCount)}</b></span>
+          <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5">POs <b class="ml-1">${fmt(poCount)}</b></span>
+        </div>
+      `;
+      grid.appendChild(card);
+    }
+
+    insightsBody.appendChild(grid);
+    return;
+  }
+
+// Default list view for other dimensions (facility, zendesk, freight)
+  root.innerHTML = `
+    <div class="space-y-3">
+      ${items.map(it=>{
+        const planned = it.planned||0;
+        const received = it.received||0;
+        const applied = it.applied||0;
+        const pct = planned>0 ? Math.round(100*applied/planned) : 0;
+
+        const freightRow = (view==='supplier') ? `
+          <div class="mt-2 text-[11px] text-gray-500 flex gap-3">
+            ${['Air','Sea','Other'].map(b=>{
+              const fv = it.freight?.[b];
+              if(!fv) return '';
+              const fpct = fv.planned>0 ? Math.round(100*fv.applied/fv.planned) : 0;
+              return `<span class="px-2 py-0.5 rounded-full border bg-white">${b}: ${fpct}%</span>`;
+            }).join('')}
+          </div>
+        ` : '';
+
+        return `
+          <div class="rounded-xl border bg-gray-50 p-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold truncate">${esc(it.k)}</div>
+                <div class="text-xs text-gray-500">Completion: <span class="font-medium">${pct}%</span> &nbsp;•&nbsp; Remaining: <span class="font-medium">${fmtInt(Math.round(Math.max(0, planned-applied)))}</span></div>
+              </div>
+              <div class="text-right text-xs text-gray-500 tabular-nums">
+                <div>${fmtInt(Math.round(applied))} / ${fmtInt(Math.round(planned))}</div>
+              </div>
+            </div>
+            <div class="mt-3 space-y-2">
+              ${bar('Planned', planned, planned||1, OPS_PLANNED_FG)}
+              ${bar('Received', received, planned||1, OPS_RECEIVED_FG)}
+              ${bar('Applied', applied, planned||1, 'rgba(22,163,74,0.72)')}
+            </div>
+            ${freightRow}
+          </div>
+        `;
+      }).join('')}
+      <div class="text-xs text-gray-500">Received units are approximated from cartons-in by PO (as in Flow).</div>
+    </div>
+  `;
+}
+
+
+
+function wireOpsInsights(){
+  const pills = Array.from(document.querySelectorAll('.ops-pill'));
+  if(!pills.length) return;
+  pills.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      pills.forEach(b=>b.classList.remove('ops-pill--active'));
+      btn.classList.add('ops-pill--active');
+      const v = btn.getAttribute('data-opsview') || 'supplier';
+      renderOpsInsights(v);
+    });
+  });
+  renderOpsInsights('supplier');
+}
+window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
+  show(location.hash || '#dashboard'); // initial render
+  try{ wireOpsDownloads(); }catch{}
+  try{ wireOpsInsights(); }catch{}
+
+  // Intake scaffold + checkbox handler
+  renderIntake();
+  document.getElementById('chk-all')?.addEventListener('change', (e) => {
+    const on = e.target.checked;
+    intakeRows.forEach(r => r.selected = on);
+    renderIntake();
+    document.getElementById('chk-all').checked = on;
+  });
+
+document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
+
+  // pulse hearts + metrics
+  const _oh = $('#ops-heart');
+  if (_oh) _oh.appendChild(createHeart(24, BRAND, 40));
+  const _ohs = $('#ops-heart-small');
+  if (_ohs) _ohs.appendChild(createHeart(18, BRAND, 40));
+  loadOpsMetrics();
+  startSSE();
+})();
+
+  </script>
+<script>
+(function () {
+  function isReady(s) {
+    return s && (
+      (Array.isArray(s.plan)    && s.plan.length) ||
+      (Array.isArray(s.records) && s.records.length) ||
+      (Array.isArray(s.bins)    && s.bins.length)
+    );
+  }
+  function fire() { window.dispatchEvent(new Event('state:ready')); }
+  var fired = false;
+
+  if (isReady(window.state)) { fired = true; fire(); }
+  var t = setInterval(function () {
+    if (isReady(window.state)) {
+      if (!fired) { fired = true; fire(); }
+      clearInterval(t);
+    }
+  }, 300);
+})();
+</script>
+<script>
+(function () {
+  // Re-fire state:ready after Ops switches weeks (or re-populates state)
+  var oldSetWeek = window.setWeek;
+  if (typeof oldSetWeek === 'function') {
+    window.setWeek = async function () {
+      var r = await oldSetWeek.apply(this, arguments);
+      // At this point Ops has updated window.state.{weekStart, plan, records, bins}
+      window.dispatchEvent(new Event('state:ready'));
+      return r;
+    };
+  }
+})();
+</script>
+<script defer="" src="/exec_live_additive.js?v=8"></script>
+<script defer="" src="/receiving_live_additive.js?v=27">
+// --- Ops: PO progress search (right panel) ---
+(function(){
+  function q(sel){ return document.querySelector(sel); }
+  const input = q('#ops-po-search');
+  const clearBtn = q('#ops-po-clear');
+  const out = q('#ops-po-detail');
+  if(!input || !out) return;
+
+  function fmt(n){
+    const x = Number(n);
+    return (isFinite(x)?Math.trunc(x):0).toLocaleString();
+  }
+
+  function findPlanRow(po){
+    const key = String(po||'').trim().toUpperCase();
+    return (window.state?.plan||[]).find(p => String(p.po_number||'').trim().toUpperCase() === key) || null;
+  }
+
+  function renderPO(po){
+    const key = String(po||'').trim().toUpperCase();
+    if(!key){ out.innerHTML = '<div class="text-xs text-gray-500">Enter a PO to view details.</div>'; return; }
+
+    const planRow = findPlanRow(key);
+    const planned = planRow ? toNum(planRow.target_qty) : 0;
+
+    const sumC = window.state?._summary_complete;
+    const sumR = window.state?._summary_received;
+
+    const applied = Number(sumC?.by_po?.[key]?.units || sumC?.by_po?.[key]?.total_units || 0);
+    const received = Number(sumR?.by_po?.[key]?.units || sumR?.by_po?.[key]?.total_units || 0);
+
+    const pctA = planned>0 ? Math.round(applied*100/planned) : 0;
+    const pctR = planned>0 ? Math.round(received*100/planned) : 0;
+
+    const supplier = planRow?.supplier_name || planRow?.supplier || '';
+    const facility = planRow?.facility || planRow?.facility_code || '';
+    const freight  = planRow?.freight_type || planRow?.freight || '';
+    const zendesk  = planRow?.zendesk_ticket || planRow?.zendesk || '';
+
+    out.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-sm font-semibold">${key}</div>
+          <div class="text-xs text-gray-500 mt-0.5">${[supplier, facility, freight, zendesk].filter(Boolean).join(' • ') || '—'}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-gray-500">Planned</div>
+          <div class="text-sm font-semibold tabular-nums">${fmt(planned)}</div>
+        </div>
+      </div>
+
+      <div class="mt-3 space-y-2">
+        <div>
+          <div class="flex items-center justify-between text-xs text-gray-600">
+            <div>Received</div><div class="font-semibold tabular-nums">${fmt(received)} <span class="text-gray-400">(${pctR}%)</span></div>
+          </div>
+          <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
+            <div class="h-full bg-emerald-500" style="width:${Math.min(100,pctR)}%"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between text-xs text-gray-600">
+            <div>Applied</div><div class="font-semibold tabular-nums">${fmt(applied)} <span class="text-gray-400">(${pctA}%)</span></div>
+          </div>
+          <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
+            <div class="h-full" style="width:${Math.min(100,pctA)}%; background:${APPLIED_COLOR};"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  let t=null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t=setTimeout(()=>renderPO(input.value), 250);
+  });
+  clearBtn?.addEventListener('click', () => { input.value=''; renderPO(''); });
+
+  // re-render on state:ready (week change / plan upload)
+  window.addEventListener('state:ready', () => {
+    if(input.value.trim()) renderPO(input.value);
+  });
+})();
  
   
 </script>
