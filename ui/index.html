@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-<!-- Tailwind -->
+  <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -2753,7 +2753,7 @@ async function refreshDashboardTotals(){
     // "Cartons out" as distinct mobile bins for COMPLETE status
     const cartonsOut = Object.values(summary?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
 
-    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||'').trim()).filter(Boolean));
+    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
     const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
 
     const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
@@ -2811,14 +2811,14 @@ async function refreshDashboardTotals(){
       const r = planByPO.get(po) || {
         po,
         planned: 0,
-        supplier: String(p.supplier_name||'').trim(),
+        supplier: String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim(),
         facility: String(p.facility_name||'').trim(),
         freight: String(p.freight_type||'').trim(),
         zendesk: String(p.zendesk_ticket||'').trim(),
       };
       r.planned += toNum(p.target_qty);
       // Prefer first non-empty meta
-      if(!r.supplier && p.supplier_name) r.supplier = String(p.supplier_name).trim();
+      if(!r.supplier && (p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)) r.supplier = String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory).trim();
       if(!r.facility && p.facility_name) r.facility = String(p.facility_name).trim();
       if(!r.freight && p.freight_type) r.freight = String(p.freight_type).trim();
       if(!r.zendesk && p.zendesk_ticket) r.zendesk = String(p.zendesk_ticket).trim();
@@ -3158,7 +3158,7 @@ function downloadMobileBins(){
   try{
     const bins = Array.isArray(state.bins) ? state.bins : [];
     const plan = Array.isArray(state.plan) ? state.plan : [];
-    const poToSupplier = new Map(plan.map(p => [String(p.po_number||p.po||'').trim(), String(p.supplier||p.vendor||'').trim()]));
+    const poToSupplier = new Map(plan.map(p => [String(p.po_number||p.po||'').trim(), String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()]));
     const rows = [];
     for(const b of bins){
       const po = String(b.po_number || b.po || b.poNumber || '').trim();
@@ -3218,7 +3218,7 @@ function renderOpsInsights(view){
     if(!po) continue;
     const cur = poPlan.get(po) || {
       plannedUnits:0, plannedCartons:0,
-      supplier: norm(p.supplier||p.vendor||'Unspecified') || 'Unspecified',
+      supplier: norm(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'Unspecified') || 'Unspecified',
       facility: norm(p.facility||'Unspecified') || 'Unspecified',
       freight: norm(p.freight_type||p.freight||'Unspecified') || 'Unspecified',
       zendesk: norm(p.zendesk_ticket||p.zendesk||'Unspecified') || 'Unspecified'
@@ -3226,7 +3226,7 @@ function renderOpsInsights(view){
     cur.plannedUnits += toNum(p.target_qty||p.planned_units||0);
     cur.plannedCartons += plannedCartonsFromPlan(p);
     // keep first non-empty values as canonical
-    cur.supplier = cur.supplier || (norm(p.supplier||p.vendor)||'Unspecified');
+    cur.supplier = cur.supplier || (norm(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)||'Unspecified');
     cur.facility = cur.facility || (norm(p.facility)||'Unspecified');
     cur.freight  = cur.freight  || (norm(p.freight_type||p.freight)||'Unspecified');
     cur.zendesk  = cur.zendesk  || (norm(p.zendesk_ticket||p.zendesk)||'Unspecified');
