@@ -523,9 +523,10 @@ function pct(n, d, digits = 0) {
 }
 
 // Softer / matte palette for Ops insight bars
-const OPS_PLANNED_BG = 'rgba(156,163,175,0.25)'; // gray-400 @ 25%
-const OPS_PLANNED_FG = 'rgba(156,163,175,0.55)'; // gray-400 @ 55%
-const OPS_RECEIVED_FG = 'rgba(14,165,233,0.30)'; // sky-500 @ 30%
+const OPS_PLANNED_BG = 'rgba(148,163,184,0.16)'; // slate-400 @ 16% (matte)
+const OPS_PLANNED_FG = 'rgba(148,163,184,0.32)'; // slate-400 @ 32%
+const OPS_RECEIVED_FG = 'rgba(56,189,248,0.20)'; // sky-400 @ 20% (soft)
+const OPS_APPLIED_OPACITY = '0.34'; // applied overlay opacity (matte)
 const OPS_APPLIED_OPACITY = 0.72;               // applied overlay opacity
 
 // Bar row helper used by Ops insights (safe even if not used everywhere)
@@ -568,7 +569,7 @@ function shortTwoWords(name) {
       return s || '—';
     }
   const BRAND = '#990033';
-  const APPLIED_COLOR = '#16a34a'; // matte green for applied
+  const APPLIED_COLOR = 'rgba(34,197,94,0.85)'; // matte green (soft) for applied
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
   const $ = (s)=>document.querySelector(s);
@@ -3301,6 +3302,9 @@ function renderOpsInsights(view){
   const toNum = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n : 0; };
   const norm = (s)=>String(s||'').trim();
   const esc = (s)=>String(s??'').replace(/[&<>"']/g, ch=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
+  const insightsBody = root; // legacy alias
+  const escapeHtml = esc; // legacy alias
+  const fmt = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n.toLocaleString() : String(v||''); };
   const plannedCartonsFromPlan = (p)=>{
     // try common keys; fallback 0 (cannot compute approx received units)
     return toNum(p.cartons_in || p.cartons || p.carton_qty || p.planned_cartons || p.planned_cartons_in || p.cartons_planned);
@@ -4000,7 +4004,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
- 
   
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
