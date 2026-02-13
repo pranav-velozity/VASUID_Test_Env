@@ -496,7 +496,24 @@
 </span>
 <span id="vo-footer-text">Applied this week: 0</span>
 </div>
-<script>
+  <script>
+    // ---------------------------
+    // Small utilities (safe HTML, formatting)
+    // ---------------------------
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function shortTwoWords(name) {
+      const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+      const s = parts.slice(0, 2).join(' ');
+      return s || '—';
+    }
   const BRAND = '#990033';
   const APPLIED_COLOR = '#16a34a'; // matte green for applied
 const BASE_BPM = 40;
@@ -3458,12 +3475,16 @@ function renderOpsInsights(view){
           const planned = it.planned||0, received=it.received||0, applied=it.applied||0;
           const pct = planned>0 ? Math.round(100*applied/planned) : 0;
           const remaining = Math.round(Math.max(0, planned-applied));
+          const recPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*received/planned))) : 0;
+          const appPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*applied/planned))) : 0;
+          const fullName = String(it.k||'Unspecified');
+          const shortName = fullName.split(/\s+/).slice(0,2).join(' ') || fullName;
           return `
             <div class="rounded-2xl border bg-white p-3 shadow-sm">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
-                    <div class="text-sm font-semibold truncate">${esc(it.k)}</div>
+                    <div class="text-sm font-semibold truncate" title="${esc(fullName)}">${esc(shortName)}</div>
                     ${it.badge}
                   </div>
                   <div class="text-[11px] text-gray-500 mt-0.5">
@@ -3476,10 +3497,20 @@ function renderOpsInsights(view){
                 </div>
               </div>
 
-              <div class="mt-3 space-y-1.5">
-                ${it.bar2('Planned', planned, planned||1, '#9ca3af')}
-                ${it.bar2('Received', received, planned||1, '#0ea5e9')}
-                ${it.bar2('Applied', applied, planned||1, APPLIED_COLOR)}
+              <!-- Single progress bar: received (light) + applied (solid) over planned baseline -->
+              <div class="mt-3">
+                <div class="relative h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:#bae6fd;"></div>
+                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR};"></div>
+                </div>
+                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+                  <div class="flex gap-3">
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#9ca3af"></span>Planned ${fmtInt(Math.round(planned))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#bae6fd"></span>Rec ${fmtInt(Math.round(received))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}"></span>App ${fmtInt(Math.round(applied))}</span>
+                  </div>
+                  <div class="text-gray-600">${pct}%</div>
+                </div>
               </div>
 
               <div class="mt-2 flex items-center justify-between gap-3">
@@ -3810,8 +3841,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
-
 
   
 </script>
