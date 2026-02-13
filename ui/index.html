@@ -34,9 +34,9 @@
     .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
     .wkcap .m{font-size:10px}
     .wkcap .d{font-size:16px;font-weight:700;line-height:1.1}
-    .wkcap .t{font-size:11px;margin-top:2px;color:#990033}
+    .wkcap .t{font-size:11px;margin-top:2px;color:#2f855a}
     .wkcap .bar{height:6px;border-radius:9999px;background:#e5e7eb;overflow:hidden;margin-top:4px}
-    .wkcap .bar>div{height:6px;border-radius:9999px;background:#990033;width:0%}
+    .wkcap .bar>div{height:6px;border-radius:9999px;background:#2f855a;width:0%}
 
 /* Respect .hidden; only style when visible */
 #page-dashboard:not(.hidden){ display:block; }
@@ -78,7 +78,7 @@
 .cmd:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(153,0,51,.15); }
 
 /* variants */
-.cmd--primary{ background:#990033; color:#fff; }
+.cmd--primary{ background:#2f855a; color:#fff; }
 .cmd--primary:hover{ filter:brightness(.98); }
 .cmd--danger{ color:#991b1b; background:#fff5f5; border-color:#fecaca; }
 .cmd--ghost{ background:transparent; }
@@ -334,7 +334,7 @@
 <div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
 </div>
 <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:#990033;"></div>
+<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:#2f855a;"></div>
 </div>
 </div>
 </div>
@@ -379,7 +379,7 @@
 <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
 <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
 <svg aria-hidden="true" class="heartbeat" focusable="false" height="18" viewbox="0 0 24 24" width="18">
-<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"></path>
+<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#2f855a"></path>
 </svg>
 <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
 </div>
@@ -497,7 +497,7 @@
 <span id="vo-footer-text">Applied this week: 0</span>
 </div>
 <script>
-  const BRAND = '#990033';
+  const BRAND = '#2f855a';
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
   const $ = (s)=>document.querySelector(s);
@@ -586,7 +586,22 @@ function createHeart(size=24, color=BRAND, bpm=40){
   }
 }
 
-  // Summary-first: dashboards never pull raw /records.
+  
+
+// Receiving-week data (cartons in + received_at timestamps)
+async function fetchReceivingWeek(ws){
+  if(!apiBase) return [];
+  try{
+    const q = new URLSearchParams();
+    if(ws) q.set('weekStart', ws);
+    const r = await api(`/receiving?${q.toString()}`);
+    return Array.isArray(r) ? r : (r.rows || r.data || []);
+  }catch(e){
+    return [];
+  }
+}
+
+// Summary-first: dashboards never pull raw /records.
   async function fetchSummary(fromYMD, toYMD, status='complete'){
     if(!apiBase) return null;
     try{
@@ -1299,7 +1314,7 @@ function supplierRingSVG(applied, planned) {
         <circle cx="${size/2}" cy="${size/2}" r="${r}"
           fill="none" stroke="#E5E7EB" stroke-width="${stroke}" />
         <circle cx="${size/2}" cy="${size/2}" r="${r}"
-          fill="none" stroke="#990033" stroke-width="${stroke}"
+          fill="none" stroke="#2f855a" stroke-width="${stroke}"
           stroke-linecap="round"
           stroke-dasharray="${dash} ${c}"
           transform="rotate(-90 ${size/2} ${size/2})" />
@@ -1319,7 +1334,7 @@ function facilityBarHTML(applied, planned) {
   return `
     <div class="w-full">
       <div class="h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:#2f855a;width:${(ratio * 100).toFixed(1)}%"></div>
       </div>
       <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
         <div class="tabular-nums">${fmtInt(a)} applied</div>
@@ -1375,7 +1390,7 @@ function freightLanesHTML(plannedMap, appliedMap) {
             <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
           </div>
           <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
-            <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
+            <div class="h-full" style="background-color:#2f855a;width:${(ratio * 100).toFixed(1)}%"></div>
           </div>
         </div>
       </div>
@@ -1407,7 +1422,7 @@ function zendeskBulletHTML(applied, planned) {
         ${over ? `<span class="ml-2 text-gray-900 font-semibold tabular-nums">Over by ${fmtInt(over)}</span>` : ``}
       </div>
       <div class="relative h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full" style="background-color:#990033;width:${appliedPct.toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:#2f855a;width:${appliedPct.toFixed(1)}%"></div>
         <div class="absolute top-[-2px] bottom-[-2px] w-[2px] bg-gray-700"
              style="left:${markerPct.toFixed(1)}%"></div>
       </div>
@@ -2721,65 +2736,84 @@ async function loadOpsMetrics() {
 
 
   // ---------- Dashboard weekly refresh from completion timestamps ----------
+
 async function refreshDashboardTotals(){
-  if(!apiBase) return;
   const ws = state.weekStart;
-  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-  const we  = iso(weD);
+  const from = ws;
+  const to = addDays(ws,7);
 
-  const summary = await fetchSummary(ws, we, 'complete');
-  const summaryReceived = await fetchSummary(ws, we, 'received');
-  state._summary_complete = summary;
-  state._summary_received = summaryReceived;
-  const appliedTotal = Number(summary?.total_units || 0);
-  const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
-  const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
-  // Week totals side panel (Ops)
   try{
-    const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
-    const poReceived = new Set(Object.keys(summaryReceived?.by_po || {}));
-
-    const receivedTotal = Number(summaryReceived?.total_units || 0);
-    const appliedTotal2 = Number(summary?.total_units || 0);
-
-    const unitOf = (v) => {
-      if (v == null) return 0;
-      if (typeof v === 'number') return v;
-      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
-    };
-
-    // "Cartons in" approximated as distinct mobile bins for RECEIVED status
-    const cartonsIn  = Object.values(summaryReceived?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
-    // "Cartons out" as distinct mobile bins for COMPLETE status
-    const cartonsOut = Object.values(summary?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
-
-    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
-    const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
-
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-
-    setTxt('#ops-week-of', state.weekStart || '—');
-    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
-    setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
-    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
-    setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
-    setTxt('#ops-week-cartons-in', cartonsIn.toLocaleString());
-    setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
-    state.weekCartonsIn = cartonsIn;
-    state.weekCartonsOut = cartonsOut;
-    setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
-    setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
-
-    const pctNow = plannedTotal>0?Math.round(appliedTotal2*100/plannedTotal):(state.plan.length?0:100);
-    const h=$('#ops-week-health');
-    if(h){
-      let label = 'On-Plan';
-      if(pctNow < 75) label='At-Risk';
-      if(pctNow < 50) label='Delayed';
-      h.textContent = label;
+    // Plan (targets)
+    if(!state.plan.length){
+      state.plan = await fetchPlan(ws);
     }
-  }catch{}
-  // PO progress tile (totals + table)
+
+    // Applied (actuals)
+    const summaryComplete = await fetchSummary(from,to,'complete');
+    const appliedTotal = summaryComplete?.total_units || 0;
+
+    // Received (approx) — mirror Flow: PO counts as received once it has a received_at timestamp.
+    // Data comes from /receiving which also carries cartons_in.
+    const receivingRows = await fetchReceivingWeek(ws);
+    state.receivingRows = receivingRows;
+    const receivedPO = new Set(
+      (receivingRows||[])
+        .filter(r => r && (r.received_at_utc || r.received_at))
+        .map(r => String(r.po_number||'').trim())
+        .filter(Boolean)
+    );
+
+    state.receivedPOSet = receivedPO;
+    const cartonsInByPo = new Map();
+    (receivingRows||[]).forEach(r=>{
+      const po = String(r&&r.po_number||'').trim();
+      if(!po) return;
+      const v = Number(r.cartons_in||0)||0;
+      cartonsInByPo.set(po, (cartonsInByPo.get(po)||0)+v);
+    });
+    state.cartonsInByPo = cartonsInByPo;
+
+    const plannedTotal = state.plan.reduce((s,r)=>s+(Number(r.target_qty||0)||0),0);
+    const receivedTotal = state.plan.reduce((s,r)=>{
+      const po = String(r.po_number||'').trim();
+      return s + (receivedPO.has(po) ? (Number(r.target_qty||0)||0) : 0);
+    },0);
+
+    const poPlanned = Object.keys(summaryComplete.by_po || {}).length;
+    const poReceived = receivedPO.size;
+
+    const cartonsOut = Object.values(summaryComplete.by_po || {}).reduce((s,x)=>s+(x.cartons_out||0),0);
+    const cartonsIn = (receivingRows||[]).reduce((s,r)=>s+(Number(r.cartons_in||0)||0),0);
+
+    // counts
+    setText('ops-week-planned', fmtInt(plannedTotal));
+    setText('ops-week-applied', fmtInt(appliedTotal));
+    setText('ops-week-completion', plannedTotal? Math.round(appliedTotal/plannedTotal*100)+'%':'—');
+
+    setText('ops-week-pos-planned', fmtInt(poPlanned));
+    setText('ops-week-pos-received', fmtInt(poReceived));
+
+    setText('ops-week-units-planned', fmtInt(plannedTotal));
+    setText('ops-week-units-applied', fmtInt(appliedTotal));
+
+    setText('ops-week-cartons-in', fmtInt(cartonsIn));
+    setText('ops-week-cartons-out', fmtInt(cartonsOut));
+
+    // footer
+    setText('footer-applied-week', fmtInt(appliedTotal));
+
+    // light KPIs
+    const supplierCount = new Set(state.plan.map(r=>String(r.supplier||'').trim()).filter(Boolean)).size;
+    const zendeskCount = new Set(state.plan.map(r=>String(r.zendesk||r.zendesk_ticket||'').trim()).filter(Boolean)).size;
+    setText('ops-week-suppliers', fmtInt(supplierCount));
+    setText('ops-week-zendesk', fmtInt(zendeskCount));
+
+  }catch(e){
+    console.warn('[ops] refreshDashboardTotals failed', e);
+  }
+}
+
+// PO progress tile (totals + table)
   try{
     const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
     const plannedTotal2 = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
@@ -2869,7 +2903,7 @@ async function refreshDashboardTotals(){
           <td class="py-2 px-3">
             <div class="h-2 bg-gray-100 rounded-full overflow-hidden relative">
               <div class="h-full bg-emerald-500" style="width:${wR}%"></div>
-              <div class="h-full" style="width:${wA}%; background:#990033; position:absolute; top:0; left:0;"></div>
+              <div class="h-full" style="width:${wA}%; background:#2f855a; position:absolute; top:0; left:0;"></div>
             </div>
           </td>
         </tr>`;
@@ -3233,14 +3267,16 @@ function renderOpsInsights(view){
     poPlan.set(po, cur);
   }
 
-  // Derive per-PO received units (approx) from cartons-in, per your definition:
-  // approxReceivedUnits = plannedUnits * (receivedCartonsIn / plannedCartonsIn) capped to 1
+  // Derive per-PO received units (approx) from Receiving timestamps (matches Flow):
+  // approxReceivedUnits = plannedUnits if PO has received_at_utc, else 0
   const poDerived = new Map(); // po -> {planned, received, applied, ...meta}
   for(const [po, p] of poPlan.entries()){
     const planned = p.plannedUnits;
-    const plannedCartons = p.plannedCartons;
-    const cartonsIn = poToCartonsIn.get(po) || 0;
-    const received = (plannedCartons>0 && planned>0) ? (planned * Math.min(1, cartonsIn/plannedCartons)) : 0;
+
+      const plannedCartons = Number(p.plannedCartons||0)||0;
+      const cartonsIn = (state.cartonsInByPo && state.cartonsInByPo.get(po)) || 0;
+      // Approx Received Units: match Flow logic => if PO has a received_at timestamp, count full planned units as received.
+      const received = (planned>0 && state.receivedPOSet && state.receivedPOSet.has(po)) ? planned : 0;
     const applied = poToApplied.get(po) || 0;
     poDerived.set(po, {planned, received, applied, cartonsIn, plannedCartons, ...p});
   }
@@ -3264,7 +3300,7 @@ function renderOpsInsights(view){
           <div class="flex-1">
             <div class="text-xs text-gray-500 mb-1">Out</div>
             <div class="w-full bg-gray-100 rounded-xl overflow-hidden" style="height:92px;">
-              <div style="height:${Math.round(92*co/max)}px; margin-top:${92-Math.round(92*co/max)}px; background:#990033;"></div>
+              <div style="height:${Math.round(92*co/max)}px; margin-top:${92-Math.round(92*co/max)}px; background:#2f855a;"></div>
             </div>
             <div class="text-sm font-semibold tabular-nums mt-2">${fmtInt(co)}</div>
           </div>
@@ -3412,7 +3448,7 @@ function renderOpsInsights(view){
               <div class="mt-3 space-y-1.5">
                 ${it.bar2('Planned', planned, planned||1, '#9ca3af')}
                 ${it.bar2('Received', received, planned||1, '#0ea5e9')}
-                ${it.bar2('Applied', applied, planned||1, '#990033')}
+                ${it.bar2('Applied', applied, planned||1, '#2f855a')}
               </div>
 
               <div class="mt-2 flex items-center justify-between gap-3">
@@ -3469,7 +3505,7 @@ function renderOpsInsights(view){
             <div class="mt-3 space-y-2">
               ${bar('Planned', planned, planned||1, '#9ca3af')}
               ${bar('Received', received, planned||1, '#0ea5e9')}
-              ${bar('Applied', applied, planned||1, '#990033')}
+              ${bar('Applied', applied, planned||1, '#2f855a')}
             </div>
             ${freightRow}
           </div>
@@ -3624,7 +3660,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
             <div>Applied</div><div class="font-semibold tabular-nums">${fmt(applied)} <span class="text-gray-400">(${pctA}%)</span></div>
           </div>
           <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
-            <div class="h-full" style="width:${Math.min(100,pctA)}%; background:#990033;"></div>
+            <div class="h-full" style="width:${Math.min(100,pctA)}%; background:#2f855a;"></div>
           </div>
         </div>
       </div>
@@ -3643,6 +3679,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
+
+
   
   </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
