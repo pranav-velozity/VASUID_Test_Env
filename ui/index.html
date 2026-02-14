@@ -527,7 +527,6 @@ const OPS_PLANNED_BG = 'rgba(148,163,184,0.16)'; // slate-400 @ 16% (matte)
 const OPS_PLANNED_FG = 'rgba(148,163,184,0.32)'; // slate-400 @ 32%
 const OPS_RECEIVED_FG = 'rgba(56,189,248,0.20)'; // sky-400 @ 20% (soft)
 const OPS_APPLIED_OPACITY = '0.34'; // applied overlay opacity (matte)
-const OPS_APPLIED_OPACITY = 0.72;               // applied overlay opacity
 
 // Bar row helper used by Ops insights (safe even if not used everywhere)
 function barRowHtml(label, val, denom, barColor) {
@@ -4004,6 +4003,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
+
   
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
