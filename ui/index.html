@@ -8,11 +8,25 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-  <!-- Tailwind -->
+ <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
+
+:root{
+  --ops-green:#D1E231; /* planned / in */
+  --ops-yellow:#F0D731; /* applied / ready */
+  --ops-ink:#111827;
+}
+/* Keep view buttons neutral (black text), do NOT tint with ops colors */
+.insights-view-btn, .insightsViewBtn, .insights-tabs button, .insights-tab-btn, .viewBtn, .view-btn{
+  color: var(--ops-ink) !important;
+}
+.insights-view-btn.active, .insightsViewBtn.active, .insights-tabs button.active, .insights-tab-btn.active, .viewBtn.active, .view-btn.active{
+  color: var(--ops-ink) !important;
+}
+
     body{background:#f8fafc;color:#111827}
     .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
     .vo-wrap{
@@ -334,7 +348,7 @@
 <div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
 </div>
 <div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:#16a34a;"></div>
+<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:var(--ops-green);"></div>
 </div>
 </div>
 </div>
@@ -3452,7 +3466,7 @@ function renderOpsInsights(view){
           <div class="flex-1">
             <div class="text-xs text-gray-500 mb-1">In</div>
             <div class="w-full bg-gray-100 rounded-xl overflow-hidden" style="height:92px;">
-              <div style="height:${Math.round(92*ci/max)}px; margin-top:${92-Math.round(92*ci/max)}px; background:#10b981;"></div>
+              <div style="height:${Math.round(92*ci/max)}px; margin-top:${92-Math.round(92*ci/max)}px; background:var(--ops-green);"></div>
             </div>
             <div class="text-sm font-semibold tabular-nums mt-2">${fmtInt(ci)}</div>
           </div>
@@ -3564,8 +3578,8 @@ function renderOpsInsights(view){
       // status badge
       const badge =
         planned<=0 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px] text-gray-600">No plan</span>` :
-        (pct>=90 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#16a34a;color:#16a34a;">On track</span>` :
-         pct>=75 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#f59e0b;color:#b45309;">At risk</span>` :
+        (pct>=90 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:var(--ops-green);color:var(--ops-green);">On track</span>` :
+         pct>=75 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:var(--ops-yellow);color:#b45309;">At risk</span>` :
                   `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#ef4444;color:#b91c1c;">Delayed</span>`);
 
       const bar2 = (label, val, denom, color)=>{
