@@ -14,6 +14,25 @@
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
 
+/* OPS palette: force Tailwind green/emerald bars used in Supplier/Facility/PO progress to match ops palette */
+#ops-insights-content .bg-green-500,
+#ops-insights-content .bg-emerald-500,
+#ops-po-progress .bg-green-500,
+#ops-po-progress .bg-emerald-500{
+  background: var(--ops-green) !important;
+}
+#ops-insights-content .bg-green-50,
+#ops-insights-content .bg-emerald-50,
+#ops-po-progress .bg-green-50,
+#ops-po-progress .bg-emerald-50{
+  background: rgba(var(--ops-green-rgb),0.20) !important;
+}
+#ops-insights-content .bg-green-100,
+#ops-po-progress .bg-green-100{
+  background: rgba(var(--ops-green-rgb),0.28) !important;
+}
+
+
 /* OPS chart palette overrides */
 #opsRoot .bg-green-500{ background: var(--ops-green) !important; }
 #opsRoot .bg-green-50{ background: rgba(var(--ops-green-rgb),0.20) !important; }
@@ -374,7 +393,7 @@
 </div><!-- Full-width PO progress (bottom half) -->
 <div class="w-full min-w-0 mt-6">
 <div class="bg-white rounded-2xl border shadow p-4">
-<div class="flex items-center justify-between gap-3 mb-1">
+<div id="ops-po-progress" class="w-full"><div class="flex items-center justify-between gap-3 mb-1">
 <div class="text-base font-semibold">PO progress</div>
 <div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
 </div>
@@ -4362,7 +4381,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   });
 })();
 
-  
   
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
