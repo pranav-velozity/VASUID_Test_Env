@@ -7,7 +7,8 @@
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
-<!-- Tailwind -->
+
+  <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -3897,8 +3898,8 @@ function renderOpsInsights(view){
     const minPlanned = Math.min(...tickets.map(t=>t.planned||0), maxPlanned);
 
     // scale helpers (work in SVG viewBox coordinates)
-    const W=1000, H=420;
-    const padL=70, padR=30, padT=30, padB=55;
+    const W=1000, H=520;
+    const padL=70, padR=30, padT=30, padB=70;
     const x0=padL, x1=W-padR, y0=H-padB, y1=padT;
 
     const scaleX = (v)=>{
@@ -3916,7 +3917,7 @@ function renderOpsInsights(view){
     };
     const scaleR = (v)=>{
       const t = Math.sqrt(Math.max(0, v) / maxPlanned);
-      return 14 + t*40; // 14..54
+      return 18 + t*46; // 18..64
     };
 
     // collision-lite: single pass nudging to reduce heavy overlaps
@@ -3942,14 +3943,14 @@ function renderOpsInsights(view){
     });
 
     const riskStroke = (pct)=>{
-      if(pct>=90) return 'rgba(16,185,129,0.45)';        // green
-      if(pct>=75) return 'rgba(245,158,11,0.45)';        // amber
-      return 'rgba(239,68,68,0.45)';                     // red
+      if(pct>=90) return 'rgba(22,163,74,0.50)';        // green
+      if(pct>=75) return 'rgba(202,138,4,0.55)';        // amber
+      return 'rgba(220,38,38,0.55)';                    // red
     };
     const fillFor = (pct)=>{
-      // matte fill, intensity = completion %
-      const a = 0.10 + 0.45*(pct/100);
-      return `rgba(16,185,129,${a.toFixed(3)})`;
+      // Light, matte green; intensity tracks completion %
+      const a = 0.12 + 0.33*(pct/100);
+      return `rgba(34,197,94,${a.toFixed(3)})`;
     };
     const iconFor = (mode)=>{
       if(mode==='air') return '✈';
@@ -3963,7 +3964,7 @@ function renderOpsInsights(view){
         <div class="flex items-center justify-between mb-2">
           <div class="text-xs text-gray-500">X: Volume (planned units) • Y: Risk (1 − completion)</div>
           <div class="flex items-center gap-3 text-[11px] text-gray-500">
-            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(16,185,129,0.25)"></span> Complete</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(34,197,94,0.25)"></span> Complete</span>
             <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(245,158,11,0.25)"></span> At risk</span>
             <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(239,68,68,0.25)"></span> Delayed</span>
           </div>
@@ -3974,11 +3975,7 @@ function renderOpsInsights(view){
           <div class="text-gray-600 mt-0.5" id="ops-ztt-body"></div>
         </div>
 
-        <svg id="ops-zendesk-matrix" class="w-full rounded-xl border bg-white" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-          <!-- background zones -->
-          <rect x="${x0}" y="${y1}" width="${x1-x0}" height="${(y0-y1)/3}" fill="rgba(239,68,68,0.05)"></rect>
-          <rect x="${x0}" y="${y1+(y0-y1)/3}" width="${x1-x0}" height="${(y0-y1)/3}" fill="rgba(245,158,11,0.05)"></rect>
-          <rect x="${x0}" y="${y1+2*(y0-y1)/3}" width="${x1-x0}" height="${(y0-y1)/3}" fill="rgba(16,185,129,0.05)"></rect>
+        <svg id="ops-zendesk-matrix" class="w-full rounded-xl border bg-white" style="height:520px" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
 
           <!-- axes -->
           <line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="rgba(148,163,184,0.6)" stroke-width="1"></line>
@@ -3997,7 +3994,7 @@ function renderOpsInsights(view){
                 <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${b.r.toFixed(2)}" fill="rgba(241,245,249,0.55)" stroke="${riskStroke(b.pct)}" stroke-width="2"></circle>
                 <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}" fill="${fillFor(b.pct)}" opacity="0.9"></circle>
                 <!-- completion ring -->
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}" fill="transparent" stroke="rgba(15,23,42,0.18)" stroke-width="${ring}"
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}" fill="transparent" stroke="rgba(15,23,42,0.14)" stroke-width="${ring}"
                   stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${b.cx.toFixed(2)} ${b.cy.toFixed(2)})" stroke-linecap="round"></circle>
                 <text x="${b.cx.toFixed(2)}" y="${(b.cy+4).toFixed(2)}" text-anchor="middle" font-size="${Math.max(14, Math.min(20, b.r/2)).toFixed(0)}" fill="rgba(15,23,42,0.85)">${iconFor(b.mode)}</text>
                 <text x="${b.cx.toFixed(2)}" y="${(b.cy + b.r + 14).toFixed(2)}" text-anchor="middle" font-size="12" fill="rgba(100,116,139,0.9)">${esc(b.k)}</text>
@@ -4253,7 +4250,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
   
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
