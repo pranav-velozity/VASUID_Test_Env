@@ -570,7 +570,9 @@ function shortTwoWords(name) {
   const BRAND = '#990033';
   const APPLIED_COLOR = 'rgb(34,197,94)'; // matte green (soft) for applied
 const BASE_BPM = 40;
-  const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
+  const apiBase = (document.querySelector('meta[name="api-base"]')?.content || window.API_BASE || window.apiBase || '').replace(/\/+$/,'');
+  const __apiSameOriginOK = !(location.protocol === 'file:' && !apiBase);
+
   const $ = (s)=>document.querySelector(s);
   // Show "Month DD YYYY • <local TZ>" using the viewer's local timezone
 (function setNavToday(){
@@ -647,7 +649,35 @@ function createHeart(size=24, color=BRAND, bpm=40){
   // API helpers
   const state={weekStart:'', plan:[], records:[]};
 
-  async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
+  async function api(path, opts = {}) {
+  const url = `${apiBase}${path}`;
+  const method = opts.method || 'GET';
+  const body = opts.body ? JSON.stringify(opts.body) : undefined;
+
+  // Lightweight instrumentation (enable via ?debugOps=1 or localStorage.opsDebug='1')
+  const OPS_DEBUG =
+    new URLSearchParams(location.search).has('debugOps') ||
+    localStorage.getItem('opsDebug') === '1';
+
+  if (OPS_DEBUG) {
+    console.log('[ops api]', method, url, body ? `(body ${body.length}b)` : '');
+  }
+
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    if (OPS_DEBUG) console.warn('[ops api] error', r.status, url, t.slice(0, 500));
+    throw new Error(t || `HTTP ${r.status}`);
+  }
+
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : r.text();
+}
   async function fetchPlan(w){
   try {
     return await api(`/plan/weeks/${w}`);
@@ -702,7 +732,8 @@ function createHeart(size=24, color=BRAND, bpm=40){
 
   // --- Fetch bins for a week (business week start) ---
 async function fetchBins(ws) {
-  if (!apiBase) return [];
+  // allow same-origin relative calls when apiBase meta is missing
+  if (!__apiSameOriginOK) return [];
   try {
     const r = await api(`/bins/weeks/${ws}`);
     return Array.isArray(r) ? r : (r.bins || []);
@@ -713,7 +744,8 @@ async function fetchBins(ws) {
 
 // --- Fetch receiving rows for a week (used to estimate cartons-in and "approx received units") ---
 async function fetchReceiving(ws) {
-  if (!apiBase) return [];
+  // allow same-origin relative calls when apiBase meta is missing
+  if (!__apiSameOriginOK) return [];
   try {
     // Matches Flow/Receiving modules
     const r = await api(`/receiving?weekStart=${encodeURIComponent(ws)}`);
@@ -1223,7 +1255,7 @@ async function downloadAppliedWeek() {
   weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
-  if (!apiBase) {
+  if (!__apiSameOriginOK) {
     alert('API not configured');
     return;
   }
@@ -2356,7 +2388,7 @@ if (!putRes.ok) {
   setWeek(weekStart);
 });
   $('#btn-zero-plan').onclick=async()=>{
-    if(!apiBase) return alert('API not configured');
+    if(!__apiSameOriginOK) return alert('API not configured');
     const ws=$('#week-start').value;
     try{
       let r=await fetch(`${apiBase}/plan/weeks/${ws}/zero`,{method:'POST'});
@@ -2423,7 +2455,7 @@ if (!putRes.ok) {
       });
       inp.addEventListener('change', async e=>{
         const row=intakeRows.find(x=>x.id===id); if(!row) return;
-        if(!apiBase || !requiredFilled(row)){ renderIntake(); return; }
+        if(!__apiSameOriginOK || !requiredFilled(row)){ renderIntake(); return; }
         try{
           const res=await fetch(`${apiBase}/records`,{
             method:'POST', headers:{'Content-Type':'application/json'},
@@ -2470,7 +2502,7 @@ await setWeek(state.weekStart);   // 🔄 keep state.records in sync
     renderIntake();
     await loadOpsMetrics(); await refreshDashboardTotals();
   };
-  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+  $('#btn-export-day').onclick=()=>{ if(!__apiSameOriginOK) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
 
 function toISODate(v) {
   if (v == null || v === '') return '';
@@ -2716,7 +2748,7 @@ const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==
   // ---------- Ops metrics & Ops Pulse ----------
   function todayISO(){ return todayInTZ(); }
 async function loadOpsMetrics() {
-  if (!apiBase) return;
+  if (!__apiSameOriginOK) return;
   try {
     // Summary-first: tiny endpoint backed by indexed queries.
     const stats = await api(`/summary/ops`);
@@ -2797,7 +2829,7 @@ async function loadOpsMetrics() {
   let __opsRefreshLast = 0;
 
   function scheduleOpsRefresh() {
-    if (!apiBase) return;
+    if (!__apiSameOriginOK) return;
     if (document.hidden) return;
     __opsRefreshPending = true;
 
@@ -2836,7 +2868,7 @@ async function loadOpsMetrics() {
   }
 
   function startSSE(){
-    if(!apiBase) return;
+    if (!__apiSameOriginOK) return;
     try{
       const ev=new EventSource(`${apiBase}/events/scan`);
       $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
@@ -2857,7 +2889,7 @@ async function loadOpsMetrics() {
 
   // ---------- Dashboard weekly refresh from completion timestamps ----------
 async function refreshDashboardTotals(){
-  if(!apiBase) return;
+  if(!__apiSameOriginOK) return;
   const ws = state.weekStart;
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
