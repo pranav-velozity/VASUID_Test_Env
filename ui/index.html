@@ -523,10 +523,10 @@ function pct(n, d, digits = 0) {
 }
 
 // Softer / matte palette for Ops insight bars
-const OPS_PLANNED_BG = 'rgba(148,163,184,0.16)'; // slate-400 @ 16% (matte)
-const OPS_PLANNED_FG = 'rgba(148,163,184,0.32)'; // slate-400 @ 32%
-const OPS_RECEIVED_FG = 'rgba(56,189,248,0.20)'; // sky-400 @ 20% (soft)
-const OPS_APPLIED_OPACITY = '0.34'; // applied overlay opacity (matte)
+const OPS_PLANNED_BG = 'rgba(148,163,184,0.08)'; // slate-400 @ 16% (matte)
+const OPS_PLANNED_FG = 'rgba(148,163,184,0.16)'; // slate-400 @ 32%
+const OPS_RECEIVED_FG = 'rgba(56,189,248,0.10)'; // sky-400 @ 20% (soft)
+const OPS_APPLIED_OPACITY = '0.18'; // applied overlay opacity (matte)
 
 // Bar row helper used by Ops insights (safe even if not used everywhere)
 function barRowHtml(label, val, denom, barColor) {
@@ -568,7 +568,7 @@ function shortTwoWords(name) {
       return s || '—';
     }
   const BRAND = '#990033';
-  const APPLIED_COLOR = 'rgba(34,197,94,0.85)'; // matte green (soft) for applied
+  const APPLIED_COLOR = 'rgb(34,197,94)'; // matte green (soft) for applied
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
   const $ = (s)=>document.querySelector(s);
@@ -3293,6 +3293,9 @@ function renderOpsInsights(view){
   const root = document.getElementById('ops-insights-content');
   if(!root) return;
 
+  // Always replace insight content on view switch (prevents stacking previous view DOM)
+  root.innerHTML = '';
+
   const plan = Array.isArray(state.plan) ? state.plan : [];
   const recs = Array.isArray(state.records) ? state.records : []; // /records/summary (applied units etc)
   const receiving = Array.isArray(state.receiving) ? state.receiving : []; // /receiving (cartons_in/out + received timestamps)
@@ -3589,148 +3592,153 @@ function renderOpsInsights(view){
     return;
   }
 
-  // ----- Facility cards -----
+  // ----- Facility view (visual lanes) -----
   if(view==='facility'){
-    // For each facility: totals + counts of suppliers/zendesks + top suppliers/tickets by remaining
+    // Group PO-derived rows by facility and compute totals + highlights
     const meta = new Map();
     for (const r of rows){
-      const f = (r.facility||'Unspecified').toString();
-      let m = meta.get(f);
+      const fKey = (r.facility || 'Unspecified').toString().trim() || 'Unspecified';
+      let m = meta.get(fKey);
       if(!m){
-        m = { facility:f, planned:0, received:0, applied:0, posTotal:0, posNotSent:0,
-              suppliers:new Set(), zendesks:new Set(),
-              bySup:new Map(), byZend:new Map() };
-        meta.set(f,m);
+        m = {
+          facility:fKey,
+          planned:0, received:0, applied:0,
+          posTotal:0, posNotSent:0,
+          suppliers:new Set(),
+          zendesks:new Set(),
+          bySup:new Map(),
+          byZend:new Map()
+        };
+        meta.set(fKey, m);
       }
-      m.planned += (r.planned_units||0);
-      m.received += (r.received_units||0);
-      m.applied += (r.applied_units||0);
+
+      const planned = Number(r.planned)||0;
+      const received = Number(r.received)||0;
+      const applied = Number(r.applied)||0;
+
+      m.planned += planned;
+      m.received += received;
+      m.applied += applied;
       m.posTotal += 1;
-      if((r.cartons_in||0) <= 0) m.posNotSent += 1;
 
-      if(r.supplier && r.supplier!=='Unspecified') m.suppliers.add(r.supplier);
-      if(r.zendesk) m.zendesks.add(r.zendesk);
+      const cartonsIn = Number(r.cartonsIn ?? r.cartons_in ?? 0) || 0;
+      if(cartonsIn <= 0) m.posNotSent += 1;
 
-      // supplier rollup per facility
-      const sKey = (r.supplier||'Unspecified').toString();
-      const sr = m.bySup.get(sKey) || { supplier:sKey, planned:0, received:0, applied:0, pos:0 };
-      sr.planned += (r.planned_units||0);
-      sr.received += (r.received_units||0);
-      sr.applied += (r.applied_units||0);
-      sr.pos += 1;
-      m.bySup.set(sKey,sr);
+      const sup = (r.supplier || 'Unspecified').toString().trim() || 'Unspecified';
+      if(sup) m.suppliers.add(sup);
 
-      // zendesk rollup per facility
-      const zKey = (r.zendesk||'—').toString();
-      if(zKey && zKey!=='—'){
-        const zr = m.byZend.get(zKey) || { zendesk:zKey, planned:0, received:0, applied:0, pos:0 };
-        zr.planned += (r.planned_units||0);
-        zr.received += (r.received_units||0);
-        zr.applied += (r.applied_units||0);
-        zr.pos += 1;
-        m.byZend.set(zKey,zr);
+      const zd = (r.zendesk || '').toString().trim();
+      if(zd && zd !== 'Unspecified') { m.zendesks.add(zd); }
+
+      const sr = m.bySup.get(sup) || { key:sup, planned:0, received:0, applied:0 };
+      sr.planned += planned; sr.received += received; sr.applied += applied;
+      m.bySup.set(sup, sr);
+
+      if(zd && zd !== 'Unspecified'){
+        const zr = m.byZend.get(zd) || { key:zd, planned:0, received:0, applied:0 };
+        zr.planned += planned; zr.received += received; zr.applied += applied;
+        m.byZend.set(zd, zr);
       }
     }
 
-    const facCards = [...meta.values()]
-      .sort((a,b)=> (b.planned - a.planned) || a.facility.localeCompare(b.facility));
+    const facilities = [...meta.values()]
+      .sort((a,b)=> (b.planned-a.planned) || a.facility.localeCompare(b.facility));
 
-    const grid = document.createElement('div');
-    grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-3';
+    const pill = (pctDone)=>{
+      if(pctDone>=98) return '<span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">On track</span>';
+      if(pctDone>=85) return '<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">At risk</span>';
+      return '<span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">Delayed</span>';
+    };
 
-    for (const f of facCards){
-      const pctDone = f.planned>0 ? Math.round((f.applied/f.planned)*100) : 0;
-      const rem = Math.max(0, f.planned - f.applied);
+    const topChips = (items, icon)=>{
+      return items.map(x=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
+        <span class="mr-1">${icon}</span> ${escapeHtml(x.key)} • <b class="ml-1">${fmt(x.rem)}</b>
+      </span>`).join('');
+    };
 
-      const statusPill = (()=> {
-        if(pctDone>=98) return '<span class="ml-2 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">On track</span>';
-        if(pctDone>=85) return '<span class="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">At risk</span>';
-        return '<span class="ml-2 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">Delayed</span>';
-      })();
+    root.innerHTML = `
+      <div class="space-y-3">
+        ${facilities.map(f=>{
+          const pctDone = f.planned>0 ? Math.round((f.applied/f.planned)*100) : 0;
+          const rem = Math.max(0, f.planned - f.applied);
 
-      const topSup = [...f.bySup.values()]
-        .map(s=>({ supplier:s.supplier, rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0, pos:s.pos||0 }))
-        .filter(x=>x.planned>0)
-        .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
-        .slice(0,3);
+          const topSup = [...f.bySup.values()]
+            .map(s=>({ key:s.key, rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0 }))
+            .filter(x=>x.planned>0)
+            .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
+            .slice(0,4);
 
-      const topZend = [...f.byZend.values()]
-        .map(z=>({ zendesk:z.zendesk, rem: Math.max(0,(z.planned||0)-(z.applied||0)), planned:z.planned||0, pos:z.pos||0 }))
-        .filter(x=>x.planned>0)
-        .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
-        .slice(0,3);
+          const topZend = [...f.byZend.values()]
+            .map(z=>({ key:z.key, rem: Math.max(0,(z.planned||0)-(z.applied||0)), planned:z.planned||0 }))
+            .filter(x=>x.planned>0)
+            .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
+            .slice(0,4);
 
-      const card = document.createElement('div');
-      card.className = 'rounded-2xl border border-gray-200 bg-white p-3 shadow-sm';
-      card.innerHTML = `
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex items-center">
-              <div class="font-semibold text-sm truncate">${escapeHtml(f.facility)}</div>
-              ${statusPill}
-            </div>
-            <div class="mt-1 text-[12px] text-gray-500">
-              Completion ${pctDone}% • Remaining ${fmt(rem)} • PO’s not sent ${fmt(f.posNotSent)}/${fmt(f.posTotal)}
-            </div>
-          </div>
-          <div class="text-right shrink-0">
-            <div class="text-sm font-semibold">${fmt(f.applied)}</div>
-            <div class="text-[12px] text-gray-500">/ ${fmt(f.planned)}</div>
-          </div>
-        </div>
+          return `
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div class="font-semibold text-sm truncate">${escapeHtml(f.facility)}</div>
+                    ${pill(pctDone)}
+                  </div>
+                  <div class="mt-1 text-[12px] text-gray-500">
+                    Completion <b class="text-gray-700">${pctDone}%</b> • Remaining <b class="text-gray-700">${fmt(rem)}</b>
+                    • PO’s not sent <b class="text-gray-700">${fmt(f.posNotSent)}</b>/<b class="text-gray-700">${fmt(f.posTotal)}</b>
+                  </div>
+                </div>
 
-        <div class="mt-3">
-          ${progressBarHtml(f.planned, f.received, f.applied)}
-          <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
-            <div class="flex gap-3 flex-wrap">
-              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#9ca3af"></span>Planned ${fmt(f.planned)}</span>
-              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmt(f.received)}</span>
-              <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}; opacity:.75"></span>App ${fmt(f.applied)}</span>
-            </div>
-            <div class="text-gray-600">${pctDone}%</div>
-          </div>
-        </div>
-
-        <div class="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-gray-600">
-          <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">👥</span> Suppliers <b class="ml-1">${fmt(f.suppliers.size || 0)}</b></span>
-          <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">🎫</span> Zendesk <b class="ml-1">${fmt(f.zendesks.size || 0)}</b></span>
-        </div>
-
-        ${(topZend.length || topSup.length) ? `
-          <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-2">
-            ${topZend.length ? `
-              <div>
-                <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining tickets</div>
-                <div class="mt-1 flex flex-wrap gap-2">
-                  ${topZend.map(z=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
-                    <span class="mr-1">🎫</span> ${escapeHtml(z.zendesk)} • <b class="ml-1">${fmt(z.rem)}</b>
-                  </span>`).join('')}
+                <div class="flex flex-wrap gap-2 text-[12px] text-gray-600">
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">👥</span>Suppliers <b class="ml-1">${fmt(f.suppliers.size || 0)}</b></span>
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">🎫</span>Zendesk <b class="ml-1">${fmt(f.zendesks.size || 0)}</b></span>
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">📦</span>Planned <b class="ml-1">${fmt(f.planned)}</b></span>
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">✅</span>Applied <b class="ml-1">${fmt(f.applied)}</b></span>
                 </div>
               </div>
-            `:''}
 
-            ${topSup.length ? `
-              <div>
-                <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining suppliers</div>
-                <div class="mt-1 flex flex-wrap gap-2">
-                  ${topSup.map(s=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
-                    <span class="mr-1">🏭</span> ${escapeHtml(s.supplier)} • <b class="ml-1">${fmt(s.rem)}</b>
-                  </span>`).join('')}
+              <div class="mt-3">
+                ${progressBarHtml(f.planned, f.received, f.applied)}
+                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+                  <div class="flex gap-3 flex-wrap">
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_PLANNED_FG}"></span>Planned</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}; opacity:${OPS_APPLIED_OPACITY}"></span>App</span>
+                  </div>
+                  <div class="text-gray-600">${fmt(f.applied)} / ${fmt(f.planned)}</div>
                 </div>
               </div>
-            `:''}
-          </div>
-        `:''}
-      `;
-      grid.appendChild(card);
-    }
 
-    insightsBody.appendChild(grid);
+              ${(topSup.length || topZend.length) ? `
+                <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining tickets</div>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                      ${topZend.length ? topChips(topZend,'🎫') : '<span class="text-[12px] text-gray-400">—</span>'}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining suppliers</div>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                      ${topSup.length ? topChips(topSup,'🏭') : '<span class="text-[12px] text-gray-400">—</span>'}
+                    </div>
+                  </div>
+                </div>
+              `:''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="text-[11px] text-gray-500 mt-3">
+        Facility completion is based on applied vs planned units. “Received” is approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0.
+      </div>
+    `;
     return;
   }
 
-  
+
   // ----- Freight cards -----
+
   if(view==='freight'){
     // Buckets: Air / Sea / Other. Show totals + supplier + PO counts.
     const buckets = new Map([['Air', {k:'Air', planned:0, received:0, applied:0, pos:new Set(), suppliers:new Set()}],
