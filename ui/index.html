@@ -14,6 +14,20 @@
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
 
+/* OPS chart palette overrides */
+#opsRoot .bg-green-500{ background: var(--ops-green) !important; }
+#opsRoot .bg-green-50{ background: rgba(var(--ops-green-rgb),0.20) !important; }
+#opsRoot .bg-green-100{ background: rgba(var(--ops-green-rgb),0.28) !important; }
+
+
+:root{
+  --ops-green:#D1E231; /* planned / in */
+  --ops-yellow:#F0D731; /* applied / ready */
+  --ops-green-rgb:209,226,49;
+  --ops-yellow-rgb:240,215,49;
+}
+
+
 /* OPS: keep view buttons neutral (black text), independent of chart palette */
 .insights-view-btn,
 .insightsViewBtn,
@@ -3888,13 +3902,15 @@ function renderOpsInsights(view){
     const barPair = (title, aLabel, aVal, bLabel, bVal, maxVal, fmtFn) => {
       const aH = Math.round(64 * (maxVal>0 ? (aVal/maxVal) : 0));
       const bH = Math.round(64 * (maxVal>0 ? (bVal/maxVal) : 0));
+      const aH2 = (aVal>0 && aH<3) ? 3 : aH;
+      const bH2 = (bVal>0 && bH<3) ? 3 : bH;
       return `
         <div class="bg-white rounded-xl border p-3">
           <div class="text-[11px] text-gray-500 mb-2">${title}</div>
           <div class="flex items-end gap-4 h-[76px]">
             <div class="flex-1">
               <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
-                <div style="height:${aH}px; margin-top:${64-aH}px; background:#D1E231;"></div>
+                <div style="height:${aH2}px; margin-top:${64-aH2}px; background:var(--ops-green);"></div>
               </div>
               <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
                 <span>${aLabel}</span><span class="tabular-nums">${fmtFn(aVal)}</span>
@@ -3902,7 +3918,7 @@ function renderOpsInsights(view){
             </div>
             <div class="flex-1">
               <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
-                <div style="height:${bH}px; margin-top:${64-bH}px; background:#e5e7eb;"></div>
+                <div style="height:${bH2}px; margin-top:${64-bH2}px; background:var(--ops-yellow);"></div>
               </div>
               <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
                 <span>${bLabel}</span><span class="tabular-nums">${fmtFn(bVal)}</span>
@@ -4038,14 +4054,14 @@ function renderOpsInsights(view){
     });
 
     const riskStroke = (pct)=>{
-      if(pct>=90) return 'rgba(22,163,74,0.50)';        // green
-      if(pct>=75) return 'rgba(202,138,4,0.55)';        // amber
+      if(pct>=90) return 'rgba(var(--ops-green-rgb),0.50)';        // green
+      if(pct>=75) return 'rgba(var(--ops-yellow-rgb),0.60)';        // amber
       return 'rgba(220,38,38,0.55)';                    // red
     };
     const fillFor = (pct)=>{
       // Light, matte green; intensity tracks completion %
       const a = 0.12 + 0.33*(pct/100);
-      return `rgba(34,197,94,${a.toFixed(3)})`;
+      return `rgba(var(--ops-green-rgb),${a.toFixed(3)})`;
     };
     const iconFor = (mode)=>{
       if(mode==='air') return '✈';
@@ -4059,8 +4075,8 @@ function renderOpsInsights(view){
         <div class="flex items-center justify-between mb-2">
           <div class="text-xs text-gray-500">X: Volume (planned units) • Y: Risk (1 − completion)</div>
           <div class="flex items-center gap-3 text-[11px] text-gray-500">
-            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(34,197,94,0.25)"></span> Complete</span>
-            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(245,158,11,0.25)"></span> At risk</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(var(--ops-green-rgb),0.25)"></span> Complete</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(var(--ops-yellow-rgb),0.30)"></span> At risk</span>
             <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(239,68,68,0.25)"></span> Delayed</span>
           </div>
         </div>
@@ -4171,7 +4187,7 @@ function renderOpsInsights(view){
             <div class="mt-3 space-y-2">
               ${bar('Planned', planned, planned||1, OPS_PLANNED_FG)}
               ${bar('Received', received, planned||1, OPS_RECEIVED_FG)}
-              ${bar('Applied', applied, planned||1, 'rgba(22,163,74,0.72)')}
+              ${bar('Applied', applied, planned||1, 'rgba(var(--ops-green-rgb),0.72)')}
             </div>
             ${freightRow}
           </div>
@@ -4346,7 +4362,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   });
 })();
 
-
+  
   
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
