@@ -7,7 +7,8 @@
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
-<!-- Tailwind -->
+
+  <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -668,7 +669,41 @@ function createHeart(size=24, color=BRAND, bpm=40){
     }catch{ return null; }
   }
 
-// --- Fetch bins for a week (business week start) ---
+
+  // Fallback: pull raw records (used only if /records/summary is unavailable)
+  async function fetchRecordsRange(fromYMD, toYMD, status='complete', limit=200000){
+    if(!apiBase) return [];
+    try{
+      const q = new URLSearchParams();
+      if(status) q.set('status', status);
+      if(fromYMD) q.set('from', fromYMD);
+      if(toYMD) q.set('to', toYMD);
+      q.set('limit', String(limit));
+      const r = await api(`/records?${q.toString()}`);
+      // API sometimes returns {records:[...]}
+      if(Array.isArray(r)) return r;
+      if(Array.isArray(r?.records)) return r.records;
+      return [];
+    }catch{ return []; }
+  }
+
+  function buildSummaryFromRaw(records){
+    const byPO = new Map();
+    let total = 0;
+    for(const r of (records||[])){
+      if(!r) continue;
+      if(r.status && r.status !== 'complete') continue;
+      const po = String(r.po_number||r.po||'').trim();
+      if(!po) continue;
+      byPO.set(po, (byPO.get(po)||0) + 1);
+      total += 1;
+    }
+    const by_po = Array.from(byPO.entries()).map(([po, units]) => ({po, units}));
+    return { by_po, total_units: total };
+  }
+
+
+  // --- Fetch bins for a week (business week start) ---
 async function fetchBins(ws) {
   if (!apiBase) return [];
   try {
@@ -1947,7 +1982,14 @@ state.plan = Array.isArray(plan) ? plan : [];
 
 // Summary-first: for normal dashboard operation we keep only PO rollups.
 // (Raw records are loaded only for explicit drilldowns.)
-state.records = Array.isArray(summary?.by_po) ? summary.by_po : [];
+let _summary = summary;
+if(!Array.isArray(_summary?.by_po) && !Number(_summary?.total_units||0)){
+  // Fallback: some deployments don't support /records/summary with from/to/status.
+  const raw = await fetchRecordsRange(ws, we, 'complete', 250000);
+  _summary = buildSummaryFromRaw(raw);
+}
+state.records = Array.isArray(_summary?.by_po) ? _summary.by_po : [];
+state.summary = _summary || null;
 state.receiving = Array.isArray(receiving) ? receiving : [];
 
 const bins = await fetchBins(ws);
