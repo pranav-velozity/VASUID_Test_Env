@@ -2225,7 +2225,14 @@ document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),250);
 });
+    // Re-render insights for currently selected view now that week data is loaded
+    try {
+      const active = document.querySelector('.ops-pill--active');
+      const v = (active && active.getAttribute('data-opsview')) ? active.getAttribute('data-opsview') : 'supplier';
+      renderOpsInsights(v);
+    } catch (e) {}
 };
+
 
   // ---------- Plan upload / zero (unchanged) ----------
   $('#btn-upload-plan').onclick=()=>$('#file-plan').click();
