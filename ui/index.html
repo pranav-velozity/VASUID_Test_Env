@@ -29,7 +29,7 @@
     @keyframes heartbeat{0%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}60%{transform:scale(1)}100%{transform:scale(1)}}
     .cell{width:100%;padding:.4rem .5rem;border:0;outline:none}
     .cell:focus{box-shadow:0 0 0 3px rgba(59,130,246,.25)}
-    .th{font-size:.75rem;font-weight:600;color:#a3a635}
+    .th{font-size:.75rem;font-weight:600;color:#F0D731}
     /* Shorter week capsule */
     .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
     .wkcap .m{font-size:10px}
@@ -70,7 +70,7 @@
   display:inline-flex; align-items:center; gap:.5rem;
   font-size:.875rem; line-height:1;
   padding:.5rem .75rem; border-radius:10px;
-  border:1px solid transparent; background:transparent; color:#a3a635;
+  border:1px solid transparent; background:transparent; color:#F0D731;
   transition:background .15s ease, border-color .15s ease, transform .05s ease;
 }
 .cmd:hover{ background:#f9fafb; border-color:#e5e7eb; }
@@ -112,7 +112,7 @@
   background:transparent;
   font-size:12px;
   font-weight:600;
-  color:#a3a635;
+  color:#F0D731;
   transition: all .12s ease;
 }
 .ops-pill svg{ width:14px; height:14px; }
@@ -831,7 +831,7 @@ function computeBinQA(ws, records=[], bins=[]) {
     el.className = 'wkcap bg-white hover:scale-[1.02] transition';
     el.style.borderColor = (id === state.weekStart ? BRAND : 'rgba(0,0,0,.12)');
     el.innerHTML = `
-      <div class="m" style="color:${id === state.weekStart ? BRAND : '#115e59'}">${mon}</div>
+      <div class="m" style="color:${id === state.weekStart ? BRAND : '#D1E231'}">${mon}</div>
       <div class="d">${day}</div>
       <div class="t" id="cap-total-${id}">${fmtInt(stats.planned || 0)}</div>
       <div class="bar"><div id="cap-bar-${id}"></div></div>
@@ -3620,7 +3620,7 @@ function renderOpsInsights(view){
                 </div>
                 <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
                   <div class="flex gap-3">
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#0f766e"></span>Planned ${fmtInt(Math.round(planned))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#D1E231"></span>Planned ${fmtInt(Math.round(planned))}</span>
                     <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmtInt(Math.round(received))}</span>
                     <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR};opacity:.75"></span>App ${fmtInt(Math.round(applied))}</span>
                   </div>
@@ -3847,7 +3847,7 @@ function renderOpsInsights(view){
           <div class="flex items-end gap-4 h-[76px]">
             <div class="flex-1">
               <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
-                <div style="height:${aH}px; margin-top:${64-aH}px; background:#0f766e;"></div>
+                <div style="height:${aH}px; margin-top:${64-aH}px; background:#D1E231;"></div>
               </div>
               <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
                 <span>${aLabel}</span><span class="tabular-nums">${fmtFn(aVal)}</span>
