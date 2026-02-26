@@ -523,10 +523,10 @@ function pct(n, d, digits = 0) {
 }
 
 // Softer / matte palette for Ops insight bars
-const OPS_PLANNED_BG = 'rgba(148,163,184,0.08)'; // slate-400 @ 16% (matte)
-const OPS_PLANNED_FG = 'rgba(148,163,184,0.16)'; // slate-400 @ 32%
-const OPS_RECEIVED_FG = 'rgba(56,189,248,0.10)'; // sky-400 @ 20% (soft)
-const OPS_APPLIED_OPACITY = '0.18'; // applied overlay opacity (matte)
+const OPS_PLANNED_BG = 'rgba(148,163,184,0.04)'; // slate-400 @ 16% (matte)
+const OPS_PLANNED_FG = 'rgba(148,163,184,0.08)'; // slate-400 @ 32%
+const OPS_RECEIVED_FG = 'rgba(56,189,248,0.05)'; // sky-400 @ 20% (soft)
+const OPS_APPLIED_OPACITY = '0.09'; // applied overlay opacity (matte)
 
 // Bar row helper used by Ops insights (safe even if not used everywhere)
 function barRowHtml(label, val, denom, barColor) {
@@ -3346,23 +3346,34 @@ function renderOpsInsights(view){
 
   // Build per-PO planned + meta (so we don’t double count applied in grouped views)
   const poPlan = new Map(); // po -> {plannedUnits, plannedCartons, supplier, facility, freight, zendesk}
+  const pickMeta = (curVal, cand)=>{
+    const c = norm(cand||'');
+    if(!c) return curVal;
+    if(!curVal || curVal==='Unspecified') return c;
+    return curVal;
+  };
   for(const p of plan){
     const po = norm(p.po_number||p.po);
     if(!po) continue;
     const cur = poPlan.get(po) || {
       plannedUnits:0, plannedCartons:0,
-      supplier: norm(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'Unspecified') || 'Unspecified',
-      facility: norm(p.facility||'Unspecified') || 'Unspecified',
-      freight: norm(p.freight_type||p.freight||'Unspecified') || 'Unspecified',
-      zendesk: norm(p.zendesk_ticket||p.zendesk||'Unspecified') || 'Unspecified'
+      supplier:'', facility:'', freight:'', zendesk:''
     };
+    // meta (first non-empty wins; 'Unspecified' is treated as empty)
+    cur.supplier = pickMeta(cur.supplier, p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory);
+    cur.facility = pickMeta(cur.facility, p.facility_name||p.facility||p.vas_facility||p.warehouse||p.warehouse_name||p.site||p.site_name||p.location||p.facility_code||p.facility_id);
+    cur.freight  = pickMeta(cur.freight,  p.freight_type||p.freight||p.ship_mode||p.mode);
+    cur.zendesk  = pickMeta(cur.zendesk,  p.zendesk_ticket||p.zendesk||p.ticket||p.zd_ticket);
+
     cur.plannedUnits += toNum(p.target_qty||p.planned_units||0);
     cur.plannedCartons += plannedCartonsFromPlan(p);
-    // keep first non-empty values as canonical
-    cur.supplier = cur.supplier || (norm(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)||'Unspecified');
-    cur.facility = cur.facility || (norm(p.facility)||'Unspecified');
-    cur.freight  = cur.freight  || (norm(p.freight_type||p.freight)||'Unspecified');
-    cur.zendesk  = cur.zendesk  || (norm(p.zendesk_ticket||p.zendesk)||'Unspecified');
+
+    // final fallbacks
+    cur.supplier = cur.supplier || 'Unspecified';
+    cur.facility = cur.facility || 'Unspecified';
+    cur.freight  = cur.freight  || 'Unspecified';
+    cur.zendesk  = cur.zendesk  || 'Unspecified';
+
     poPlan.set(po, cur);
   }
 
