@@ -649,7 +649,6 @@ function createHeart(size=24, color=BRAND, bpm=40){
 
   async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
   async function fetchPlan(w){
-  if(!apiBase) return [];
   try {
     return await api(`/plan/weeks/${w}`);
   } catch {
@@ -659,7 +658,6 @@ function createHeart(size=24, color=BRAND, bpm=40){
 
   // Summary-first: dashboards never pull raw /records.
   async function fetchSummary(fromYMD, toYMD, status='complete'){
-    if(!apiBase) return null;
     try{
       const q = new URLSearchParams();
       if(fromYMD) q.set('from', fromYMD);
@@ -672,7 +670,6 @@ function createHeart(size=24, color=BRAND, bpm=40){
 
   // Fallback: pull raw records (used only if /records/summary is unavailable)
   async function fetchRecordsRange(fromYMD, toYMD, status='complete', limit=200000){
-    if(!apiBase) return [];
     try{
       const q = new URLSearchParams();
       if(status) q.set('status', status);
