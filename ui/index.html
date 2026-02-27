@@ -311,8 +311,8 @@
 <div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
 </div>
 </div>
-<!-- view buttons (horizontal) -->
-<div class="flex flex-row gap-2 shrink-0 items-center justify-end max-w-[520px] overflow-x-auto whitespace-nowrap" style="padding-bottom:4px;">
+<!-- vertical buttons -->
+<div class="flex flex-col gap-2 shrink-0">
 <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
@@ -2940,7 +2940,7 @@ async function loadOpsMetrics() {
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) scheduleOpsRefresh();
       });
-    }catch{}
+    }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
   }
 
 
@@ -3102,8 +3102,8 @@ const cartonsOutUse = cartonsOutFinal;
     setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
     setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
     setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
-    setTxt('#ops-week-cartons-in', cartonsIn.toLocaleString());
-    setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
+    setTxt('#ops-week-cartons-in', cartonsInUse.toLocaleString());
+    setTxt('#ops-week-cartons-out', cartonsOutUse.toLocaleString());
     state.weekCartonsIn = cartonsInUse;
     state.weekCartonsOut = cartonsOutUse;
     setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
@@ -3117,7 +3117,7 @@ const cartonsOutUse = cartonsOutFinal;
       if(pctNow < 50) label='Delayed';
       h.textContent = label;
     }
-  }catch{}
+  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
   // PO progress tile (totals + table)
   try{
     const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
@@ -3233,7 +3233,7 @@ const cartonsOutUse = cartonsOutFinal;
     const input = $('#ops-po-search');
     renderTable(input ? input.value : '');
 
-  }catch{}
+  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
 
 
 
@@ -4535,7 +4535,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   });
 })();
 
-
+ 
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
