@@ -386,206 +386,24 @@
 </div>
 </div>
 
-<!-- Reports & downloads (3x2) -->
-<div class="bg-white rounded-2xl border shadow p-4 mb-3 flex-1 flex flex-col">
-<div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-posku"><span class="text-base leading-none">📊</span>PO × SKU Discrepancy</button>
-<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-po"><span class="text-base leading-none">📑</span>PO Discrepancy</button>
-<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-ship-summary"><span class="text-base leading-none">🚚</span>Shipment Summary</button>
-<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-ship-detail"><span class="text-base leading-none">📄</span>Shipment Details</button>
-<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-week-applied"><span class="text-base leading-none">⬇️</span>Download Applied</button>
-<button class="justify-start text-sm w-full cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
-</div>
-</div>
+
   </div>
-</div><!-- Full-width PO progress (bottom half) -->
+</div><!-- Bottom reports tile (replaces PO progress) -->
 <div class="w-full min-w-0 mt-6">
+<!-- Reports & downloads (bottom full-width) -->
 <div class="bg-white rounded-2xl border shadow p-4">
-<div id="ops-po-progress" class="w-full"><div class="flex items-center justify-between gap-3 mb-1">
-<div class="text-base font-semibold">PO progress</div>
-<div class="text-xs text-gray-500">Planned vs received vs applied (units)</div>
-</div>
-<!-- Totals -->
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-<div class="bg-gray-50 rounded-xl border p-3">
-<div class="flex items-center justify-between text-sm">
-<div class="text-gray-700">Received</div>
-<div class="font-semibold tabular-nums"><span id="ops-po-received-total">0</span> / <span id="ops-po-planned-total">0</span></div>
-</div>
-<div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-<div class="h-full ops-bar-planned" id="ops-po-received-bar" style="width:0%"></div>
-</div>
-</div>
-<div class="bg-gray-50 rounded-xl border p-3">
-<div class="flex items-center justify-between text-sm">
-<div class="text-gray-700">Applied</div>
-<div class="font-semibold tabular-nums"><span id="ops-po-applied-total">0</span> / <span id="ops-po-planned-total-2">0</span></div>
-</div>
-<div class="h-2 bg-gray-100 rounded-full overflow-hidden mt-2">
-<div class="h-full" id="ops-po-applied-bar" style="width:0%; background:var(--ops-green);"></div>
+<div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
+<div class="flex items-center gap-2 overflow-x-auto pb-1">
+<button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-posku"><span class="text-base leading-none">📊</span>PO × SKU Discrepancy</button>
+<button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-po"><span class="text-base leading-none">📑</span>PO Discrepancy</button>
+<button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-ship-summary"><span class="text-base leading-none">🚚</span>Shipment Summary</button>
+<button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-ship-detail"><span class="text-base leading-none">📄</span>Shipment Details</button>
+<button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-week-applied"><span class="text-base leading-none">⬇️</span>Download Applied</button>
+<button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
 </div>
 </div>
 </div>
-<!-- PO search -->
-<div class="flex items-center gap-2 mb-3">
-<input class="w-full border rounded-xl px-3 py-2 text-sm" id="ops-po-search" placeholder="Search / filter PO (e.g. WADA002381)"/>
-<button class="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50" id="ops-po-clear">Clear</button>
-</div>
-<!-- PO table -->
-<div class="overflow-auto rounded-xl border">
-<table class="min-w-full text-sm">
-<thead class="bg-gray-50">
-<tr class="text-gray-500">
-<th class="text-left py-2 px-3">PO</th>
-<th class="text-left py-2 px-3">Supplier</th>
-<th class="text-left py-2 px-3">Facility</th>
-<th class="text-left py-2 px-3">Freight</th>
-<th class="text-left py-2 px-3">Zendesk</th>
-<th class="text-right py-2 px-3">Planned</th>
-<th class="text-right py-2 px-3">Received</th>
-<th class="text-right py-2 px-3">Applied</th>
-<th class="text-right py-2 px-3">Rem</th>
-<th class="text-right py-2 px-3">%</th>
-<th class="py-2 px-3 w-[240px]">Progress</th>
-</tr>
-</thead>
-<tbody id="ops-po-table-body">
-<tr><td class="text-center text-xs text-gray-400 py-6" colspan="11">Loading…</td></tr>
-</tbody>
-</table>
-</div>
-<!-- PO detail (optional inline) -->
-<div class="bg-gray-50 rounded-xl border p-3 text-sm mt-3 hidden" id="ops-po-detail"></div>
-</div>
-</div>
-</div>
-</div></section>
-<!-- ================= UID Intake ================= -->
-<section class="hidden" id="page-intake">
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-5">
-<div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
-<div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
-<svg aria-hidden="true" class="heartbeat" focusable="false" height="18" viewbox="0 0 24 24" width="18">
-<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"></path>
-</svg>
-<div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
-</div>
-</div>
-<div class="flex items-center gap-2">
-<button aria-label="Export XLSX" class="px-3 py-2 rounded-lg text-sm border" id="btn-export-day">Export XLSX</button>
-<button aria-label="Upload UIDs" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-applied">Upload UIDs</button>
-<button aria-label="Upload Bin Manifest" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-bins">Upload Bin Manifest</button>
-<input accept=".xlsx,.csv" class="hidden" id="file-bins" type="file"/>
-<input accept=".xlsx,.csv" class="hidden" id="file-upload-applied" type="file"/>
-<button aria-label="Delete Selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" id="btn-delete-selected">Delete Selected</button>
-</div>
-</div>
-<!-- Ops ribbon -->
-<div class="mt-3 bg-white border rounded-xl shadow p-3" id="ops-ribbon">
-<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
-<div class="flex gap-3">
-<div class="flex-1 border rounded-lg p-3">
-<div class="text-xs text-gray-500">Scans Today</div>
-<div class="text-2xl font-bold tabular-nums" id="ops-today">0</div>
-</div>
-<div class="flex-1 border rounded-lg p-3">
-<div class="text-xs text-gray-500">Last Hour</div>
-<div class="text-2xl font-bold tabular-nums" id="ops-hour">0</div>
-</div>
-</div>
-<div class="flex items-center gap-4 border rounded-lg p-3">
-<div id="ops-heart-small"></div>
-<div>
-<div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
-<div class="text-2xl font-bold tabular-nums" id="ops-rate">0</div>
-</div>
-</div>
-<div class="border rounded-lg p-3">
-<div class="text-sm font-semibold mb-1">Data Quality</div>
-<div class="flex items-center justify-between text-sm">
-<span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
-</div>
-<div class="flex items-center justify-between text-sm">
-<span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
-</div>
-<div class="text-xs text-gray-500 mt-2">Sync states</div>
-<div class="flex flex-wrap gap-2 mt-1" id="ops-sync-badges"></div>
-</div>
-<div class="border rounded-lg p-3">
-<div class="flex items-center justify-between">
-<div class="text-sm font-semibold">Alerts</div>
-<small class="text-gray-500">
-<span id="ops-last-updated">—</span>
-<span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
-<span class="w-2 h-2 rounded-full bg-gray-300" id="ops-dot"></span>SSE
-                </span>
-</small>
-</div>
-<ul aria-live="polite" class="list-disc ml-4 mt-1 text-sm" id="ops-alerts"><li class="text-gray-400">No alerts.</li></ul>
-</div>
-</div>
-</div>
-<!-- Intake Table -->
-<div class="mt-3 overflow-auto">
-<table class="w-full min-w-[1100px] border-collapse border">
-<thead class="bg-gray-100">
-<tr>
-<th class="th border px-2 py-1 text-left w-8"><input id="chk-all" type="checkbox"/></th>
-<th class="th border px-2 py-1 text-left">Date</th>
-<th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
-<th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
-<th class="th border px-2 py-1 text-left">PO_Number</th>
-<th class="th border px-2 py-1 text-left">SKU_Code</th>
-<th class="th border px-2 py-1 text-left">UID</th>
-<th class="th border px-2 py-1 text-center">Sync</th>
-</tr>
-</thead>
-<tbody id="intake-body"></tbody>
-</table>
-</div>
-<div class="mt-3">
-<button class="px-3 py-2 rounded-lg border text-sm" id="btn-add-row">Add Row</button>
-</div>
-<!-- Quick Delete by UID -->
-<div class="mt-4 bg-white rounded-2xl border shadow p-4">
-<div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
-<p class="text-xs text-gray-500 mb-2">
-    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
-  </p>
-<textarea class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2" id="uids-to-delete" placeholder="Paste UIDs here…" rows="3"></textarea>
-<div class="mt-2 flex items-center gap-2">
-<button class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700" id="btn-delete-uids">Delete UID(s)</button>
-<span class="text-xs text-gray-500" id="delete-uids-status"></span>
-</div>
-</div>
-</section>
-<!-- ================= Executive (Client) ================= -->
-<section class="hidden" id="page-exec">
-<div class="flex items-center justify-between mb-3">
-<div>
-<div class="text-2xl font-semibold">Executive Summary</div>
-<div class="text-xs text-rose-900/70 mt-0.5" id="exec-sub"></div>
-</div>
-<div class="flex items-center gap-2">
-<button class="cmd cmd--primary" id="btn-exec-doc">Download .doc</button>
-<button class="cmd" id="btn-exec-csv">PO×SKU CSV</button>
-</div>
-</div>
-</section>
-<!-- ================= Flow ================= -->
-<section class="hidden" id="page-flow"></section>
-</main>
-<!-- Footer health pill (shows Applied this week) -->
-<div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
-<span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300" id="health-pill">
-<span class="inline-block w-2 h-2 rounded-full bg-amber-500" id="health-dot"></span>
-      Health: <span class="ml-1" id="vo-health">n/a</span>
-</span>
-<span id="vo-footer-text">Applied this week: 0</span>
-</div>
-  <script>
+<script>
     // ---------------------------
     // ---------------------------
 // Small utilities (safe HTML, formatting)
@@ -734,7 +552,7 @@ function createHeart(size=24, color=BRAND, bpm=40){
   return svg;
 }
   // API helpers
-  const state={weekStart:'', plan:[], records:[]};
+  const state={weekStart:'', plan:[], records:[], opsView:'supplier', weekCartonsIn:0, weekCartonsOut:0};
 
   async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
   async function fetchPlan(w){
@@ -2998,7 +2816,16 @@ const byPORecv = recvNorm.map;
 const byPORecvList = recvNorm.list;
 const byPOCompList = compNorm.list;
 
-const poReceived = new Set(Object.keys(byPORecv));
+let poReceived = new Set(Object.keys(byPORecv));
+// Fallback: derive received POs from /receiving endpoint if summary received is empty
+if(poReceived.size===0 && Array.isArray(state.receiving)){
+  for(const r of state.receiving){
+    const po = String(r?.po_number ?? r?.po ?? r?.poNumber ?? r?.po_id ?? '').trim();
+    const ci = Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons ?? r?.carton_count ?? r?.received_cartons ?? 0) || 0;
+    if(po && ci>0) poReceived.add(po);
+  }
+}
+
 
     const appliedTotal2 = Number(summary?.total_units || 0);
 
@@ -3063,6 +2890,25 @@ const compHasCartons = summaryHasAnyCartonField(byPOCompList, getCartonsOut);
 
 if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFinal===0)){
   try{
+    // Prefer /receiving for cartons-in when summary doesn't provide carton fields
+    if(!recvHasCartons && cartonsInFinal===0 && Array.isArray(state.receiving) && state.receiving.length){
+      let s=0;
+      for(const r of state.receiving){
+        s += Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons ?? r?.carton_count ?? r?.received_cartons ?? 0) || 0;
+      }
+      if(s>0) cartonsInFinal = s;
+    }
+
+    // /records (bins) is already loaded for this week; use it for cartons-out as unique bins if summary doesn't provide it
+    if(!compHasCartons && cartonsOutFinal===0 && Array.isArray(state.bins) && state.bins.length){
+      const set = new Set();
+      for(const row of state.bins){
+        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
+        if(b) set.add(b);
+      }
+      if(set.size>0) cartonsOutFinal = set.size;
+    }
+
     const fetchAllRecords = async (status) => {
       const u = `${apiBase}/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=${encodeURIComponent(status)}&limit=250000`;
       const r = await fetch(u);
@@ -3110,6 +2956,9 @@ const cartonsOutUse = cartonsOutFinal;
     setTxt('#ops-week-cartons-out', cartonsOutUse.toLocaleString());
     state.weekCartonsIn = cartonsInUse;
     state.weekCartonsOut = cartonsOutUse;
+    // If user is currently on Carton view, re-render so waffle updates immediately
+    if(state.opsView==='carton'){ try{ renderOpsInsights('carton'); }catch(e){} }
+
     setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
     setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
 
@@ -4385,9 +4234,11 @@ function wireOpsInsights(){
       pills.forEach(b=>b.classList.remove('ops-pill--active'));
       btn.classList.add('ops-pill--active');
       const v = btn.getAttribute('data-opsview') || 'supplier';
+      state.opsView = v;
       renderOpsInsights(v);
     });
   });
+  state.opsView='supplier';
   renderOpsInsights('supplier');
 }
 window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
