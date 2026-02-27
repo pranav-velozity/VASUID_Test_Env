@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
- <!-- Tailwind -->
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -2293,7 +2293,9 @@ if (!putRes.ok) {
   function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
 
   function renderIntake(){
-    const tb=$('#intake-body'); tb.innerHTML='';
+    const tb=$('#intake-body');
+    if(!tb) return; // Intake DOM not present on this page
+    tb.innerHTML='';
     if(!intakeRows.length) intakeRows.push(newRow());
     let drafts=0, synced=0;
     intakeRows.forEach((r,i)=>{
