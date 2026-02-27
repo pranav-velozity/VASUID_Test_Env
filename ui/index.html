@@ -424,8 +424,7 @@
 
 
   </div>
-</div><!-- Bottom reports tile (replaces PO progress) -->
-<div class="w-full min-w-0 mt-6">
+  <div class="lg:col-span-5 w-full min-w-0 mt-3">
 <!-- Reports & downloads (bottom full-width) -->
 <div class="bg-white rounded-2xl border shadow p-4">
 <div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
@@ -436,6 +435,7 @@
 <button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-ship-detail"><span class="text-base leading-none">📄</span>Shipment Details</button>
 <button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-week-applied"><span class="text-base leading-none">⬇️</span>Download Applied</button>
 <button class="justify-start text-sm shrink-0 cmd justify-center" id="ops-dl-mobile-bin"><span class="text-base leading-none">📦</span>Mobile bin</button>
+</div>
 </div>
 </div>
 </div>
@@ -3024,10 +3024,10 @@ const cartonsOutUse = cartonsOutFinal;
     setTxt('#ops-week-cbm-out', cbmOut.toFixed(3));
     // Approximate containers (planning units as volume basis)
     const unitsForShip = Number(plannedTotal||0) || 0;
-    const cont40 = unitsForShip/16000;
-    const cont20 = unitsForShip/8000;
-    setTxt('#ops-week-cont-40', cont40.toFixed(1));
-    setTxt('#ops-week-cont-20', cont20.toFixed(1));
+    const cont40 = Math.ceil(unitsForShip/16000);
+    const cont20 = Math.ceil(unitsForShip/8000);
+    setTxt('#ops-week-cont-40', String(cont40));
+    setTxt('#ops-week-cont-20', String(cont20));
 state.weekCartonsIn = cartonsInUse;
     state.weekCartonsOut = cartonsOutUse;
     // If user is currently on Carton view, re-render so waffle updates immediately
