@@ -194,12 +194,12 @@
 /* Ops insights pills */
 .ops-pill{
   display:inline-flex; align-items:center; justify-content:flex-start; gap:8px;
-  padding:0 12px;
-  min-width:120px; height:34px;
+  padding:0 10px;
+  min-width:96px; height:30px;
   border:1px solid rgba(17,24,39,.12);
   border-radius:9999px;
   background:transparent;
-  font-size:12px;
+  font-size:11px;
   font-weight:600;
   color:#111827;
   transition: all .12s ease;
@@ -303,7 +303,7 @@
   <div class="lg:col-span-3 min-w-0">
     <!-- Ops insights (switchable views) -->
 <div class="ring-gray-100 min-h-0 border bg-white min-h-[520px] shadow rounded-2xl p-5 ring-1 mb-3">
-<div class="flex items-start justify-between gap-3">
+<div class="flex flex-col gap-3">
 <div class="min-h-[520px] min-w-0 min-h-0 h-full">
 <div class="text-base font-semibold">Insights</div>
 <div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
@@ -311,8 +311,8 @@
 <div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
 </div>
 </div>
-<!-- vertical buttons -->
-<div class="flex flex-col gap-2 shrink-0">
+<!-- view buttons -->
+<div class="flex flex-row flex-wrap gap-2">
 <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
@@ -432,7 +432,7 @@ function pct(n, d, digits = 0) {
 // Softer / matte palette for Ops insight bars
 const OPS_PLANNED_BG = 'rgba(148,163,184,0.04)'; // slate-400 @ 16% (matte)
 const OPS_PLANNED_FG = 'rgba(148,163,184,0.08)'; // slate-400 @ 32%
-const OPS_RECEIVED_FG = 'rgba(56,189,248,0.05)'; // sky-400 @ 20% (soft)
+const OPS_RECEIVED_FG = 'rgb(240,215,49)'; // matte yellow for received // sky-400 @ 20% (soft)
 const OPS_APPLIED_OPACITY = '0.09'; // applied overlay opacity (matte)
 
 // Bar row helper used by Ops insights (safe even if not used everywhere)
@@ -476,6 +476,7 @@ function shortTwoWords(name) {
     }
   const BRAND = '#990033';
   const APPLIED_COLOR = 'rgb(34,197,94)'; // matte green (soft) for applied
+  const PLANNED_COLOR = 'rgb(55,65,81)'; // dark grey for planned
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
   const $ = (s)=>document.querySelector(s);
@@ -1216,25 +1217,25 @@ async function downloadAppliedWeek() {
 
   <div>
     <h1>VAS Weekly Executive Summary</h1>
-    <div style="color:#555;font-size:12px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
+    <div style="color:#555;font-size:11px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
 
     <!-- KPIs -->
     <table class="kpi">
       <tr>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Planned</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Planned</div>
           <div style="font-size:20px;font-weight:700">${plannedTotal.toLocaleString()}</div>
         </td>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Applied</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Applied</div>
           <div style="font-size:20px;font-weight:700">${appliedTotal.toLocaleString()}</div>
         </td>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Completion</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Completion</div>
           <div style="font-size:20px;font-weight:700">${pct}%</div>
         </td>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
           <div style="font-size:20px;font-weight:700">${uniqueBins.toLocaleString()}</div>
         </td>
       </tr>
@@ -3693,7 +3694,7 @@ function renderOpsInsights(view){
     }).sort((a,b)=> b.rem - a.rem).slice(0, 20);
 
     root.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         ${cards.map(it=>{
           const planned = it.planned||0, received=it.received||0, applied=it.applied||0;
           const pct = planned>0 ? Math.round(100*applied/planned) : 0;
@@ -3722,13 +3723,13 @@ function renderOpsInsights(view){
 
               <!-- Single progress bar: received (light) + applied (solid) over planned baseline -->
               <div class="mt-3">
-                <div class="relative h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                <div class="relative h-2.5 rounded-full overflow-hidden" style="background:rgba(55,65,81,0.25);">
                   <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
                   <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR};opacity:.75;"></div>
                 </div>
                 <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
                   <div class="flex gap-3">
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:#D1E231"></span>Planned ${fmtInt(Math.round(planned))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${PLANNED_COLOR}"></span>Planned ${fmtInt(Math.round(planned))}</span>
                     <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmtInt(Math.round(received))}</span>
                     <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR};opacity:.75"></span>App ${fmtInt(Math.round(applied))}</span>
                   </div>
