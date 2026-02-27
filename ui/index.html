@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-  <!-- Tailwind -->
+<!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -740,7 +740,8 @@ function createHeart(size=24, color=BRAND, bpm=40){
   async function fetchPlan(w){
   try {
     return await api(`/plan/weeks/${w}`);
-  } catch {
+  } catch (e) {
+    console.error('[OPS fetchPlan] failed', e);
     return [];
   }
 }
@@ -753,7 +754,10 @@ function createHeart(size=24, color=BRAND, bpm=40){
       if(toYMD) q.set('to', toYMD);
       if(status) q.set('status', status);
       return await api(`/records/summary?${q.toString()}`);
-    }catch{ return null; }
+    }catch(e){
+      console.error('[OPS fetchSummary] failed', {fromYMD,toYMD,status,error:e});
+      return null;
+    }
   }
 
 
@@ -2050,8 +2054,8 @@ function inWeekByDateLocal(r, ws){
 function inWeekByCompletedAt(r, ws){
   if (!r || r.status !== 'complete' || !r.completed_at) return false;
   const ymd = ymdFromCompletedAtInTZ(r.completed_at); // business-day bucket
-  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-  const we  = iso(weD);
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 7);
+  const we  = iso(weD); // NOTE: 'to' is treated as exclusive in most endpoints
   return ymd && ymd >= ws && ymd <= we;
 }
 
@@ -3085,7 +3089,7 @@ if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFina
       cartonsOutFinal = uniqueBins(comp);
     }
   }catch(e){
-    console.debug('[OPS cartons fallback] raw records fallback failed:', e);
+    console.error('[OPS cartons fallback] raw records fallback failed:', e);
   }
 }
 
@@ -4535,7 +4539,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   });
 })();
 
- 
+  
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
