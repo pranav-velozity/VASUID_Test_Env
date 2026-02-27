@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-  <!-- Tailwind -->
+ <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -1977,7 +1977,8 @@ renderCapsules(ws, plannedTotal, appliedTotal, totalsByWeek);
 renderInsights(state.records, state.plan, state.weekStart);
 
     // download buttons
-    $('#btn-dl-posku').onclick=async()=>{
+    const __btnDlPosku = $('#btn-dl-posku');
+    if(__btnDlPosku) __btnDlPosku.onclick=async()=>{
       // Summary-only: pull PO+SKU rollup (tiny compared to raw records)
       // so the POSKU discrepancy CSV stays accurate at very high volumes.
       const p = new URLSearchParams({ from: ws, to: we, status: 'complete' });
@@ -1991,7 +1992,8 @@ renderInsights(state.records, state.plan, state.weekStart);
       const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=`po_sku_discrepancy_${ws}.csv`; a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href),250);
     };
-    $('#btn-dl-po').onclick=()=>{
+    const __btnDlPo = $('#btn-dl-po');
+    if(__btnDlPo) __btnDlPo.onclick=()=>{
       const rows=buildDiscrepancyPO(poRows, state.plan);
 const csv=toCSV(
   ['PO','SKU','Supplier Name','Facility Name','Freight Type','Zendesk Ticket #','Mobile Bin Count','Mobile Bins','Planned','Applied','Discrepancy (Applied - Planned)'],
@@ -2001,7 +2003,8 @@ const csv=toCSV(
       setTimeout(()=>URL.revokeObjectURL(a.href),250);
     };
 
-$('#btn-ship-summary').onclick = () => {
+const __btnShipSummary = $('#btn-ship-summary');
+if(__btnShipSummary) __btnShipSummary.onclick = () => {
   // Summary-only download (server-side aggregation)
   const ws = state.weekStart;
   api(`/summary/shipment_summary?weekStart=${encodeURIComponent(ws)}`)
@@ -2031,7 +2034,8 @@ $('#btn-ship-summary').onclick = () => {
     .catch(() => alert('Shipment Summary download failed.'));
 };
 
-$('#btn-ship-detail').onclick = () => {
+const __btnShipDetail = $('#btn-ship-detail');
+if(__btnShipDetail) __btnShipDetail.onclick = () => {
   // Summary-only download (server-side aggregation)
   const ws = state.weekStart;
   api(`/summary/shipment_detail?weekStart=${encodeURIComponent(ws)}`)
@@ -2061,7 +2065,8 @@ $('#btn-ship-detail').onclick = () => {
     .catch(() => alert('Shipment Detail download failed.'));
 };
 
-$('#btn-dl-week-applied').onclick = downloadAppliedWeek;
+const __btnDlWeekApplied = $('#btn-dl-week-applied');
+if(__btnDlWeekApplied) __btnDlWeekApplied.onclick = downloadAppliedWeek;
 
 function generateExecDoc() {
   const wsISO = state.weekStart;
@@ -2185,7 +2190,9 @@ document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
 
 
   // ---------- Plan upload / zero (unchanged) ----------
-  $('#btn-upload-plan').onclick=()=>$('#file-plan').click();
+  const __btnUploadPlan = $('#btn-upload-plan');
+  const __filePlan = $('#file-plan');
+  if(__btnUploadPlan && __filePlan) __btnUploadPlan.onclick=()=>__filePlan.click();
 $('#file-plan').addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
   e.target.value = '';
@@ -2266,7 +2273,8 @@ if (!putRes.ok) {
   alert(`Plan uploaded: ${items.length} rows`);
   setWeek(weekStart);
 });
-  $('#btn-zero-plan').onclick=async()=>{
+  const __btnZeroPlan = $('#btn-zero-plan');
+  if(__btnZeroPlan) __btnZeroPlan.onclick=async()=>{
     if(!apiBase) return alert('API not configured');
     const ws=$('#week-start').value;
     try{
@@ -2407,6 +2415,9 @@ function toISODate(v) {
   // Upload UIDs → table → sync (unchanged)
   (function wireUploadUIDs(){
     const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
+    // This handler exists on Receiving, but Ops page may not include these elements.
+    // Guard to avoid hard-crashing the entire dashboard script.
+    if(!btn || !file) return;
     btn.onclick=()=>file.click();
     file.addEventListener('change', async (e)=>{
       const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
