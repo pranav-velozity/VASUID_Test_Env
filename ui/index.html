@@ -3439,7 +3439,22 @@ if (hash === '#receiving') {
 }
 }
 
-  function show(hash){
+  
+function getRouteHash(){
+  // Support both hash-based routing (#intake) and path-based routing (/intake)
+  const h = (location.hash || '').trim();
+  if (h && h !== '#') return h;
+  const p = (location.pathname || '').toLowerCase();
+  if (p.endsWith('/intake')) return '#intake';
+  if (p.endsWith('/receiving')) return '#receiving';
+  if (p.endsWith('/flow')) return '#flow';
+  if (p.endsWith('/executive') || p.endsWith('/exec')) return '#exec';
+  if (p.endsWith('/operations') || p.endsWith('/ops') || p.endsWith('/dashboard') || p === '/' ) return '#dashboard';
+  // default
+  return '#dashboard';
+}
+
+function show(hash){
   document.getElementById('page-dashboard')?.classList.add('hidden');
   document.getElementById('page-intake')?.classList.add('hidden');
   document.getElementById('page-exec')?.classList.add('hidden');
@@ -4630,8 +4645,9 @@ window.addEventListener('state:ready', () => {
   } catch (e) { console.warn('[OPS] state:ready render failed:', e); }
 });
 
-window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
-  show(location.hash || '#dashboard'); // initial render
+window.addEventListener('hashchange', () => show(getRouteHash()));
+window.addEventListener('popstate', () => show(getRouteHash()));
+  show(getRouteHash()); // initial render
   try{ wireOpsDownloads(); }catch{}
   try{ wireOpsInsights(); }catch{}
 
@@ -4778,6 +4794,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
+
 
   
 </script>
