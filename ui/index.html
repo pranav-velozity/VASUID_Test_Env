@@ -2759,9 +2759,12 @@ async function loadOpsMetrics() {
       );
     if (dupes > 0)
       alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
-    $('#ops-alerts').innerHTML = alerts.length
-      ? alerts.map((t) => `<li>${t}</li>`).join('')
-      : '<li class="text-gray-400">No alerts.</li>';
+        const __opsAlertsEl = $('#ops-alerts');
+    if (__opsAlertsEl) {
+      __opsAlertsEl.innerHTML = alerts.length
+        ? alerts.map((t) => '<li>' + t + '</li>').join('')
+        : '<li class="text-gray-400">No alerts.</li>';
+    }
   } catch (e) {
     console.warn('Ops ribbon metrics load failed:', e);
   }
