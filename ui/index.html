@@ -3441,29 +3441,53 @@ if (hash === '#receiving') {
 
   
 function getRouteHash(){
-  // Support both hash-based routing (#intake) and path-based routing (/intake)
-  const h = (location.hash || '').trim();
+  // Support: #intake, #/intake, /intake (direct path), and default (/ or #)
+  let h = (location.hash || '').trim();
+  if (h === '#') h = '';
+  // Normalize hash formats like "#/intake" -> "#intake"
+  if (h.startsWith('#/')) h = '#' + h.slice(2);
   if (h && h !== '#') return h;
+
   const p = (location.pathname || '').toLowerCase();
   if (p.endsWith('/intake')) return '#intake';
   if (p.endsWith('/receiving')) return '#receiving';
+  if (p.endsWith('/operations')) return '#ops';
   if (p.endsWith('/flow')) return '#flow';
-  if (p.endsWith('/executive') || p.endsWith('/exec')) return '#exec';
-  if (p.endsWith('/operations') || p.endsWith('/ops') || p.endsWith('/dashboard') || p === '/' ) return '#dashboard';
-  // default
-  return '#dashboard';
+  // Default route (ops dashboard)
+  return '#ops';
 }
 
 function show(hash){
+  // Normalize hash formats like "#/intake" -> "#intake"
+  let h = (hash || '').trim();
+  if (h === '#') h = '';
+  if (h.startsWith('#/')) h = '#' + h.slice(2);
+  if (!h) h = '#ops';
+
   document.getElementById('page-dashboard')?.classList.add('hidden');
   document.getElementById('page-intake')?.classList.add('hidden');
   document.getElementById('page-exec')?.classList.add('hidden');
   document.getElementById('page-receiving')?.classList.add('hidden');
   document.getElementById('page-flow')?.classList.add('hidden');
 
+  if (h === '#intake') {
+    document.getElementById('page-intake')?.classList.remove('hidden');
+    // Intake-specific refresh hook (if defined)
+    if (typeof window.renderIntake === 'function') {
+      try { window.renderIntake(); } catch(e) { console.warn('renderIntake failed', e); }
+    }
+  } else if (h === '#receiving') {
+    document.getElementById('page-receiving')?.classList.remove('hidden');
+  } else if (h === '#flow') {
+    document.getElementById('page-flow')?.classList.remove('hidden');
+  } else if (h === '#exec') {
+    document.getElementById('page-exec')?.classList.remove('hidden');
+  } else {
+    // default ops
+    document.getElementById('page-dashboard')?.classList.remove('hidden');
+  }
 
-if (hash === '#receiving') {
-  document.getElementById('page-receiving')?.classList.remove('hidden');
+  syncNavActive(h);
 } else if (hash === '#intake') {
   document.getElementById('page-intake')?.classList.remove('hidden');
 } else if (hash === '#exec') {
@@ -4794,7 +4818,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
 
   
 </script>
