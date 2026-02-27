@@ -7,6 +7,7 @@
   <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
+
 <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
@@ -3534,48 +3535,67 @@ function renderOpsInsights(view){
     const co = Number(state.weekCartonsOut||0)||0;  // cartons (bins) OUT
     const maxTotal = Math.max(ci, co, 1);
 
-    // Waffle scaling: 10×10 grid (100 squares). Prefer 1 square = 10 cartons,
-    // but auto-scale up (in multiples of 10) when totals exceed 1,000.
-    const squares = 100;
-    const base = 10;
+    // Waffle scaling
+    const rows = 10;
+    const cols = 12;
+    const squares = rows * cols; // 120 squares
+    const base = 10; // prefer 1 square = 10 cartons
     const perSquare = Math.max(base, Math.ceil((maxTotal / squares) / base) * base);
 
-    const fillIn = Math.min(squares, Math.round(ci / perSquare));
-    const fillOut = Math.min(squares, Math.round(co / perSquare));
+    const calcFill = (v)=>{
+      if(v<=0) return 0;
+      const f = Math.ceil(v / perSquare);
+      return Math.min(squares, Math.max(1, f));
+    };
 
-    const square = (filled, color) =>
-      `<div class="grid grid-cols-10 gap-[3px]">
+    const fillIn = calcFill(ci);
+    const fillOut = calcFill(co);
+
+    const squareGrid = (filled, color) =>
+      `<div class="grid gap-[4px]" style="grid-template-columns: repeat(${cols}, 16px);">
         ${Array.from({length:squares}).map((_,i)=>
-          `<div class="w-[12px] h-[12px] rounded-[3px]" style="background:${i<filled?color:'#f3f4f6'};"></div>`
+          `<div class="w-[16px] h-[16px] rounded-[4px]" style="background:${i<filled?color:'#f3f4f6'};"></div>`
         ).join('')}
       </div>`;
 
     const delta = ci - co;
     const deltaLabel = delta===0 ? 'Δ 0' : (delta>0 ? `Δ +${fmtInt(delta)} (Net In)` : `Δ ${fmtInt(delta)} (Net Out)`);
 
+    const inShown = Math.min(ci, fillIn * perSquare);
+    const outShown = Math.min(co, fillOut * perSquare);
+
     root.innerHTML = `
-      <div class="bg-gray-50 rounded-xl border p-3">
+      <div class="bg-gray-50 rounded-xl border p-4">
         <div class="flex items-center justify-between">
           <div class="text-sm font-semibold">Cartons in vs cartons out</div>
           <div class="text-xs text-gray-600">${deltaLabel}</div>
         </div>
-        <div class="text-xs text-gray-500 mt-1">1 square = ${fmtInt(perSquare)} cartons</div>
+        <div class="flex items-center justify-between mt-1">
+          <div class="text-xs text-gray-500">1 square = ${fmtInt(perSquare)} cartons</div>
+          <div class="text-xs text-gray-500 tabular-nums">Grid: ${rows}×${cols} (${squares} squares)</div>
+        </div>
 
-        <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="bg-white rounded-xl border p-3">
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl border p-4">
             <div class="flex items-center justify-between mb-2">
               <div class="text-xs font-semibold text-gray-700">IN</div>
-              <div class="text-xs tabular-nums text-gray-700">${fmtInt(ci)}</div>
+              <div class="text-sm font-semibold tabular-nums">${fmtInt(ci)}</div>
             </div>
-            ${square(fillIn, 'var(--ops-green)')}
+            ${squareGrid(fillIn, 'var(--ops-green)')}
+            <div class="mt-2 text-[11px] text-gray-500">
+              Filled: <span class="tabular-nums">${fillIn}</span>/<span class="tabular-nums">${squares}</span> • Showing ~<span class="tabular-nums">${fmtInt(inShown)}</span> cartons
+            </div>
           </div>
 
-          <div class="bg-white rounded-xl border p-3">
+          <div class="bg-white rounded-xl border p-4">
             <div class="flex items-center justify-between mb-2">
               <div class="text-xs font-semibold text-gray-700">OUT</div>
-              <div class="text-xs tabular-nums text-gray-700">${fmtInt(co)}</div>
+              <div class="text-sm font-semibold tabular-nums">${fmtInt(co)}</div>
             </div>
-            ${square(fillOut, 'var(--ops-yellow)')}
+            ${squareGrid(fillOut, 'var(--ops-yellow)')}
+            <div class="mt-2 text-[11px] text-gray-500">
+              Filled: <span class="tabular-nums">${fillOut}</span>/<span class="tabular-nums">${squares}</span> • Showing ~<span class="tabular-nums">${fmtInt(outShown)}</span> cartons
+            </div>
           </div>
         </div>
 
@@ -3587,6 +3607,7 @@ function renderOpsInsights(view){
     if(sub) sub.textContent = 'Carton view';
     return;
   }
+
 
 
   const groupKey = (x)=>{
