@@ -1131,7 +1131,7 @@ function round3(n){ return Math.round((Number(n)||0) * 1000) / 1000; }
 async function downloadAppliedWeek() {
   const ws = state.weekStart;
   const weDate = new Date(ws);
-  weDate.setDate(weDate.getDate() + 7);
+  weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
   if (!apiBase) {
@@ -1648,7 +1648,7 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const today = todayISO();
   const ws    = weekStartISO || (typeof mondayOf === 'function' ? iso(mondayOf(new Date())) : today);
   const wsDate = new Date(ws + 'T00:00:00');
-  const weDate = new Date(ws + 'T00:00:00'); weDate.setDate(weDate.getDate() + 7);
+  const weDate = new Date(ws + 'T00:00:00'); weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
   const dayDiff = (a,b)=> Math.round((new Date(a+'T00:00:00') - new Date(b+'T00:00:00'))/86400000);
   const clamp01 = n => (n < 1 ? 1 : n);
@@ -1860,7 +1860,7 @@ if (binsByDiversity.length) {
 
 
 
-function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate() + 7); return iso(d); }
+function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate() + 6); return iso(d); }
 
 function inWeekByDateLocal(r, ws){
   if (!r || r.status !== 'complete') return false;
@@ -1872,7 +1872,7 @@ function inWeekByDateLocal(r, ws){
 function inWeekByCompletedAt(r, ws){
   if (!r || r.status !== 'complete' || !r.completed_at) return false;
   const ymd = ymdFromCompletedAtInTZ(r.completed_at); // business-day bucket
-  const weD = new Date(ws); weD.setDate(weD.getDate() + 7);
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD); // NOTE: 'to' is treated as exclusive in most endpoints
   return ymd && ymd >= ws && ymd <= we;
 }
@@ -1880,7 +1880,7 @@ function inWeekByCompletedAt(r, ws){
   // ---------- setWeek ----------
   async function setWeek(ws){
     state.weekStart=ws; $('#week-start').value=ws;
-    const weDate=new Date(ws); weDate.setDate(weDate.getDate() + 7); const we=iso(weDate);
+    const weDate=new Date(ws); weDate.setDate(weDate.getDate() + 6); const we=iso(weDate);
 const [plan, summary, receiving] = await Promise.all([
   fetchPlan(ws),
   fetchSummary(ws, we, 'complete'),
@@ -2070,7 +2070,7 @@ if(__btnDlWeekApplied) __btnDlWeekApplied.onclick = downloadAppliedWeek;
 
 function generateExecDoc() {
   const wsISO = state.weekStart;
-  const weD = new Date(wsISO); weD.setDate(weD.getDate() + 7);
+  const weD = new Date(wsISO); weD.setDate(weD.getDate() + 6);
   const weISO = iso(weD);
 
   const plannedTotal = (state.plan||[]).reduce((s,p)=> s + toNum(p.target_qty), 0);
@@ -2180,7 +2180,10 @@ document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),250);
 });
-    // Re-render insights for currently selected view now that week data is loaded
+        // Ensure week totals (POs received, cartons in/out, etc.) are computed for the selected week
+    try { await refreshDashboardTotals(); } catch (e) { console.warn('[OPS] refreshDashboardTotals failed:', e); }
+
+// Re-render insights for currently selected view now that week data is loaded
     try {
       const active = document.querySelector('.ops-pill--active');
       const v = (active && active.getAttribute('data-opsview')) ? active.getAttribute('data-opsview') : 'supplier';
@@ -2358,8 +2361,9 @@ if (!putRes.ok) {
           else { row.sync='pending'; }
         }catch{ row.sync='pending'; }
         renderIntake();
-        await loadOpsMetrics(); await refreshDashboardTotals();
-await setWeek(state.weekStart);   // 🔄 keep state.records in sync
+        await loadOpsMetrics(); await setWeek(state.weekStart);
+    await refreshDashboardTotals();
+    // 🔄 keep state.records in sync
       });
     });
 
@@ -2786,7 +2790,7 @@ async function loadOpsMetrics() {
 async function refreshDashboardTotals(){
   if(!apiBase) return;
   const ws = state.weekStart;
-  const weD = new Date(ws); weD.setDate(weD.getDate() + 7);
+  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
 
   const summary = await fetchSummary(ws, we, 'complete');
@@ -3265,8 +3269,9 @@ if (Array.isArray(body.results) && body.results.length) {
 
     // Refresh dashboard + intake metrics
 await loadOpsMetrics();
-await refreshDashboardTotals();
-await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
+await setWeek(state.weekStart);
+    await refreshDashboardTotals();
+    // 🔄 refresh state.records so downloads reflect deletes
 
   } catch (e) {
     console.error(e);
@@ -3328,7 +3333,7 @@ if (hash === '#receiving') {
   document.getElementById('page-exec')?.classList.remove('hidden');
   try {
     const ws = state.weekStart;
-    const weD = new Date(ws); weD.setDate(weD.getDate() + 7);
+    const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
     const we = iso(weD);
     const sub = document.getElementById('exec-sub');
     if (sub) sub.textContent = `${ws} – ${we}`;
