@@ -305,14 +305,12 @@
 <div class="ring-gray-100 min-h-0 border bg-white min-h-[520px] shadow rounded-2xl p-5 ring-1 mb-3">
 <div class="flex flex-col gap-3">
 <div class="min-h-[520px] min-w-0 min-h-0 h-full">
-<div class="text-base font-semibold">Insights</div>
-<div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
-<div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
-<div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
-</div>
-</div>
-<!-- view buttons -->
-<div class="flex flex-row flex-wrap gap-2">
+<div class="flex items-start justify-between gap-3">
+  <div class="min-w-0">
+    <div class="text-base font-semibold">Insights</div>
+    <div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Supplier view</div>
+  </div>
+  <div class="flex flex-wrap justify-end gap-2 shrink-0">
 <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
@@ -325,7 +323,15 @@
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 2l1.2 3.6L17 7l-3.8 1.4L12 12l-1.2-3.6L7 7l3.8-1.4L12 2Z"/>
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 13l.8 2.4L8 16l-2.2.6L5 19l-.8-2.4L2 16l2.2-.6L5 13Z"/>
 </svg><span>Placeholder</span></button>
+
+  </div>
 </div>
+<div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
+<div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
+</div>
+</div>
+<!-- view buttons -->
+
 </div>
 </div>
 <!-- PO progress (planned / received / applied) placeholder removed from right panel -->
@@ -363,6 +369,16 @@
 </span>
               Cartons in – cartons out
             </div>
+
+<div class="flex items-center justify-between py-1.5">
+<div class="flex items-center gap-2 text-sm text-gray-700">
+<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z" stroke-width="1.5"></path></svg>
+</span>
+              CBM in – CBM out
+            </div>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-cbm-in">0</span> – <span id="ops-week-cbm-out">0</span></div>
+</div>
 <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
 </div>
 </div>
@@ -475,7 +491,7 @@ function shortTwoWords(name) {
       return s || '—';
     }
   const BRAND = '#990033';
-  const APPLIED_COLOR = 'rgb(34,197,94)'; // matte green (soft) for applied
+  const APPLIED_COLOR = 'rgb(209,226,49)'; // same as cartons IN (ops-green) // matte green (soft) for applied
   const PLANNED_COLOR = 'rgb(55,65,81)'; // dark grey for planned
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
@@ -2975,7 +2991,11 @@ const cartonsOutUse = cartonsOutFinal;
     setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
     setTxt('#ops-week-cartons-in', cartonsInUse.toLocaleString());
     setTxt('#ops-week-cartons-out', cartonsOutUse.toLocaleString());
-    state.weekCartonsIn = cartonsInUse;
+        const cbmIn = (Number(cartonsInUse)||0) * 0.046;
+    const cbmOut = (Number(cartonsOutUse)||0) * 0.046;
+    setTxt('#ops-week-cbm-in', cbmIn.toFixed(3));
+    setTxt('#ops-week-cbm-out', cbmOut.toFixed(3));
+state.weekCartonsIn = cartonsInUse;
     state.weekCartonsOut = cartonsOutUse;
     // If user is currently on Carton view, re-render so waffle updates immediately
     if(state.opsView==='carton'){ try{ renderOpsInsights('carton'); }catch(e){} }
