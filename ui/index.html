@@ -369,18 +369,20 @@
 </span>
               Cartons in – cartons out
             </div>
+<div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
+</div>
 
 <div class="flex items-center justify-between py-1.5">
 <div class="flex items-center gap-2 text-sm text-gray-700">
 <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
-<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 7l8-4 8 4v10l-8 4-8-4z" stroke-width="1.5"></path></svg>
+<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24">
+  <path d="M6 4h12v16H6z" stroke-width="1.5"></path>
+  <path d="M8 8h8M8 12h8M8 16h8" stroke-width="1.5"></path>
+</svg>
 </span>
               CBM in – CBM out
             </div>
 <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cbm-in">0</span> – <span id="ops-week-cbm-out">0</span></div>
-</div>
-<div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
-</div>
 </div>
 <div class="grid grid-cols-2 gap-2 mt-3">
 <div class="bg-white border rounded-xl p-3">
@@ -433,6 +435,13 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+
+function firstTwoWords(name){
+  const s = String(name ?? '').trim();
+  if(!s) return '';
+  const parts = s.split(/\s+/).filter(Boolean);
+  return parts.slice(0,2).join(' ');
+}
 function fmt(n, digits = 0) {
   const x = Number(n);
   if (!isFinite(x)) return '0';
@@ -446,10 +455,10 @@ function pct(n, d, digits = 0) {
 }
 
 // Softer / matte palette for Ops insight bars
-const OPS_PLANNED_BG = 'rgba(148,163,184,0.04)'; // slate-400 @ 16% (matte)
-const OPS_PLANNED_FG = 'rgba(148,163,184,0.08)'; // slate-400 @ 32%
+const OPS_PLANNED_BG = 'rgb(55,65,81)'; // dark grey planned baseline // slate-400 @ 16% (matte)
+const OPS_PLANNED_FG = 'rgb(55,65,81)'; // dark grey legend dot // slate-400 @ 32%
 const OPS_RECEIVED_FG = 'rgb(240,215,49)'; // matte yellow for received // sky-400 @ 20% (soft)
-const OPS_APPLIED_OPACITY = '0.09'; // applied overlay opacity (matte)
+const OPS_APPLIED_OPACITY = '1'; // applied solid // applied overlay opacity (matte)
 
 // Bar row helper used by Ops insights (safe even if not used everywhere)
 function barRowHtml(label, val, denom, barColor) {
@@ -3792,7 +3801,9 @@ function renderOpsInsights(view){
           suppliers:new Set(),
           zendesks:new Set(),
           bySup:new Map(),
-          byZend:new Map()
+          byZend:new Map(),
+          airPlanned:0, seaPlanned:0, otherPlanned:0,
+          airApplied:0, seaApplied:0, otherApplied:0
         };
         meta.set(fKey, m);
       }
@@ -3805,6 +3816,14 @@ function renderOpsInsights(view){
       m.received += received;
       m.applied += applied;
       m.posTotal += 1;
+
+      // Freight split (for facility summary chips)
+      const fr = (r.freight || r.freight_type || '').toString().toLowerCase();
+      const bucket = fr.includes('air') ? 'air' : (fr.includes('sea') ? 'sea' : 'other');
+      if(bucket==='air'){ m.airPlanned += planned; m.airApplied += applied; }
+      else if(bucket==='sea'){ m.seaPlanned += planned; m.seaApplied += applied; }
+      else { m.otherPlanned += planned; m.otherApplied += applied; }
+
 
       const cartonsIn = Number(r.cartonsIn ?? r.cartons_in ?? 0) || 0;
       if(cartonsIn <= 0) m.posNotSent += 1;
@@ -3848,7 +3867,7 @@ function renderOpsInsights(view){
           const rem = Math.max(0, f.planned - f.applied);
 
           const topSup = [...f.bySup.values()]
-            .map(s=>({ key:s.key, rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0 }))
+            .map(s=>({ key:firstTwoWords(s.key), rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0 }))
             .filter(x=>x.planned>0)
             .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
             .slice(0,4);
@@ -3876,6 +3895,7 @@ function renderOpsInsights(view){
                 <div class="flex flex-wrap gap-2 text-[12px] text-gray-600">
                   <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">👥</span>Suppliers <b class="ml-1">${fmt(f.suppliers.size || 0)}</b></span>
                   <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">🎫</span>Zendesk <b class="ml-1">${fmt(f.zendesks.size || 0)}</b></span>
+                  ${(() => { const p = Number(f.planned)||0; const airPct = p>0 ? Math.round(100*(f.airPlanned||0)/p) : 0; const seaPct = p>0 ? Math.round(100*(f.seaPlanned||0)/p) : 0; const parts=[]; if((f.airPlanned||0)>0) parts.push(`<span class=\"inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5\"><span class=\"mr-1\">✈️</span>Air <b class=\"ml-1\">${airPct}%</b></span>`); if((f.seaPlanned||0)>0) parts.push(`<span class=\"inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5\"><span class=\"mr-1\">🚢</span>Sea <b class=\"ml-1\">${seaPct}%</b></span>`); return parts.join(''); })()}
                   <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">📦</span>Planned <b class="ml-1">${fmt(f.planned)}</b></span>
                   <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">✅</span>Applied <b class="ml-1">${fmt(f.applied)}</b></span>
                 </div>
