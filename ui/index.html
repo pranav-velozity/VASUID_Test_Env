@@ -3405,6 +3405,13 @@ if (hash === '#receiving') {
   document.getElementById('page-flow')?.classList.remove('hidden');
 } else {
   document.getElementById('page-dashboard')?.classList.remove('hidden');
+  // If user navigates away and back, re-render the current Ops Insights view.
+  try {
+    const active = document.querySelector('.ops-pill--active');
+    const v = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
+    state.opsView = v;
+    renderOpsInsights(v);
+  } catch (e) {}
 }
 syncNav();
 }
@@ -4535,18 +4542,34 @@ function renderOpsInsights(view){
 function wireOpsInsights(){
   const pills = Array.from(document.querySelectorAll('.ops-pill'));
   if(!pills.length) return;
+
   pills.forEach(btn=>{
     btn.addEventListener('click', ()=>{
       pills.forEach(b=>b.classList.remove('ops-pill--active'));
       btn.classList.add('ops-pill--active');
-      const v = btn.getAttribute('data-opsview') || 'supplier';
+      const v = (btn.getAttribute('data-opsview') || 'overview').trim();
       state.opsView = v;
-      renderOpsInsights(v);
+      try { renderOpsInsights(v); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
     });
   });
-  state.opsView='overview';
-  renderOpsInsights('overview');
+
+  // Initial view: respect existing active pill, otherwise keep last state, otherwise default to overview.
+  const active = document.querySelector('.ops-pill--active');
+  const initial = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
+  state.opsView = initial;
+  try { renderOpsInsights(initial); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
 }
+
+// Re-render insights whenever the week data finishes loading (setWeek wrapper dispatches state:ready).
+window.addEventListener('state:ready', () => {
+  try {
+    const active = document.querySelector('.ops-pill--active');
+    const v = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
+    state.opsView = v;
+    renderOpsInsights(v);
+  } catch (e) { console.warn('[OPS] state:ready render failed:', e); }
+});
+
 window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
   show(location.hash || '#dashboard'); // initial render
   try{ wireOpsDownloads(); }catch{}
