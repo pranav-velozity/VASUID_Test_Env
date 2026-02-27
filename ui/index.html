@@ -3715,8 +3715,9 @@ function renderOpsInsights(view){
     const topFac = topN(byFacility, 3);
 
     const bandCounts = { 'On track':0, 'At risk':0, 'Delayed':0, 'No plan':0 };
-    for(const {v} of byZendesk.values()){
-      bandCounts[v.band] = (bandCounts[v.band]||0) + 1;
+    for(const agg of byZendesk.values()){
+      const b = agg && agg.band ? agg.band : 'No plan';
+      bandCounts[b] = (bandCounts[b]||0) + 1;
     }
 
     const topTickets = Array.from(byZendesk.entries())
