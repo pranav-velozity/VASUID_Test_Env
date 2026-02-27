@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-<!-- Tailwind -->
+  <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -311,8 +311,8 @@
 <div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
 </div>
 </div>
-<!-- vertical buttons -->
-<div class="flex flex-col gap-2 shrink-0">
+<!-- view buttons (horizontal) -->
+<div class="flex flex-row flex-wrap gap-2 shrink-0 items-start justify-end">
 <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
@@ -2960,9 +2960,41 @@ async function refreshDashboardTotals(){
   const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
   // Week totals side panel (Ops)
   try{
-    const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
-    const byPORecv = (summaryReceived?.by_po || {});
-    const poReceived = new Set(Object.keys(byPORecv));
+    
+const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
+
+// Normalize /records/summary by_po which can be either:
+//  - object keyed by PO: { "WACA000123": {..}, ... }
+//  - array of rows:      [ {po_number:"WACA000123", ..}, ... ]
+const normByPO = (by_po) => {
+  const map = {};
+  const list = [];
+  if (Array.isArray(by_po)){
+    for (const it of by_po){
+      if(!it) continue;
+      const po = String(it.po_number ?? it.po ?? it.poNumber ?? it.po_id ?? it.key ?? '').trim();
+      if (po) map[po] = it;
+      list.push(it);
+    }
+  } else if (by_po && typeof by_po === 'object'){
+    for (const [k,v] of Object.entries(by_po)){
+      if(!v) continue;
+      const po = String(k||'').trim();
+      if (po) map[po] = v;
+      list.push(v);
+    }
+  }
+  return { map, list };
+};
+
+const recvNorm = normByPO(summaryReceived?.by_po);
+const compNorm = normByPO(summary?.by_po);
+
+const byPORecv = recvNorm.map;
+const byPORecvList = recvNorm.list;
+const byPOCompList = compNorm.list;
+
+const poReceived = new Set(Object.keys(byPORecv));
 
     const appliedTotal2 = Number(summary?.total_units || 0);
 
@@ -2992,11 +3024,24 @@ async function refreshDashboardTotals(){
       return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
     };
 
-    // "Cartons in" approximated as distinct mobile bins for RECEIVED status
-    const cartonsIn  = Object.values(byPORecv).reduce((s,o)=>s + (Number(o?.cartons_in ?? o?.cartons_out)||0), 0);
-    // "Cartons out" as distinct mobile bins for COMPLETE status
-    const cartonsOut = Object.values(summary?.by_po || {}).reduce((s,o)=>s + (Number(o?.cartons_out)||0), 0);
+    
+const getCartonsIn = (o) => {
+  if(!o) return 0;
+  const v = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
+  const v2 = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
+  return Number(v ?? v2) || 0;
+};
+const getCartonsOut = (o) => {
+  if(!o) return 0;
+  const v = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
+  const v2 = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
+  return Number(v ?? v2) || 0;
+};
 
+// Cartons IN from RECEIVED status summary (shape-safe)
+const cartonsIn  = byPORecvList.reduce((s,o)=> s + getCartonsIn(o), 0);
+// Cartons OUT from COMPLETE status summary (shape-safe)
+const cartonsOut = byPOCompList.reduce((s,o)=> s + getCartonsOut(o), 0);
     const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
     const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
 
@@ -4440,7 +4485,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   });
 })();
 
-  
+
 </script>
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
