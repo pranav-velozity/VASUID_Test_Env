@@ -3486,8 +3486,15 @@ function show(hash){
     // default ops
     document.getElementById('page-dashboard')?.classList.remove('hidden');
   }
-  syncNavActive(h);
+  // Nav highlight helper (different baselines use different function names).
+  try {
+    if (typeof syncNavActive === 'function') syncNavActive(h);
+    else if (typeof syncNav === 'function') syncNav(h);
+  } catch (e) {
+    // Never break routing due to nav highlighting.
+  }
 }
+
 
   
 /* ================= Ops right panel wiring (downloads + insights) ================= */
