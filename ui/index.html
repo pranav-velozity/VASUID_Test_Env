@@ -384,6 +384,24 @@
             </div>
 <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cbm-in">0</span> – <span id="ops-week-cbm-out">0</span></div>
 </div>
+<div class="flex items-center justify-between gap-2 mt-1.5">
+  <div class="flex items-center gap-2 text-sm text-gray-700">
+    <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+      <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path d="M3 7h18" stroke-width="1.5"></path>
+        <path d="M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" stroke-width="1.5"></path>
+        <path d="M7 11h10" stroke-width="1.5"></path>
+      </svg>
+    </span>
+    Approx. containers
+  </div>
+  <div class="text-sm font-semibold tabular-nums">
+    <span id="ops-week-cont-40">0</span> × 40' HQ
+    <span class="text-gray-400 mx-1">•</span>
+    <span id="ops-week-cont-20">0</span> × 20' GP
+  </div>
+</div>
+
 <div class="grid grid-cols-2 gap-2 mt-3">
 <div class="bg-white border rounded-xl p-3">
 <div class="text-xs text-gray-500">Total suppliers</div>
@@ -3004,6 +3022,12 @@ const cartonsOutUse = cartonsOutFinal;
     const cbmOut = (Number(cartonsOutUse)||0) * 0.046;
     setTxt('#ops-week-cbm-in', cbmIn.toFixed(3));
     setTxt('#ops-week-cbm-out', cbmOut.toFixed(3));
+    // Approximate containers (planning units as volume basis)
+    const unitsForShip = Number(plannedTotal||0) || 0;
+    const cont40 = unitsForShip/16000;
+    const cont20 = unitsForShip/8000;
+    setTxt('#ops-week-cont-40', cont40.toFixed(1));
+    setTxt('#ops-week-cont-20', cont20.toFixed(1));
 state.weekCartonsIn = cartonsInUse;
     state.weekCartonsOut = cartonsOutUse;
     // If user is currently on Carton view, re-render so waffle updates immediately
@@ -4190,11 +4214,20 @@ function renderOpsInsights(view){
             const gap = (circ - dash).toFixed(2);
             return `
               <g class="ops-zb" data-k="${esc(b.k)}" data-planned="${b.planned}" data-received="${b.received}" data-applied="${b.applied}" data-pct="${b.pct.toFixed(1)}" data-mode="${b.mode}" transform="translate(0,0)">
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${b.r.toFixed(2)}" fill="rgba(241,245,249,0.55)" stroke="${riskStroke(b.pct)}" stroke-width="2"></circle>
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}" fill="${fillFor(b.pct)}" opacity="0.9"></circle>
-                <!-- completion ring -->
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}" fill="transparent" stroke="rgba(15,23,42,0.14)" stroke-width="${ring}"
-                  stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${b.cx.toFixed(2)} ${b.cy.toFixed(2)})" stroke-linecap="round"></circle>
+                <!-- outer risk ring (pops) -->
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${b.r.toFixed(2)}"
+                  fill="#ffffff" stroke="${riskStroke(b.pct)}" stroke-width="4"
+                  style="filter: drop-shadow(0 2px 6px rgba(15,23,42,0.18));"></circle>
+
+                <!-- base ring -->
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}"
+                  fill="#ffffff" stroke="rgba(100,116,139,0.22)" stroke-width="${ring}"></circle>
+
+                <!-- completion ring (applied color) -->
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}"
+                  fill="transparent" stroke="var(--ops-green)" stroke-width="${ring}"
+                  stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${b.cx.toFixed(2)} ${b.cy.toFixed(2)})"
+                  stroke-linecap="round"></circle>
                 <text x="${b.cx.toFixed(2)}" y="${(b.cy+4).toFixed(2)}" text-anchor="middle" font-size="${Math.max(14, Math.min(20, b.r/2)).toFixed(0)}" fill="rgba(15,23,42,0.85)">${iconFor(b.mode)}</text>
                 <text x="${b.cx.toFixed(2)}" y="${(b.cy + b.r + 14).toFixed(2)}" text-anchor="middle" font-size="12" fill="rgba(100,116,139,0.9)">${esc(b.k)}</text>
               </g>
