@@ -442,6 +442,62 @@
 </div>
 </div>
 </div>
+
+<!-- ================= Intake ================= -->
+<section class="hidden" id="page-intake">
+  <div class="flex items-center justify-between mb-3">
+    <div>
+      <div class="text-2xl font-semibold">Intake</div>
+      <div class="text-sm text-gray-500">Create / review UID records and manage deletes</div>
+    </div>
+  </div>
+
+  <div class="vo-card p-4">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Add row</button>
+      <button id="btn-delete-selected" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete selected</button>
+      <button id="btn-export-day" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Export day CSV</button>
+      <div class="ml-auto text-xs text-gray-500">Tip: use the checkbox column to select multiple rows.</div>
+    </div>
+
+    <div class="overflow-auto border rounded-xl">
+      <table class="min-w-[1100px] w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="p-2 text-left w-10"><input id="chk-all" type="checkbox" /></th>
+            <th class="p-2 text-left">Date</th>
+            <th class="p-2 text-left">Mobile Bin</th>
+            <th class="p-2 text-left">SSCC</th>
+            <th class="p-2 text-left">PO</th>
+            <th class="p-2 text-left">SKU</th>
+            <th class="p-2 text-left">UID</th>
+            <th class="p-2 text-left">Status</th>
+            <th class="p-2 text-left">Sync</th>
+            <th class="p-2 text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="intake-body" class="bg-white"></tbody>
+      </table>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mt-4">
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="font-semibold mb-2">Delete UIDs</div>
+        <textarea id="uids-to-delete" class="w-full border rounded-lg p-2 text-sm h-28" placeholder="Paste UID(s) to delete (comma, space, or newline separated)"></textarea>
+        <div class="flex items-center gap-2 mt-2">
+          <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete</button>
+          <span id="delete-uids-status" class="text-sm text-gray-600"></span>
+        </div>
+      </div>
+
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="font-semibold mb-2">Intake BPM</div>
+        <div id="intake-bpm" class="text-3xl font-semibold tabular-nums">—</div>
+        <div class="text-xs text-gray-500 mt-1">Calculated from recent intake activity.</div>
+      </div>
+    </div>
+  </div>
+</section>
 <script>
     // ---------------------------
     // ---------------------------
