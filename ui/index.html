@@ -2364,8 +2364,10 @@ await setWeek(state.weekStart);   // 🔄 keep state.records in sync
     }
   }
 
-  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
-  $('#btn-delete-selected').onclick=async()=>{
+  const __btnAddRow = $('#btn-add-row');
+  if(__btnAddRow) __btnAddRow.onclick=()=>{intakeRows.push(newRow()); renderIntake();};
+  const __btnDelSel = $('#btn-delete-selected');
+  if(__btnDelSel) __btnDelSel.onclick=async()=>{
     const selected=intakeRows.filter(r=>r.selected);
     if(!selected.length) return alert('Select at least one row.');
     if(!confirm(`Delete ${selected.length} row(s)?`)) return;
@@ -2381,7 +2383,8 @@ await setWeek(state.weekStart);   // 🔄 keep state.records in sync
     renderIntake();
     await loadOpsMetrics(); await refreshDashboardTotals();
   };
-  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+  const __btnExportDay = $('#btn-export-day');
+  if(__btnExportDay) __btnExportDay.onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
 
 function toISODate(v) {
   if (v == null || v === '') return '';
