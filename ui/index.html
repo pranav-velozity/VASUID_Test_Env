@@ -2841,7 +2841,7 @@ let poReceived = new Set(Object.keys(byPORecv));
 if(poReceived.size===0 && Array.isArray(state.receiving)){
   for(const r of state.receiving){
     const po = String(r?.po_number ?? r?.po ?? r?.poNumber ?? r?.po_id ?? '').trim();
-    const ci = Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons ?? r?.carton_count ?? r?.received_cartons ?? 0) || 0;
+    const ci = Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
     if(po && ci>0) poReceived.add(po);
   }
 }
@@ -2914,7 +2914,7 @@ if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFina
     if(!recvHasCartons && cartonsInFinal===0 && Array.isArray(state.receiving) && state.receiving.length){
       let s=0;
       for(const r of state.receiving){
-        s += Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons ?? r?.carton_count ?? r?.received_cartons ?? 0) || 0;
+        s += Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
       }
       if(s>0) cartonsInFinal = s;
     }
