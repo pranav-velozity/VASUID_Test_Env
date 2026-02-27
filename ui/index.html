@@ -312,7 +312,7 @@
 </div>
 </div>
 <!-- view buttons (horizontal) -->
-<div class="flex flex-row flex-wrap gap-2 shrink-0 items-start justify-end">
+<div class="flex flex-row gap-2 shrink-0 items-center justify-end max-w-[520px] overflow-x-auto whitespace-nowrap" style="padding-bottom:4px;">
 <button class="ops-pill ops-pill--active" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
 <path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
@@ -3042,6 +3042,56 @@ const getCartonsOut = (o) => {
 const cartonsIn  = byPORecvList.reduce((s,o)=> s + getCartonsIn(o), 0);
 // Cartons OUT from COMPLETE status summary (shape-safe)
 const cartonsOut = byPOCompList.reduce((s,o)=> s + getCartonsOut(o), 0);
+// If summary doesn't expose carton fields (common), fall back to raw records:
+// we approximate cartons as UNIQUE mobile_bin counts for the week.
+let cartonsInFinal = cartonsIn;
+let cartonsOutFinal = cartonsOut;
+
+const summaryHasAnyCartonField = (list, getter) => (list||[]).some(o => {
+  if(!o) return false;
+  return (o.cartons_in!=null || o.cartons_out!=null || o.cartonsIn!=null || o.cartonsOut!=null ||
+          o.bin_count!=null || o.bins!=null || o.mobile_bins!=null || o.mobile_bin_count!=null ||
+          o.mobile_bins_out!=null || o.bins_out!=null || o.cartons!=null);
+});
+
+const recvHasCartons = summaryHasAnyCartonField(byPORecvList, getCartonsIn);
+const compHasCartons = summaryHasAnyCartonField(byPOCompList, getCartonsOut);
+
+if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFinal===0)){
+  try{
+    const fetchAllRecords = async (status) => {
+      const u = `${apiBase}/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=${encodeURIComponent(status)}&limit=250000`;
+      const r = await fetch(u);
+      if(!r.ok) throw new Error(`records ${status} ${r.status}`);
+      const j = await r.json();
+      return j?.records || j?.data || j || [];
+    };
+
+    const uniqueBins = (rows) => {
+      const set = new Set();
+      for(const row of (rows||[])){
+        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
+        if(b) set.add(b);
+      }
+      return set.size;
+    };
+
+    if(!recvHasCartons && cartonsInFinal===0){
+      const rec = await fetchAllRecords('received');
+      cartonsInFinal = uniqueBins(rec);
+    }
+    if(!compHasCartons && cartonsOutFinal===0){
+      const comp = await fetchAllRecords('complete');
+      cartonsOutFinal = uniqueBins(comp);
+    }
+  }catch(e){
+    console.debug('[OPS cartons fallback] raw records fallback failed:', e);
+  }
+}
+
+const cartonsInUse = cartonsInFinal;
+const cartonsOutUse = cartonsOutFinal;
+
     const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
     const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
 
@@ -3054,8 +3104,8 @@ const cartonsOut = byPOCompList.reduce((s,o)=> s + getCartonsOut(o), 0);
     setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
     setTxt('#ops-week-cartons-in', cartonsIn.toLocaleString());
     setTxt('#ops-week-cartons-out', cartonsOut.toLocaleString());
-    state.weekCartonsIn = cartonsIn;
-    state.weekCartonsOut = cartonsOut;
+    state.weekCartonsIn = cartonsInUse;
+    state.weekCartonsOut = cartonsOutUse;
     setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
     setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
 
