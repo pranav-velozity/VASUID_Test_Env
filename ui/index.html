@@ -444,61 +444,111 @@
 </div>
 
 <!-- ================= Intake ================= -->
-<section class="hidden" id="page-intake">
-  <div class="flex items-center justify-between mb-3">
-    <div>
-      <div class="text-2xl font-semibold">Intake</div>
-      <div class="text-sm text-gray-500">Create / review UID records and manage deletes</div>
-    </div>
-  </div>
-
-  <div class="vo-card p-4">
-    <div class="flex flex-wrap items-center gap-2 mb-3">
-      <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Add row</button>
-      <button id="btn-delete-selected" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete selected</button>
-      <button id="btn-export-day" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Export day CSV</button>
-      <div class="ml-auto text-xs text-gray-500">Tip: use the checkbox column to select multiple rows.</div>
-    </div>
-
-    <div class="overflow-auto border rounded-xl">
-      <table class="min-w-[1100px] w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="p-2 text-left w-10"><input id="chk-all" type="checkbox" /></th>
-            <th class="p-2 text-left">Date</th>
-            <th class="p-2 text-left">Mobile Bin</th>
-            <th class="p-2 text-left">SSCC</th>
-            <th class="p-2 text-left">PO</th>
-            <th class="p-2 text-left">SKU</th>
-            <th class="p-2 text-left">UID</th>
-            <th class="p-2 text-left">Status</th>
-            <th class="p-2 text-left">Sync</th>
-            <th class="p-2 text-left">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="intake-body" class="bg-white"></tbody>
-      </table>
-    </div>
-
-    <div class="grid md:grid-cols-2 gap-4 mt-4">
-      <div class="border rounded-xl p-3 bg-white">
-        <div class="font-semibold mb-2">Delete UIDs</div>
-        <textarea id="uids-to-delete" class="w-full border rounded-lg p-2 text-sm h-28" placeholder="Paste UID(s) to delete (comma, space, or newline separated)"></textarea>
-        <div class="flex items-center gap-2 mt-2">
-          <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete</button>
-          <span id="delete-uids-status" class="text-sm text-gray-600"></span>
+<section id="page-intake" class="hidden">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-5">
+          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
+            </svg>
+            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
+          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
+<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
+<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
         </div>
       </div>
 
-      <div class="border rounded-xl p-3 bg-white">
-        <div class="font-semibold mb-2">Intake BPM</div>
-        <div id="intake-bpm" class="text-3xl font-semibold tabular-nums">—</div>
-        <div class="text-xs text-gray-500 mt-1">Calculated from recent intake activity.</div>
+      <!-- Ops ribbon -->
+      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+          <div class="flex gap-3">
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Scans Today</div>
+              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Last Hour</div>
+              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 border rounded-lg p-3">
+            <div id="ops-heart-small"></div>
+            <div>
+              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
+              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="text-sm font-semibold mb-1">Data Quality</div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">Sync states</div>
+            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Alerts</div>
+              <small class="text-gray-500">
+                <span id="ops-last-updated">—</span>
+                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
+                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
+                </span>
+              </small>
+            </div>
+            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
+          </div>
+        </div>
       </div>
-    </div>
+
+      <!-- Intake Table -->
+      <div class="mt-3 overflow-auto">
+        <table class="w-full min-w-[1100px] border-collapse border">
+          <thead class="bg-gray-100">
+          <tr>
+            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
+            <th class="th border px-2 py-1 text-left">Date</th>
+            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
+            <th class="th border px-2 py-1 text-left">PO_Number</th>
+            <th class="th border px-2 py-1 text-left">SKU_Code</th>
+            <th class="th border px-2 py-1 text-left">UID</th>
+            <th class="th border px-2 py-1 text-center">Sync</th>
+          </tr>
+          </thead>
+          <tbody id="intake-body"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3">
+        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
+      </div>
+
+<!-- Quick Delete by UID -->
+<div class="mt-4 bg-white rounded-2xl border shadow p-4">
+  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+  <p class="text-xs text-gray-500 mb-2">
+    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
+  </p>
+  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
+  <div class="mt-2 flex items-center gap-2">
+    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
+    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
   </div>
-</section>
+</div>
+    </section>
 <script>
+
     // ---------------------------
     // ---------------------------
 // Small utilities (safe HTML, formatting)
@@ -2395,13 +2445,11 @@ if (!putRes.ok) {
   const intakeRows=[];
   function newRow(){return {id:crypto.randomUUID(), selected:false, date_local:iso(new Date()), mobile_bin:'', sscc_label:'', po_number:'', sku_code:'', uid:'', status:'draft', sync:'pending', _pending:{}};}
   function requiredFilled(r){return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;}
-  function syncClass(s){return s==='synced'?'ops-bar-planned':(s==='pending'?'bg-amber-500':'bg-gray-400');}
+  function syncClass(s){return s==='synced'?'bg-green-500':(s==='pending'?'bg-amber-500':'bg-gray-400');}
   function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
 
   function renderIntake(){
-    const tb=$('#intake-body');
-    if(!tb) return; // Intake DOM not present on this page
-    tb.innerHTML='';
+    const tb=$('#intake-body'); tb.innerHTML='';
     if(!intakeRows.length) intakeRows.push(newRow());
     let drafts=0, synced=0;
     intakeRows.forEach((r,i)=>{
@@ -2464,27 +2512,20 @@ if (!putRes.ok) {
           else { row.sync='pending'; }
         }catch{ row.sync='pending'; }
         renderIntake();
-        await loadOpsMetrics(); await setWeek(state.weekStart);
-    await refreshDashboardTotals();
-    // 🔄 keep state.records in sync
+        await loadOpsMetrics(); await refreshDashboardTotals();
+await setWeek(state.weekStart);   // 🔄 keep state.records in sync
       });
     });
 
-    // ribbon quick badges (guarded: these elements may not exist on every page)
-    const elDrafts = $('#ops-drafts');
-    if(elDrafts) elDrafts.textContent = drafts;
-    const elBadges = $('#ops-sync-badges');
-    if(elBadges) {
-      elBadges.innerHTML =
-        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 ops-bg-planned-soft text-green-700">synced: ${synced}</span>
-         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
-    }
+    // ribbon quick badges
+    $('#ops-drafts').textContent = drafts;
+    $('#ops-sync-badges').innerHTML =
+      `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
+       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
   }
 
-  const __btnAddRow = $('#btn-add-row');
-  if(__btnAddRow) __btnAddRow.onclick=()=>{intakeRows.push(newRow()); renderIntake();};
-  const __btnDelSel = $('#btn-delete-selected');
-  if(__btnDelSel) __btnDelSel.onclick=async()=>{
+  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
+  $('#btn-delete-selected').onclick=async()=>{
     const selected=intakeRows.filter(r=>r.selected);
     if(!selected.length) return alert('Select at least one row.');
     if(!confirm(`Delete ${selected.length} row(s)?`)) return;
@@ -2500,8 +2541,7 @@ if (!putRes.ok) {
     renderIntake();
     await loadOpsMetrics(); await refreshDashboardTotals();
   };
-  const __btnExportDay = $('#btn-export-day');
-  if(__btnExportDay) __btnExportDay.onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
 
 function toISODate(v) {
   if (v == null || v === '') return '';
@@ -2524,9 +2564,6 @@ function toISODate(v) {
   // Upload UIDs → table → sync (unchanged)
   (function wireUploadUIDs(){
     const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
-    // This handler exists on Receiving, but Ops page may not include these elements.
-    // Guard to avoid hard-crashing the entire dashboard script.
-    if(!btn || !file) return;
     btn.onclick=()=>file.click();
     file.addEventListener('change', async (e)=>{
       const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
@@ -2752,25 +2789,47 @@ const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==
 async function loadOpsMetrics() {
   if (!apiBase) return;
   try {
-    // Summary-first: tiny endpoint backed by indexed queries.
-    const stats = await api(`/summary/ops`);
-    const scansToday = Number(stats?.scans_today || 0);
-    const lastHour   = Number(stats?.last_hour || 0);
-    const rate30m    = Number(stats?.last_30m || 0);
-    const drafts     = Number(stats?.drafts || 0);
-    const dupes      = Number(stats?.dupes || 0);
-    const syncCounts = (stats && typeof stats.sync_counts === 'object' && stats.sync_counts) ? stats.sync_counts : {};
+    // Fetch all recent completed records, up to 50k
+    const rows = await getRecordsSnapshot(15000);
 
-      const __el_ops_today = document.getElementById('ops-today'); if(__el_ops_today) __el_ops_today.textContent = scansToday.toLocaleString();
-      const __el_ops_hour = document.getElementById('ops-hour'); if(__el_ops_hour) __el_ops_hour.textContent = lastHour.toLocaleString();
-      const __el_ops_rate = document.getElementById('ops-rate'); if(__el_ops_rate) __el_ops_rate.textContent = (rate30m * 2).toLocaleString();
-      const __el_ops_drafts = document.getElementById('ops-drafts'); if(__el_ops_drafts) __el_ops_drafts.textContent = drafts.toLocaleString();
-      const __el_ops_dupes = document.getElementById('ops-dupes'); if(__el_ops_dupes) __el_ops_dupes.textContent = dupes.toLocaleString();
-      const __el_ops_last_updated = document.getElementById('ops-last-updated'); if(__el_ops_last_updated) __el_ops_last_updated.textContent = new Date().toLocaleTimeString();
+    const now = Date.now();
+    const startToday = new Date();
+    startToday.setHours(0, 0, 0, 0);
+    const hourAgo = now - 3600e3;
+    const halfAgo = now - 1800e3;
+
+    let scansToday = 0, lastHour = 0, rate = 0, drafts = 0, dupes = 0;
+    const syncCounts = {}, seen = new Set();
+
+    for (const r of rows) {
+      const ct = r.completed_at ? new Date(r.completed_at).getTime() : null;
+      const todayByCompletion = !!ct && ct >= startToday.getTime();
+
+      if (r.status === 'complete') {
+        if (todayByCompletion) scansToday++;
+        if (ct && ct >= hourAgo) lastHour++;
+        if (ct && ct >= halfAgo) rate++;
+        if (r.sku_code && r.uid) {
+          const k = r.sku_code + '|' + r.uid;
+          if (seen.has(k)) dupes++;
+          else seen.add(k);
+        }
+      } else drafts++;
+
+      const s = r.sync_state || 'unknown';
+      syncCounts[s] = (syncCounts[s] || 0) + 1;
+    }
+
+    $('#ops-today').textContent = scansToday.toLocaleString();
+    $('#ops-hour').textContent = lastHour.toLocaleString();
+    $('#ops-rate').textContent = (rate * 2).toLocaleString();
+    $('#ops-drafts').textContent = drafts.toLocaleString();
+    $('#ops-dupes').textContent = dupes.toLocaleString();
+    $('#ops-last-updated').textContent = new Date().toLocaleTimeString();
 
     // Pulse animation + hearts
-    const bpm = Math.max(40, Math.min(200, rate30m * 2));
-      const __el_intake_bpm = document.getElementById('intake-bpm'); if(__el_intake_bpm) __el_intake_bpm.textContent = bpm;
+    const bpm = Math.max(40, Math.min(200, rate * 2));
+    $('#intake-bpm').textContent = bpm;
 
     const small = $('#ops-heart-small');
     if (small) {
@@ -2782,9 +2841,9 @@ async function loadOpsMetrics() {
     if (big) {
       big.innerHTML = '';
       big.appendChild(createHeart(24, BRAND, bpm));
-      const __el_ops_bpm = document.getElementById('ops-bpm'); if(__el_ops_bpm) __el_ops_bpm.textContent = bpm;
+      $('#ops-bpm').textContent = bpm;
       const delta = bpm - 40;
-      const __el_ops_extra = document.getElementById('ops-extra'); if(__el_ops_extra) __el_ops_extra.textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
+      $('#ops-extra').textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
     }
 
     const wrap = $('#ops-sync-badges');
@@ -2797,7 +2856,7 @@ async function loadOpsMetrics() {
           span.className =
             'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
             (name === 'synced'
-              ? 'border-green-200 ops-bg-planned-soft text-green-700'
+              ? 'border-green-200 bg-green-50 text-green-700'
               : name === 'pending'
               ? 'border-amber-200 bg-amber-50 text-amber-700'
               : 'border-gray-200 bg-gray-50 text-gray-700');
@@ -2815,12 +2874,9 @@ async function loadOpsMetrics() {
       );
     if (dupes > 0)
       alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
-        const __opsAlertsEl = $('#ops-alerts');
-    if (__opsAlertsEl) {
-      __opsAlertsEl.innerHTML = alerts.length
-        ? alerts.map((t) => '<li>' + t + '</li>').join('')
-        : '<li class="text-gray-400">No alerts.</li>';
-    }
+    $('#ops-alerts').innerHTML = alerts.length
+      ? alerts.map((t) => `<li>${t}</li>`).join('')
+      : '<li class="text-gray-400">No alerts.</li>';
   } catch (e) {
     console.warn('Ops ribbon metrics load failed:', e);
   }
@@ -2876,11 +2932,11 @@ async function loadOpsMetrics() {
     if(!apiBase) return;
     try{
       const ev=new EventSource(`${apiBase}/events/scan`);
-      $('#ops-dot')?.classList.replace('bg-gray-300','ops-bar-planned');
+      $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
       ev.onmessage=()=>{ scheduleOpsRefresh(); };
       ev.onerror = ()=>{
         try{ev.close();}catch{}
-        $('#ops-dot')?.classList.replace('ops-bar-planned','bg-amber-500');
+        $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500');
         setTimeout(startSSE,3000);
       };
 
@@ -2888,7 +2944,7 @@ async function loadOpsMetrics() {
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) scheduleOpsRefresh();
       });
-    }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
+    }catch{}
   }
 
 
@@ -2899,344 +2955,28 @@ async function refreshDashboardTotals(){
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
 
-  const summary = await fetchSummary(ws, we, 'complete');
-  const summaryReceived = await fetchSummary(ws, we, 'received');
-  state._summary_complete = summary;
-  state._summary_received = summaryReceived;
-  const appliedTotal = Number(summary?.total_units || 0);
+  const all = await getRecordsSnapshot(15000);
+
+  const inWeek = all.filter(r => {
+    if (r.status !== 'complete') return false;
+    if (r.completed_at) {
+      const ymd = ymdFromCompletedAtInTZ(r.completed_at); // CN business day
+      return ymd >= ws && ymd <= we;
+    }
+    // Fallback: use provided date_local (already Y-M-D)
+    const dl = toISODate(r.date_local);
+    return dl && dl >= ws && dl <= we;
+  });
+
+  const appliedTotal = inWeek.length;
   const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
   const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
-  // Week totals side panel (Ops)
-  try{
-    
-const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
 
-// Normalize /records/summary by_po which can be either:
-//  - object keyed by PO: { "WACA000123": {..}, ... }
-//  - array of rows:      [ {po_number:"WACA000123", ..}, ... ]
-const normByPO = (by_po) => {
-  const map = {};
-  const list = [];
-  if (Array.isArray(by_po)){
-    for (const it of by_po){
-      if(!it) continue;
-      const po = String(it.po_number ?? it.po ?? it.poNumber ?? it.po_id ?? it.key ?? '').trim();
-      if (po) map[po] = it;
-      list.push(it);
-    }
-  } else if (by_po && typeof by_po === 'object'){
-    for (const [k,v] of Object.entries(by_po)){
-      if(!v) continue;
-      const po = String(k||'').trim();
-      if (po) map[po] = v;
-      list.push(v);
-    }
-  }
-  return { map, list };
-};
-
-const recvNorm = normByPO(summaryReceived?.by_po);
-const compNorm = normByPO(summary?.by_po);
-
-const byPORecv = recvNorm.map;
-const byPORecvList = recvNorm.list;
-const byPOCompList = compNorm.list;
-
-let poReceived = new Set(Object.keys(byPORecv));
-// Fallback: derive received POs from /receiving endpoint if summary received is empty
-if(poReceived.size===0 && Array.isArray(state.receiving)){
-  for(const r of state.receiving){
-    const po = String(r?.po_number ?? r?.po ?? r?.poNumber ?? r?.po_id ?? '').trim();
-    const ci = Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
-    if(po && ci>0) poReceived.add(po);
-  }
-}
-
-
-    const appliedTotal2 = Number(summary?.total_units || 0);
-
-    // Approximate received units using cartons-in by PO (same principle as Flow):
-    // - If planned cartons are available, scale planned units by cartons_in / planned_cartons.
-    // - If planned cartons are missing, treat any cartons_in>0 as fully received (planned units).
-    let receivedTotal = 0;
-    for (const p of (state.plan||[])){
-      const po = String(p.po_number||'').trim();
-      if(!po) continue;
-      const planned = toNum(p.target_qty);
-      const plannedCartons = toNum(p.planned_cartons ?? p.cartons_planned ?? p.planned_carton_count ?? p.planned_cartons_count);
-      const cartonsInPO = toNum(byPORecv[po]?.cartons_in ?? byPORecv[po]?.cartons_out);
-      if(planned<=0) continue;
-      if(plannedCartons>0){
-        const ratio = Math.min(1, cartonsInPO / plannedCartons);
-        receivedTotal += planned * ratio;
-      } else if(cartonsInPO>0){
-        receivedTotal += planned;
-      }
-    }
-    receivedTotal = Math.round(receivedTotal);
-
-    const unitOf = (v) => {
-      if (v == null) return 0;
-      if (typeof v === 'number') return v;
-      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
-    };
-
-    
-const getCartonsIn = (o) => {
-  if(!o) return 0;
-  const v = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
-  const v2 = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
-  return Number(v ?? v2) || 0;
-};
-const getCartonsOut = (o) => {
-  if(!o) return 0;
-  const v = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
-  const v2 = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
-  return Number(v ?? v2) || 0;
-};
-
-// Cartons IN from RECEIVED status summary (shape-safe)
-const cartonsIn  = byPORecvList.reduce((s,o)=> s + getCartonsIn(o), 0);
-// Cartons OUT from COMPLETE status summary (shape-safe)
-const cartonsOut = byPOCompList.reduce((s,o)=> s + getCartonsOut(o), 0);
-// If summary doesn't expose carton fields (common), fall back to raw records:
-// we approximate cartons as UNIQUE mobile_bin counts for the week.
-let cartonsInFinal = cartonsIn;
-let cartonsOutFinal = cartonsOut;
-
-const summaryHasAnyCartonField = (list, getter) => (list||[]).some(o => {
-  if(!o) return false;
-  return (o.cartons_in!=null || o.cartons_out!=null || o.cartonsIn!=null || o.cartonsOut!=null ||
-          o.bin_count!=null || o.bins!=null || o.mobile_bins!=null || o.mobile_bin_count!=null ||
-          o.mobile_bins_out!=null || o.bins_out!=null || o.cartons!=null);
-});
-
-const recvHasCartons = summaryHasAnyCartonField(byPORecvList, getCartonsIn);
-const compHasCartons = summaryHasAnyCartonField(byPOCompList, getCartonsOut);
-
-if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFinal===0)){
-  try{
-    // Prefer /receiving for cartons-in when summary doesn't provide carton fields
-    if(!recvHasCartons && cartonsInFinal===0 && Array.isArray(state.receiving) && state.receiving.length){
-      let s=0;
-      for(const r of state.receiving){
-        s += Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
-      }
-      if(s>0) cartonsInFinal = s;
-    }
-
-    // /records (bins) is already loaded for this week; use it for cartons-out as unique bins if summary doesn't provide it
-    if(!compHasCartons && cartonsOutFinal===0 && Array.isArray(state.bins) && state.bins.length){
-      const set = new Set();
-      for(const row of state.bins){
-        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
-        if(b) set.add(b);
-      }
-      if(set.size>0) cartonsOutFinal = set.size;
-    }
-
-    const fetchAllRecords = async (status) => {
-      const u = `${apiBase}/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=${encodeURIComponent(status)}&limit=250000`;
-      const r = await fetch(u);
-      if(!r.ok) throw new Error(`records ${status} ${r.status}`);
-      const j = await r.json();
-      return j?.records || j?.data || j || [];
-    };
-
-    const uniqueBins = (rows) => {
-      const set = new Set();
-      for(const row of (rows||[])){
-        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
-        if(b) set.add(b);
-      }
-      return set.size;
-    };
-
-    if(!recvHasCartons && cartonsInFinal===0){
-      const rec = await fetchAllRecords('received');
-      cartonsInFinal = uniqueBins(rec);
-    }
-    if(!compHasCartons && cartonsOutFinal===0){
-      const comp = await fetchAllRecords('complete');
-      cartonsOutFinal = uniqueBins(comp);
-    }
-  }catch(e){
-    console.error('[OPS cartons fallback] raw records fallback failed:', e);
-  }
-}
-
-const cartonsInUse = cartonsInFinal;
-const cartonsOutUse = cartonsOutFinal;
-
-    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
-    const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
-
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-
-    setTxt('#ops-week-of', state.weekStart || '—');
-    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
-    setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
-    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
-    setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
-    setTxt('#ops-week-cartons-in', cartonsInUse.toLocaleString());
-    setTxt('#ops-week-cartons-out', cartonsOutUse.toLocaleString());
-        const cbmIn = (Number(cartonsInUse)||0) * 0.046;
-    const cbmOut = (Number(cartonsOutUse)||0) * 0.046;
-    setTxt('#ops-week-cbm-in', cbmIn.toFixed(3));
-    setTxt('#ops-week-cbm-out', cbmOut.toFixed(3));
-    // Approximate containers (planning units as volume basis)
-    const unitsForShip = Number(plannedTotal||0) || 0;
-    const full40 = Math.floor(unitsForShip/16000);
-    const residual = unitsForShip - full40*16000;
-    let cont40 = full40;
-    let cont20 = 0;
-    if(residual>0){
-      if(residual<=8000){ cont20 = 1; }
-      else { cont40 = full40 + 1; cont20 = 0; }
-    }
-    setTxt('#ops-week-cont-40', String(cont40));
-    setTxt('#ops-week-cont-20', String(cont20));
-state.weekCartonsIn = cartonsInUse;
-    state.weekCartonsOut = cartonsOutUse;
-    // If user is currently on Carton view, re-render so waffle updates immediately
-    if(state.opsView==='carton'){ try{ renderOpsInsights('carton'); }catch(e){} }
-
-    setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
-    setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
-
-    const pctNow = plannedTotal>0?Math.round(appliedTotal2*100/plannedTotal):(state.plan.length?0:100);
-    const h=$('#ops-week-health');
-    if(h){
-      let label = 'On-Plan';
-      if(pctNow < 75) label='At-Risk';
-      if(pctNow < 50) label='Delayed';
-      h.textContent = label;
-    }
-  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
-  // PO progress tile (totals + table)
-  try{
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-    const plannedTotal2 = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
-    const receivedTotal2 = Number(summaryReceived?.total_units || 0);
-    const appliedTotal3 = Number(summary?.total_units || 0);
-
-    setTxt('#ops-po-planned-total', plannedTotal2.toLocaleString());
-    setTxt('#ops-po-planned-total-2', plannedTotal2.toLocaleString());
-    setTxt('#ops-po-received-total', receivedTotal2.toLocaleString());
-    setTxt('#ops-po-applied-total', appliedTotal3.toLocaleString());
-
-    const pctR = plannedTotal2>0 ? Math.min(100, Math.round(receivedTotal2*100/plannedTotal2)) : 0;
-    const pctA = plannedTotal2>0 ? Math.min(100, Math.round(appliedTotal3*100/plannedTotal2)) : 0;
-
-    const br=$('#ops-po-received-bar'); if(br) br.style.width = pctR + '%';
-    const ba=$('#ops-po-applied-bar'); if(ba) ba.style.width = pctA + '%';
-
-    const unitOf = (v) => {
-      if (v == null) return 0;
-      if (typeof v === 'number') return v;
-      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
-    };
-
-    // Build PO rows from plan + summaries
-    const planByPO = new Map(); // po -> {planned, supplier, facility, freight, zendesk}
-    for(const p of (state.plan||[])){
-      const po = String(p.po_number||'').trim();
-      if(!po) continue;
-      const r = planByPO.get(po) || {
-        po,
-        planned: 0,
-        supplier: String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim(),
-        facility: String(p.facility_name||'').trim(),
-        freight: String(p.freight_type||'').trim(),
-        zendesk: String(p.zendesk_ticket||'').trim(),
-      };
-      r.planned += toNum(p.target_qty);
-      // Prefer first non-empty meta
-      if(!r.supplier && (p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)) r.supplier = String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory).trim();
-      if(!r.facility && p.facility_name) r.facility = String(p.facility_name).trim();
-      if(!r.freight && p.freight_type) r.freight = String(p.freight_type).trim();
-      if(!r.zendesk && p.zendesk_ticket) r.zendesk = String(p.zendesk_ticket).trim();
-      planByPO.set(po, r);
-    }
-
-    const byPOComplete = summary?.by_po || {};
-    const byPOReceived = summaryReceived?.by_po || {};
-
-    const rows = [];
-    for(const [po, r] of planByPO.entries()){
-      const planned = Number(r.planned||0);
-      const received = unitOf(byPOReceived[po]);
-      const applied = unitOf(byPOComplete[po]);
-      const rem = Math.max(0, planned - applied);
-      const pct = planned>0 ? Math.min(100, Math.round(applied*100/planned)) : 0;
-      rows.push({po, supplier:r.supplier, facility:r.facility, freight:r.freight, zendesk:r.zendesk, planned, received, applied, rem, pct});
-    }
-    rows.sort((a,b)=> (b.pct - a.pct) || (b.planned - a.planned) || a.po.localeCompare(b.po));
-    state._ops_po_rows = rows;
-
-    function renderTable(filterTerm){
-      const body = $('#ops-po-table-body'); if(!body) return;
-      const term = String(filterTerm||'').trim().toUpperCase();
-      const list = term ? rows.filter(x=> x.po.toUpperCase().includes(term)) : rows;
-
-      if(!list.length){
-        body.innerHTML = '<tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">No matching POs.</td></tr>';
-        return;
-      }
-
-      const fmt = (n)=> (Number(n)||0).toLocaleString();
-      const esc = (s)=> String(s||'—').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-      body.innerHTML = list.slice(0, 500).map(r=>{
-        const wR = r.planned>0 ? Math.min(100, Math.round(r.received*100/r.planned)) : 0;
-        const wA = r.planned>0 ? Math.min(100, Math.round(r.applied*100/r.planned)) : 0;
-        return `<tr class="border-t">
-          <td class="py-2 px-3 font-medium">${esc(r.po)}</td>
-          <td class="py-2 px-3">${esc(r.supplier)}</td>
-          <td class="py-2 px-3">${esc(r.facility)}</td>
-          <td class="py-2 px-3">${esc(r.freight)}</td>
-          <td class="py-2 px-3">${esc(r.zendesk)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.planned)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.received)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.applied)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.rem)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${r.pct}%</td>
-          <td class="py-2 px-3">
-            <div class="h-2 bg-gray-100 rounded-full overflow-hidden relative">
-              <div class="h-full ops-bar-planned" style="width:${wR}%"></div>
-              <div class="h-full" style="width:${wA}%; background:${APPLIED_COLOR};opacity:.75; position:absolute; top:0; left:0;"></div>
-            </div>
-          </td>
-        </tr>`;
-      }).join('');
-    }
-
-    // Bind search once
-    if(!state._ops_po_bound){
-      state._ops_po_bound = true;
-      const input = $('#ops-po-search');
-      const clear = $('#ops-po-clear');
-      if(input){
-        input.addEventListener('input', ()=> renderTable(input.value));
-        input.addEventListener('change', ()=> renderTable(input.value));
-      }
-      if(clear && input){
-        clear.addEventListener('click', ()=>{ input.value=''; renderTable(''); });
-      }
-    }
-
-    // Initial render
-    const input = $('#ops-po-search');
-    renderTable(input ? input.value : '');
-
-  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
-
-
-
-      const __el_planned_total = document.getElementById('planned-total'); if(__el_planned_total) __el_planned_total.textContent = plannedTotal.toLocaleString();
-      const __el_applied_total = document.getElementById('applied-total'); if(__el_applied_total) __el_applied_total.textContent = appliedTotal.toLocaleString();
-      const __el_pct_week = document.getElementById('pct-week'); if(__el_pct_week) __el_pct_week.textContent = pct+'%';
-      const __el_avg_week = document.getElementById('avg-week'); if(__el_avg_week) __el_avg_week.textContent = appliedTotal.toLocaleString();
-      const __el_avg_day = document.getElementById('avg-day'); if(__el_avg_day) __el_avg_day.textContent = Math.round((appliedTotal||0)/7).toLocaleString();
+  $('#planned-total').textContent = plannedTotal.toLocaleString();
+  $('#applied-total').textContent = appliedTotal.toLocaleString();
+  $('#pct-week').textContent = pct+'%';
+  $('#avg-week').textContent = appliedTotal.toLocaleString();
+  $('#avg-day').textContent = Math.round((appliedTotal||0)/7).toLocaleString();
   setFooterHealth(pct, appliedTotal);
 }
 
@@ -3256,94 +2996,7 @@ state.weekCartonsIn = cartonsInUse;
         let appliedSKU=0; for(const [k,v] of agg.bySKU.entries()){ if(k===term) appliedSKU+=v; }
         if(plannedSKU||appliedSKU) rows.push({scope:'SKU',planned:plannedSKU,applied:appliedSKU,pct:plannedSKU>0?Math.round((appliedSKU/plannedSKU)*100):0});
         wrap.classList.remove('hidden');
-        // Rich cards + PO details table
-        const cards = [];
-        const poPlanRows = state.plan.filter(p=>String(p.po_number).trim()===term);
-        const skuPlanRows = state.plan.filter(p=>String(p.sku_code).trim()===term);
-
-        function safe(v){ return (v===undefined||v===null||v==='') ? '—' : String(v); }
-        function sumQty(list){ return list.reduce((s,p)=>s+toNum(p.target_qty),0); }
-
-        if (poPlanRows.length){
-          const sample = poPlanRows[0] || {};
-          const z = safe(sample.zendesk_ticket || sample.zendesk || sample.ticket);
-          const plannedU = sumQty(poPlanRows);
-          const pctPO = plannedU>0 ? Math.round(appliedPO*100/plannedU) : 0;
-
-          cards.push(`
-            <div class="bg-gray-50 rounded-xl p-3 border">
-              <div class="flex items-center justify-between">
-                <div class="text-xs text-gray-500">PO</div>
-                <div class="text-xs font-semibold">${safe(term)}</div>
-              </div>
-              <div class="mt-2 text-sm leading-6">
-                <div><span class="text-gray-500">Supplier:</span> <span class="font-medium">${safe(sample.supplier)}</span></div>
-                <div><span class="text-gray-500">Facility:</span> <span class="font-medium">${safe(sample.facility)}</span></div>
-                <div><span class="text-gray-500">Freight:</span> <span class="font-medium">${safe(sample.freight_type)}</span></div>
-                <div><span class="text-gray-500">Zendesk:</span> <span class="font-medium">${z}</span></div>
-              </div>
-              <div class="mt-2 text-sm">
-                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(plannedU)}</span></div>
-                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedPO)}</span></div>
-                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctPO}%</span></div>
-              </div>
-            </div>
-          `);
-
-          // PO details table
-          const tbody = $('#ops-po-detail-body');
-          const title = $('#ops-po-detail-title');
-          if (tbody){
-            title.textContent = String(term);
-            const skuCount = new Set(poPlanRows.map(r=>String(r.sku_code).trim()).filter(Boolean)).size;
-            const fields = [
-              ['PO #', term],
-              ['Supplier', safe(sample.supplier)],
-              ['Facility', safe(sample.facility)],
-              ['Freight type', safe(sample.freight_type)],
-              ['Zendesk ticket', z],
-              ['Planned units', fmtInt(plannedU)],
-              ['Applied units', fmtInt(appliedPO)],
-              ['Completion', pctPO+'%'],
-              ['SKUs (count)', String(skuCount)],
-            ];
-            tbody.innerHTML = fields.map(([k,v])=>`<tr><td class="py-1 pr-2 text-gray-500">${k}</td><td class="py-1 font-medium">${v}</td></tr>`).join('');
-          }
-        } else {
-          // Clear PO details if not a PO match
-          const tbody = $('#ops-po-detail-body');
-          const title = $('#ops-po-detail-title');
-          if (tbody){
-            title.textContent='—';
-            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-xs text-gray-400 py-3">Search a PO to load details.</td></tr>';
-          }
-        }
-
-        if (skuPlanRows.length){
-          const planned = sumQty(skuPlanRows);
-          const pctSKU = planned>0 ? Math.round(appliedSKU*100/planned) : 0;
-          cards.push(`
-            <div class="bg-gray-50 rounded-xl p-3 border">
-              <div class="flex items-center justify-between">
-                <div class="text-xs text-gray-500">SKU</div>
-                <div class="text-xs font-semibold">${safe(term)}</div>
-              </div>
-              <div class="mt-2 text-sm leading-6">
-                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(planned)}</span></div>
-                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedSKU)}</span></div>
-                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctSKU}%</span></div>
-                <div><span class="text-gray-500">POs (count):</span> <span class="font-semibold tabular-nums">${new Set(skuPlanRows.map(r=>String(r.po_number).trim()).filter(Boolean)).size}</span></div>
-              </div>
-            </div>
-          `);
-        }
-
-        // fallback to simple rows if no plan context
-        if (!cards.length && rows.length){
-          cards.push(...rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`));
-        }
-
-        wrap.innerHTML = cards.length ? cards.join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
+        wrap.innerHTML = rows.length ? rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`).join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
       },300);
     });
   })();
@@ -3391,15 +3044,16 @@ if (Array.isArray(body.results) && body.results.length) {
 
     // Refresh dashboard + intake metrics
 await loadOpsMetrics();
-await setWeek(state.weekStart);
-    await refreshDashboardTotals();
-    // 🔄 refresh state.records so downloads reflect deletes
+await refreshDashboardTotals();
+await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
 
   } catch (e) {
     console.error(e);
     status.textContent = 'Error deleting: ' + (e.message || e);
   }
 }
+
+
 
 // ---------- Routing & Init ----------
 (function init(){
@@ -4670,7 +4324,6 @@ window.addEventListener('state:ready', () => {
 
 window.addEventListener('hashchange', () => show(getRouteHash()));
 window.addEventListener('popstate', () => show(getRouteHash()));
-  show(getRouteHash()); // initial render
   try{ wireOpsDownloads(); }catch{}
   try{ wireOpsInsights(); }catch{}
 
@@ -4694,7 +4347,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   startSSE();
 })();
 
-  </script>
+  
+</script>
 <script>
 (function () {
   function isReady(s) {
