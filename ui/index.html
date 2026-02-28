@@ -2481,6 +2481,10 @@ if (!putRes.ok) {
     }
   }
 
+  // Expose Intake renderer for router (fix: Intake was blank when show() tried window.renderIntake).
+  window.renderIntake = renderIntake;
+
+
   const __btnAddRow = $('#btn-add-row');
   if(__btnAddRow) __btnAddRow.onclick=()=>{intakeRows.push(newRow()); renderIntake();};
   const __btnDelSel = $('#btn-delete-selected');
@@ -3462,7 +3466,10 @@ function show(hash){
   let h = (hash || '').trim();
   if (h === '#') h = '';
   if (h.startsWith('#/')) h = '#' + h.slice(2);
-  if (!h) h = '#operations';
+  if (!h) h = '#ops';
+  // Normalize dashboard aliases (older builds used #dashboard or #operations)
+  if (h === '#dashboard' || h === '#operations') h = '#ops';
+
 
   // Hide all pages first
   ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
@@ -3475,8 +3482,10 @@ function show(hash){
   if (h === '#intake') {
     const el = document.getElementById('page-intake');
     el && el.classList.remove('hidden');
-    if (typeof window.renderIntake === 'function') {
-      try { window.renderIntake(); } catch(e) { console.warn('renderIntake failed', e); }
+    try {
+      (window.renderIntake || renderIntake)();
+    } catch(e) {
+      console.warn('renderIntake failed', e);
     }
   } else if (h === '#receiving') {
     const el = document.getElementById('page-receiving');
