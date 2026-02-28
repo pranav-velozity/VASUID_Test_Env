@@ -3003,7 +3003,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     };
   }
 })();
-</script>
+
 
   
 </script>
