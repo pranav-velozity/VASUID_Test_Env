@@ -2481,7 +2481,6 @@ if (!putRes.ok) {
     }
   }
 
-  // Expose Intake renderer for router (fix: Intake was blank when show() tried window.renderIntake).
   window.renderIntake = renderIntake;
 
 
@@ -3466,10 +3465,7 @@ function show(hash){
   let h = (hash || '').trim();
   if (h === '#') h = '';
   if (h.startsWith('#/')) h = '#' + h.slice(2);
-  if (!h) h = '#ops';
-  // Normalize dashboard aliases (older builds used #dashboard or #operations)
-  if (h === '#dashboard' || h === '#operations') h = '#ops';
-
+  if (!h) h = '#operations';
 
   // Hide all pages first
   ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
@@ -3482,11 +3478,8 @@ function show(hash){
   if (h === '#intake') {
     const el = document.getElementById('page-intake');
     el && el.classList.remove('hidden');
-    try {
-      (window.renderIntake || renderIntake)();
-    } catch(e) {
-      console.warn('renderIntake failed', e);
-    }
+    const fn = window.renderIntake || (typeof renderIntake === 'function' ? renderIntake : null);
+    if (typeof fn === 'function') { try { fn(); } catch (e) { console.warn('renderIntake failed', e); } }
   } else if (h === '#receiving') {
     const el = document.getElementById('page-receiving');
     el && el.classList.remove('hidden');
@@ -4832,6 +4825,54 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
   <script src="/flow_live_additive.js?v=61" defer></script>
+
+
+<script>
+/* Router fallback boot: keeps pages visible even if earlier init threw */
+(function(){
+  function normalizeHash(h){
+    h = (h || '').trim();
+    if (h === '#') h = '';
+    if (h.startsWith('#/')) h = '#' + h.slice(2);
+    return h;
+  }
+  function basicShow(h){
+    const hash = normalizeHash(h) || '#ops';
+    ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.classList.add('hidden');
+    });
+    const id = (hash==='#intake')?'page-intake'
+            : (hash==='#receiving')?'page-receiving'
+            : (hash==='#flow')?'page-flow'
+            : (hash==='#exec')?'page-exec'
+            : 'page-dashboard';
+    const el=document.getElementById(id);
+    if(el) el.classList.remove('hidden');
+  }
+  function safeShow(){
+    try{
+      if (typeof window.show === 'function' && typeof window.getRouteHash === 'function') {
+        window.show(window.getRouteHash());
+      } else {
+        basicShow(location.hash);
+      }
+      const nh = normalizeHash(location.hash);
+      if (nh === '#intake') {
+        const fn = window.renderIntake || (typeof window.renderIntake === 'function' ? window.renderIntake : null);
+        if (typeof fn === 'function') { try { fn(); } catch(e) { console.warn('renderIntake failed (boot)', e); } }
+      }
+    }catch(e){
+      console.warn('safeShow failed, using basicShow', e);
+      basicShow(location.hash);
+    }
+  }
+  window.addEventListener('hashchange', safeShow);
+  window.addEventListener('popstate', safeShow);
+  // If earlier script already ran, this is harmless; if it didn't, this restores routing.
+  safeShow();
+})();
+</script>
 
 </body>
 </html>
