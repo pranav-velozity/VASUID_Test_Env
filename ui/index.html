@@ -655,7 +655,7 @@ function createHeart(size=24, color=BRAND, bpm=40){
   return svg;
 }
   // API helpers
-  const state={weekStart:'', plan:[], records:[], opsView:'supplier', weekCartonsIn:0, weekCartonsOut:0};
+  const state={weekStart:'', plan:[], records:[], opsView:'overview', weekCartonsIn:0, weekCartonsOut:0};
 
   async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
   async function fetchPlan(w){
@@ -3462,30 +3462,47 @@ function show(hash){
   let h = (hash || '').trim();
   if (h === '#') h = '';
   if (h.startsWith('#/')) h = '#' + h.slice(2);
-  if (!h) h = '#ops';
+  if (!h) h = '#operations';
 
-  document.getElementById('page-dashboard')?.classList.add('hidden');
-  document.getElementById('page-intake')?.classList.add('hidden');
-  document.getElementById('page-exec')?.classList.add('hidden');
-  document.getElementById('page-receiving')?.classList.add('hidden');
-  document.getElementById('page-flow')?.classList.add('hidden');
+  // Hide all pages first
+  ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('hidden');
+  });
 
+  // Show target page + render hooks
   if (h === '#intake') {
-    document.getElementById('page-intake')?.classList.remove('hidden');
-    // Intake-specific refresh hook (if defined)
+    const el = document.getElementById('page-intake');
+    el && el.classList.remove('hidden');
     if (typeof window.renderIntake === 'function') {
       try { window.renderIntake(); } catch(e) { console.warn('renderIntake failed', e); }
     }
   } else if (h === '#receiving') {
-    document.getElementById('page-receiving')?.classList.remove('hidden');
+    const el = document.getElementById('page-receiving');
+    el && el.classList.remove('hidden');
   } else if (h === '#flow') {
-    document.getElementById('page-flow')?.classList.remove('hidden');
+    const el = document.getElementById('page-flow');
+    el && el.classList.remove('hidden');
   } else if (h === '#exec') {
-    document.getElementById('page-exec')?.classList.remove('hidden');
+    const el = document.getElementById('page-exec');
+    el && el.classList.remove('hidden');
   } else {
     // default ops
-    document.getElementById('page-dashboard')?.classList.remove('hidden');
+    const el = document.getElementById('page-dashboard');
+    el && el.classList.remove('hidden');
+    if (typeof window.renderDashboard === 'function') {
+      try { window.renderDashboard(); } catch(e) { console.warn('renderDashboard failed', e); }
+    }
   }
+
+  // Hard fallback: if Tailwind hidden class isn't behaving for some reason, enforce display.
+  ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = el.classList.contains('hidden') ? 'none' : 'block';
+  });
+
   // Nav highlight helper (different baselines use different function names).
   try {
     if (typeof syncNavActive === 'function') syncNavActive(h);
