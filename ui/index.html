@@ -548,6 +548,7 @@
 </div>
     </section>
 <script>
+
     // ---------------------------
     // ---------------------------
 // Small utilities (safe HTML, formatting)
@@ -2444,13 +2445,11 @@ if (!putRes.ok) {
   const intakeRows=[];
   function newRow(){return {id:crypto.randomUUID(), selected:false, date_local:iso(new Date()), mobile_bin:'', sscc_label:'', po_number:'', sku_code:'', uid:'', status:'draft', sync:'pending', _pending:{}};}
   function requiredFilled(r){return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;}
-  function syncClass(s){return s==='synced'?'ops-bar-planned':(s==='pending'?'bg-amber-500':'bg-gray-400');}
+  function syncClass(s){return s==='synced'?'bg-green-500':(s==='pending'?'bg-amber-500':'bg-gray-400');}
   function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
 
   function renderIntake(){
-    const tb=$('#intake-body');
-    if(!tb) return; // Intake DOM not present on this page
-    tb.innerHTML='';
+    const tb=$('#intake-body'); tb.innerHTML='';
     if(!intakeRows.length) intakeRows.push(newRow());
     let drafts=0, synced=0;
     intakeRows.forEach((r,i)=>{
@@ -2513,27 +2512,20 @@ if (!putRes.ok) {
           else { row.sync='pending'; }
         }catch{ row.sync='pending'; }
         renderIntake();
-        await loadOpsMetrics(); await setWeek(state.weekStart);
-    await refreshDashboardTotals();
-    // 🔄 keep state.records in sync
+        await loadOpsMetrics(); await refreshDashboardTotals();
+await setWeek(state.weekStart);   // 🔄 keep state.records in sync
       });
     });
 
-    // ribbon quick badges (guarded: these elements may not exist on every page)
-    const elDrafts = $('#ops-drafts');
-    if(elDrafts) elDrafts.textContent = drafts;
-    const elBadges = $('#ops-sync-badges');
-    if(elBadges) {
-      elBadges.innerHTML =
-        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 ops-bg-planned-soft text-green-700">synced: ${synced}</span>
-         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
-    }
+    // ribbon quick badges
+    $('#ops-drafts').textContent = drafts;
+    $('#ops-sync-badges').innerHTML =
+      `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
+       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
   }
 
-  const __btnAddRow = $('#btn-add-row');
-  if(__btnAddRow) __btnAddRow.onclick=()=>{intakeRows.push(newRow()); renderIntake();};
-  const __btnDelSel = $('#btn-delete-selected');
-  if(__btnDelSel) __btnDelSel.onclick=async()=>{
+  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
+  $('#btn-delete-selected').onclick=async()=>{
     const selected=intakeRows.filter(r=>r.selected);
     if(!selected.length) return alert('Select at least one row.');
     if(!confirm(`Delete ${selected.length} row(s)?`)) return;
@@ -2549,8 +2541,7 @@ if (!putRes.ok) {
     renderIntake();
     await loadOpsMetrics(); await refreshDashboardTotals();
   };
-  const __btnExportDay = $('#btn-export-day');
-  if(__btnExportDay) __btnExportDay.onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
 
 function toISODate(v) {
   if (v == null || v === '') return '';
@@ -2573,9 +2564,6 @@ function toISODate(v) {
   // Upload UIDs → table → sync (unchanged)
   (function wireUploadUIDs(){
     const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
-    // This handler exists on Receiving, but Ops page may not include these elements.
-    // Guard to avoid hard-crashing the entire dashboard script.
-    if(!btn || !file) return;
     btn.onclick=()=>file.click();
     file.addEventListener('change', async (e)=>{
       const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
@@ -2801,25 +2789,47 @@ const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==
 async function loadOpsMetrics() {
   if (!apiBase) return;
   try {
-    // Summary-first: tiny endpoint backed by indexed queries.
-    const stats = await api(`/summary/ops`);
-    const scansToday = Number(stats?.scans_today || 0);
-    const lastHour   = Number(stats?.last_hour || 0);
-    const rate30m    = Number(stats?.last_30m || 0);
-    const drafts     = Number(stats?.drafts || 0);
-    const dupes      = Number(stats?.dupes || 0);
-    const syncCounts = (stats && typeof stats.sync_counts === 'object' && stats.sync_counts) ? stats.sync_counts : {};
+    // Fetch all recent completed records, up to 50k
+    const rows = await getRecordsSnapshot(15000);
 
-      const __el_ops_today = document.getElementById('ops-today'); if(__el_ops_today) __el_ops_today.textContent = scansToday.toLocaleString();
-      const __el_ops_hour = document.getElementById('ops-hour'); if(__el_ops_hour) __el_ops_hour.textContent = lastHour.toLocaleString();
-      const __el_ops_rate = document.getElementById('ops-rate'); if(__el_ops_rate) __el_ops_rate.textContent = (rate30m * 2).toLocaleString();
-      const __el_ops_drafts = document.getElementById('ops-drafts'); if(__el_ops_drafts) __el_ops_drafts.textContent = drafts.toLocaleString();
-      const __el_ops_dupes = document.getElementById('ops-dupes'); if(__el_ops_dupes) __el_ops_dupes.textContent = dupes.toLocaleString();
-      const __el_ops_last_updated = document.getElementById('ops-last-updated'); if(__el_ops_last_updated) __el_ops_last_updated.textContent = new Date().toLocaleTimeString();
+    const now = Date.now();
+    const startToday = new Date();
+    startToday.setHours(0, 0, 0, 0);
+    const hourAgo = now - 3600e3;
+    const halfAgo = now - 1800e3;
+
+    let scansToday = 0, lastHour = 0, rate = 0, drafts = 0, dupes = 0;
+    const syncCounts = {}, seen = new Set();
+
+    for (const r of rows) {
+      const ct = r.completed_at ? new Date(r.completed_at).getTime() : null;
+      const todayByCompletion = !!ct && ct >= startToday.getTime();
+
+      if (r.status === 'complete') {
+        if (todayByCompletion) scansToday++;
+        if (ct && ct >= hourAgo) lastHour++;
+        if (ct && ct >= halfAgo) rate++;
+        if (r.sku_code && r.uid) {
+          const k = r.sku_code + '|' + r.uid;
+          if (seen.has(k)) dupes++;
+          else seen.add(k);
+        }
+      } else drafts++;
+
+      const s = r.sync_state || 'unknown';
+      syncCounts[s] = (syncCounts[s] || 0) + 1;
+    }
+
+    $('#ops-today').textContent = scansToday.toLocaleString();
+    $('#ops-hour').textContent = lastHour.toLocaleString();
+    $('#ops-rate').textContent = (rate * 2).toLocaleString();
+    $('#ops-drafts').textContent = drafts.toLocaleString();
+    $('#ops-dupes').textContent = dupes.toLocaleString();
+    $('#ops-last-updated').textContent = new Date().toLocaleTimeString();
 
     // Pulse animation + hearts
-    const bpm = Math.max(40, Math.min(200, rate30m * 2));
-      const __el_intake_bpm = document.getElementById('intake-bpm'); if(__el_intake_bpm) __el_intake_bpm.textContent = bpm;
+    const bpm = Math.max(40, Math.min(200, rate * 2));
+    $('#intake-bpm').textContent = bpm;
 
     const small = $('#ops-heart-small');
     if (small) {
@@ -2831,9 +2841,9 @@ async function loadOpsMetrics() {
     if (big) {
       big.innerHTML = '';
       big.appendChild(createHeart(24, BRAND, bpm));
-      const __el_ops_bpm = document.getElementById('ops-bpm'); if(__el_ops_bpm) __el_ops_bpm.textContent = bpm;
+      $('#ops-bpm').textContent = bpm;
       const delta = bpm - 40;
-      const __el_ops_extra = document.getElementById('ops-extra'); if(__el_ops_extra) __el_ops_extra.textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
+      $('#ops-extra').textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
     }
 
     const wrap = $('#ops-sync-badges');
@@ -2846,7 +2856,7 @@ async function loadOpsMetrics() {
           span.className =
             'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
             (name === 'synced'
-              ? 'border-green-200 ops-bg-planned-soft text-green-700'
+              ? 'border-green-200 bg-green-50 text-green-700'
               : name === 'pending'
               ? 'border-amber-200 bg-amber-50 text-amber-700'
               : 'border-gray-200 bg-gray-50 text-gray-700');
@@ -2864,12 +2874,9 @@ async function loadOpsMetrics() {
       );
     if (dupes > 0)
       alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
-        const __opsAlertsEl = $('#ops-alerts');
-    if (__opsAlertsEl) {
-      __opsAlertsEl.innerHTML = alerts.length
-        ? alerts.map((t) => '<li>' + t + '</li>').join('')
-        : '<li class="text-gray-400">No alerts.</li>';
-    }
+    $('#ops-alerts').innerHTML = alerts.length
+      ? alerts.map((t) => `<li>${t}</li>`).join('')
+      : '<li class="text-gray-400">No alerts.</li>';
   } catch (e) {
     console.warn('Ops ribbon metrics load failed:', e);
   }
@@ -2925,11 +2932,11 @@ async function loadOpsMetrics() {
     if(!apiBase) return;
     try{
       const ev=new EventSource(`${apiBase}/events/scan`);
-      $('#ops-dot')?.classList.replace('bg-gray-300','ops-bar-planned');
+      $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
       ev.onmessage=()=>{ scheduleOpsRefresh(); };
       ev.onerror = ()=>{
         try{ev.close();}catch{}
-        $('#ops-dot')?.classList.replace('ops-bar-planned','bg-amber-500');
+        $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500');
         setTimeout(startSSE,3000);
       };
 
@@ -2937,7 +2944,7 @@ async function loadOpsMetrics() {
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) scheduleOpsRefresh();
       });
-    }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
+    }catch{}
   }
 
 
@@ -2948,344 +2955,28 @@ async function refreshDashboardTotals(){
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
 
-  const summary = await fetchSummary(ws, we, 'complete');
-  const summaryReceived = await fetchSummary(ws, we, 'received');
-  state._summary_complete = summary;
-  state._summary_received = summaryReceived;
-  const appliedTotal = Number(summary?.total_units || 0);
+  const all = await getRecordsSnapshot(15000);
+
+  const inWeek = all.filter(r => {
+    if (r.status !== 'complete') return false;
+    if (r.completed_at) {
+      const ymd = ymdFromCompletedAtInTZ(r.completed_at); // CN business day
+      return ymd >= ws && ymd <= we;
+    }
+    // Fallback: use provided date_local (already Y-M-D)
+    const dl = toISODate(r.date_local);
+    return dl && dl >= ws && dl <= we;
+  });
+
+  const appliedTotal = inWeek.length;
   const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
   const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
-  // Week totals side panel (Ops)
-  try{
-    
-const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
 
-// Normalize /records/summary by_po which can be either:
-//  - object keyed by PO: { "WACA000123": {..}, ... }
-//  - array of rows:      [ {po_number:"WACA000123", ..}, ... ]
-const normByPO = (by_po) => {
-  const map = {};
-  const list = [];
-  if (Array.isArray(by_po)){
-    for (const it of by_po){
-      if(!it) continue;
-      const po = String(it.po_number ?? it.po ?? it.poNumber ?? it.po_id ?? it.key ?? '').trim();
-      if (po) map[po] = it;
-      list.push(it);
-    }
-  } else if (by_po && typeof by_po === 'object'){
-    for (const [k,v] of Object.entries(by_po)){
-      if(!v) continue;
-      const po = String(k||'').trim();
-      if (po) map[po] = v;
-      list.push(v);
-    }
-  }
-  return { map, list };
-};
-
-const recvNorm = normByPO(summaryReceived?.by_po);
-const compNorm = normByPO(summary?.by_po);
-
-const byPORecv = recvNorm.map;
-const byPORecvList = recvNorm.list;
-const byPOCompList = compNorm.list;
-
-let poReceived = new Set(Object.keys(byPORecv));
-// Fallback: derive received POs from /receiving endpoint if summary received is empty
-if(poReceived.size===0 && Array.isArray(state.receiving)){
-  for(const r of state.receiving){
-    const po = String(r?.po_number ?? r?.po ?? r?.poNumber ?? r?.po_id ?? '').trim();
-    const ci = Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
-    if(po && ci>0) poReceived.add(po);
-  }
-}
-
-
-    const appliedTotal2 = Number(summary?.total_units || 0);
-
-    // Approximate received units using cartons-in by PO (same principle as Flow):
-    // - If planned cartons are available, scale planned units by cartons_in / planned_cartons.
-    // - If planned cartons are missing, treat any cartons_in>0 as fully received (planned units).
-    let receivedTotal = 0;
-    for (const p of (state.plan||[])){
-      const po = String(p.po_number||'').trim();
-      if(!po) continue;
-      const planned = toNum(p.target_qty);
-      const plannedCartons = toNum(p.planned_cartons ?? p.cartons_planned ?? p.planned_carton_count ?? p.planned_cartons_count);
-      const cartonsInPO = toNum(byPORecv[po]?.cartons_in ?? byPORecv[po]?.cartons_out);
-      if(planned<=0) continue;
-      if(plannedCartons>0){
-        const ratio = Math.min(1, cartonsInPO / plannedCartons);
-        receivedTotal += planned * ratio;
-      } else if(cartonsInPO>0){
-        receivedTotal += planned;
-      }
-    }
-    receivedTotal = Math.round(receivedTotal);
-
-    const unitOf = (v) => {
-      if (v == null) return 0;
-      if (typeof v === 'number') return v;
-      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
-    };
-
-    
-const getCartonsIn = (o) => {
-  if(!o) return 0;
-  const v = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
-  const v2 = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
-  return Number(v ?? v2) || 0;
-};
-const getCartonsOut = (o) => {
-  if(!o) return 0;
-  const v = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
-  const v2 = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
-  return Number(v ?? v2) || 0;
-};
-
-// Cartons IN from RECEIVED status summary (shape-safe)
-const cartonsIn  = byPORecvList.reduce((s,o)=> s + getCartonsIn(o), 0);
-// Cartons OUT from COMPLETE status summary (shape-safe)
-const cartonsOut = byPOCompList.reduce((s,o)=> s + getCartonsOut(o), 0);
-// If summary doesn't expose carton fields (common), fall back to raw records:
-// we approximate cartons as UNIQUE mobile_bin counts for the week.
-let cartonsInFinal = cartonsIn;
-let cartonsOutFinal = cartonsOut;
-
-const summaryHasAnyCartonField = (list, getter) => (list||[]).some(o => {
-  if(!o) return false;
-  return (o.cartons_in!=null || o.cartons_out!=null || o.cartonsIn!=null || o.cartonsOut!=null ||
-          o.bin_count!=null || o.bins!=null || o.mobile_bins!=null || o.mobile_bin_count!=null ||
-          o.mobile_bins_out!=null || o.bins_out!=null || o.cartons!=null);
-});
-
-const recvHasCartons = summaryHasAnyCartonField(byPORecvList, getCartonsIn);
-const compHasCartons = summaryHasAnyCartonField(byPOCompList, getCartonsOut);
-
-if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFinal===0)){
-  try{
-    // Prefer /receiving for cartons-in when summary doesn't provide carton fields
-    if(!recvHasCartons && cartonsInFinal===0 && Array.isArray(state.receiving) && state.receiving.length){
-      let s=0;
-      for(const r of state.receiving){
-        s += Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
-      }
-      if(s>0) cartonsInFinal = s;
-    }
-
-    // /records (bins) is already loaded for this week; use it for cartons-out as unique bins if summary doesn't provide it
-    if(!compHasCartons && cartonsOutFinal===0 && Array.isArray(state.bins) && state.bins.length){
-      const set = new Set();
-      for(const row of state.bins){
-        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
-        if(b) set.add(b);
-      }
-      if(set.size>0) cartonsOutFinal = set.size;
-    }
-
-    const fetchAllRecords = async (status) => {
-      const u = `${apiBase}/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=${encodeURIComponent(status)}&limit=250000`;
-      const r = await fetch(u);
-      if(!r.ok) throw new Error(`records ${status} ${r.status}`);
-      const j = await r.json();
-      return j?.records || j?.data || j || [];
-    };
-
-    const uniqueBins = (rows) => {
-      const set = new Set();
-      for(const row of (rows||[])){
-        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
-        if(b) set.add(b);
-      }
-      return set.size;
-    };
-
-    if(!recvHasCartons && cartonsInFinal===0){
-      const rec = await fetchAllRecords('received');
-      cartonsInFinal = uniqueBins(rec);
-    }
-    if(!compHasCartons && cartonsOutFinal===0){
-      const comp = await fetchAllRecords('complete');
-      cartonsOutFinal = uniqueBins(comp);
-    }
-  }catch(e){
-    console.error('[OPS cartons fallback] raw records fallback failed:', e);
-  }
-}
-
-const cartonsInUse = cartonsInFinal;
-const cartonsOutUse = cartonsOutFinal;
-
-    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
-    const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
-
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-
-    setTxt('#ops-week-of', state.weekStart || '—');
-    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
-    setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
-    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
-    setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
-    setTxt('#ops-week-cartons-in', cartonsInUse.toLocaleString());
-    setTxt('#ops-week-cartons-out', cartonsOutUse.toLocaleString());
-        const cbmIn = (Number(cartonsInUse)||0) * 0.046;
-    const cbmOut = (Number(cartonsOutUse)||0) * 0.046;
-    setTxt('#ops-week-cbm-in', cbmIn.toFixed(3));
-    setTxt('#ops-week-cbm-out', cbmOut.toFixed(3));
-    // Approximate containers (planning units as volume basis)
-    const unitsForShip = Number(plannedTotal||0) || 0;
-    const full40 = Math.floor(unitsForShip/16000);
-    const residual = unitsForShip - full40*16000;
-    let cont40 = full40;
-    let cont20 = 0;
-    if(residual>0){
-      if(residual<=8000){ cont20 = 1; }
-      else { cont40 = full40 + 1; cont20 = 0; }
-    }
-    setTxt('#ops-week-cont-40', String(cont40));
-    setTxt('#ops-week-cont-20', String(cont20));
-state.weekCartonsIn = cartonsInUse;
-    state.weekCartonsOut = cartonsOutUse;
-    // If user is currently on Carton view, re-render so waffle updates immediately
-    if(state.opsView==='carton'){ try{ renderOpsInsights('carton'); }catch(e){} }
-
-    setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
-    setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
-
-    const pctNow = plannedTotal>0?Math.round(appliedTotal2*100/plannedTotal):(state.plan.length?0:100);
-    const h=$('#ops-week-health');
-    if(h){
-      let label = 'On-Plan';
-      if(pctNow < 75) label='At-Risk';
-      if(pctNow < 50) label='Delayed';
-      h.textContent = label;
-    }
-  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
-  // PO progress tile (totals + table)
-  try{
-    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
-    const plannedTotal2 = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
-    const receivedTotal2 = Number(summaryReceived?.total_units || 0);
-    const appliedTotal3 = Number(summary?.total_units || 0);
-
-    setTxt('#ops-po-planned-total', plannedTotal2.toLocaleString());
-    setTxt('#ops-po-planned-total-2', plannedTotal2.toLocaleString());
-    setTxt('#ops-po-received-total', receivedTotal2.toLocaleString());
-    setTxt('#ops-po-applied-total', appliedTotal3.toLocaleString());
-
-    const pctR = plannedTotal2>0 ? Math.min(100, Math.round(receivedTotal2*100/plannedTotal2)) : 0;
-    const pctA = plannedTotal2>0 ? Math.min(100, Math.round(appliedTotal3*100/plannedTotal2)) : 0;
-
-    const br=$('#ops-po-received-bar'); if(br) br.style.width = pctR + '%';
-    const ba=$('#ops-po-applied-bar'); if(ba) ba.style.width = pctA + '%';
-
-    const unitOf = (v) => {
-      if (v == null) return 0;
-      if (typeof v === 'number') return v;
-      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
-    };
-
-    // Build PO rows from plan + summaries
-    const planByPO = new Map(); // po -> {planned, supplier, facility, freight, zendesk}
-    for(const p of (state.plan||[])){
-      const po = String(p.po_number||'').trim();
-      if(!po) continue;
-      const r = planByPO.get(po) || {
-        po,
-        planned: 0,
-        supplier: String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim(),
-        facility: String(p.facility_name||'').trim(),
-        freight: String(p.freight_type||'').trim(),
-        zendesk: String(p.zendesk_ticket||'').trim(),
-      };
-      r.planned += toNum(p.target_qty);
-      // Prefer first non-empty meta
-      if(!r.supplier && (p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)) r.supplier = String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory).trim();
-      if(!r.facility && p.facility_name) r.facility = String(p.facility_name).trim();
-      if(!r.freight && p.freight_type) r.freight = String(p.freight_type).trim();
-      if(!r.zendesk && p.zendesk_ticket) r.zendesk = String(p.zendesk_ticket).trim();
-      planByPO.set(po, r);
-    }
-
-    const byPOComplete = summary?.by_po || {};
-    const byPOReceived = summaryReceived?.by_po || {};
-
-    const rows = [];
-    for(const [po, r] of planByPO.entries()){
-      const planned = Number(r.planned||0);
-      const received = unitOf(byPOReceived[po]);
-      const applied = unitOf(byPOComplete[po]);
-      const rem = Math.max(0, planned - applied);
-      const pct = planned>0 ? Math.min(100, Math.round(applied*100/planned)) : 0;
-      rows.push({po, supplier:r.supplier, facility:r.facility, freight:r.freight, zendesk:r.zendesk, planned, received, applied, rem, pct});
-    }
-    rows.sort((a,b)=> (b.pct - a.pct) || (b.planned - a.planned) || a.po.localeCompare(b.po));
-    state._ops_po_rows = rows;
-
-    function renderTable(filterTerm){
-      const body = $('#ops-po-table-body'); if(!body) return;
-      const term = String(filterTerm||'').trim().toUpperCase();
-      const list = term ? rows.filter(x=> x.po.toUpperCase().includes(term)) : rows;
-
-      if(!list.length){
-        body.innerHTML = '<tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">No matching POs.</td></tr>';
-        return;
-      }
-
-      const fmt = (n)=> (Number(n)||0).toLocaleString();
-      const esc = (s)=> String(s||'—').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
-      body.innerHTML = list.slice(0, 500).map(r=>{
-        const wR = r.planned>0 ? Math.min(100, Math.round(r.received*100/r.planned)) : 0;
-        const wA = r.planned>0 ? Math.min(100, Math.round(r.applied*100/r.planned)) : 0;
-        return `<tr class="border-t">
-          <td class="py-2 px-3 font-medium">${esc(r.po)}</td>
-          <td class="py-2 px-3">${esc(r.supplier)}</td>
-          <td class="py-2 px-3">${esc(r.facility)}</td>
-          <td class="py-2 px-3">${esc(r.freight)}</td>
-          <td class="py-2 px-3">${esc(r.zendesk)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.planned)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.received)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.applied)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.rem)}</td>
-          <td class="py-2 px-3 text-right tabular-nums">${r.pct}%</td>
-          <td class="py-2 px-3">
-            <div class="h-2 bg-gray-100 rounded-full overflow-hidden relative">
-              <div class="h-full ops-bar-planned" style="width:${wR}%"></div>
-              <div class="h-full" style="width:${wA}%; background:${APPLIED_COLOR};opacity:.75; position:absolute; top:0; left:0;"></div>
-            </div>
-          </td>
-        </tr>`;
-      }).join('');
-    }
-
-    // Bind search once
-    if(!state._ops_po_bound){
-      state._ops_po_bound = true;
-      const input = $('#ops-po-search');
-      const clear = $('#ops-po-clear');
-      if(input){
-        input.addEventListener('input', ()=> renderTable(input.value));
-        input.addEventListener('change', ()=> renderTable(input.value));
-      }
-      if(clear && input){
-        clear.addEventListener('click', ()=>{ input.value=''; renderTable(''); });
-      }
-    }
-
-    // Initial render
-    const input = $('#ops-po-search');
-    renderTable(input ? input.value : '');
-
-  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
-
-
-
-      const __el_planned_total = document.getElementById('planned-total'); if(__el_planned_total) __el_planned_total.textContent = plannedTotal.toLocaleString();
-      const __el_applied_total = document.getElementById('applied-total'); if(__el_applied_total) __el_applied_total.textContent = appliedTotal.toLocaleString();
-      const __el_pct_week = document.getElementById('pct-week'); if(__el_pct_week) __el_pct_week.textContent = pct+'%';
-      const __el_avg_week = document.getElementById('avg-week'); if(__el_avg_week) __el_avg_week.textContent = appliedTotal.toLocaleString();
-      const __el_avg_day = document.getElementById('avg-day'); if(__el_avg_day) __el_avg_day.textContent = Math.round((appliedTotal||0)/7).toLocaleString();
+  $('#planned-total').textContent = plannedTotal.toLocaleString();
+  $('#applied-total').textContent = appliedTotal.toLocaleString();
+  $('#pct-week').textContent = pct+'%';
+  $('#avg-week').textContent = appliedTotal.toLocaleString();
+  $('#avg-day').textContent = Math.round((appliedTotal||0)/7).toLocaleString();
   setFooterHealth(pct, appliedTotal);
 }
 
@@ -3305,94 +2996,7 @@ state.weekCartonsIn = cartonsInUse;
         let appliedSKU=0; for(const [k,v] of agg.bySKU.entries()){ if(k===term) appliedSKU+=v; }
         if(plannedSKU||appliedSKU) rows.push({scope:'SKU',planned:plannedSKU,applied:appliedSKU,pct:plannedSKU>0?Math.round((appliedSKU/plannedSKU)*100):0});
         wrap.classList.remove('hidden');
-        // Rich cards + PO details table
-        const cards = [];
-        const poPlanRows = state.plan.filter(p=>String(p.po_number).trim()===term);
-        const skuPlanRows = state.plan.filter(p=>String(p.sku_code).trim()===term);
-
-        function safe(v){ return (v===undefined||v===null||v==='') ? '—' : String(v); }
-        function sumQty(list){ return list.reduce((s,p)=>s+toNum(p.target_qty),0); }
-
-        if (poPlanRows.length){
-          const sample = poPlanRows[0] || {};
-          const z = safe(sample.zendesk_ticket || sample.zendesk || sample.ticket);
-          const plannedU = sumQty(poPlanRows);
-          const pctPO = plannedU>0 ? Math.round(appliedPO*100/plannedU) : 0;
-
-          cards.push(`
-            <div class="bg-gray-50 rounded-xl p-3 border">
-              <div class="flex items-center justify-between">
-                <div class="text-xs text-gray-500">PO</div>
-                <div class="text-xs font-semibold">${safe(term)}</div>
-              </div>
-              <div class="mt-2 text-sm leading-6">
-                <div><span class="text-gray-500">Supplier:</span> <span class="font-medium">${safe(sample.supplier)}</span></div>
-                <div><span class="text-gray-500">Facility:</span> <span class="font-medium">${safe(sample.facility)}</span></div>
-                <div><span class="text-gray-500">Freight:</span> <span class="font-medium">${safe(sample.freight_type)}</span></div>
-                <div><span class="text-gray-500">Zendesk:</span> <span class="font-medium">${z}</span></div>
-              </div>
-              <div class="mt-2 text-sm">
-                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(plannedU)}</span></div>
-                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedPO)}</span></div>
-                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctPO}%</span></div>
-              </div>
-            </div>
-          `);
-
-          // PO details table
-          const tbody = $('#ops-po-detail-body');
-          const title = $('#ops-po-detail-title');
-          if (tbody){
-            title.textContent = String(term);
-            const skuCount = new Set(poPlanRows.map(r=>String(r.sku_code).trim()).filter(Boolean)).size;
-            const fields = [
-              ['PO #', term],
-              ['Supplier', safe(sample.supplier)],
-              ['Facility', safe(sample.facility)],
-              ['Freight type', safe(sample.freight_type)],
-              ['Zendesk ticket', z],
-              ['Planned units', fmtInt(plannedU)],
-              ['Applied units', fmtInt(appliedPO)],
-              ['Completion', pctPO+'%'],
-              ['SKUs (count)', String(skuCount)],
-            ];
-            tbody.innerHTML = fields.map(([k,v])=>`<tr><td class="py-1 pr-2 text-gray-500">${k}</td><td class="py-1 font-medium">${v}</td></tr>`).join('');
-          }
-        } else {
-          // Clear PO details if not a PO match
-          const tbody = $('#ops-po-detail-body');
-          const title = $('#ops-po-detail-title');
-          if (tbody){
-            title.textContent='—';
-            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-xs text-gray-400 py-3">Search a PO to load details.</td></tr>';
-          }
-        }
-
-        if (skuPlanRows.length){
-          const planned = sumQty(skuPlanRows);
-          const pctSKU = planned>0 ? Math.round(appliedSKU*100/planned) : 0;
-          cards.push(`
-            <div class="bg-gray-50 rounded-xl p-3 border">
-              <div class="flex items-center justify-between">
-                <div class="text-xs text-gray-500">SKU</div>
-                <div class="text-xs font-semibold">${safe(term)}</div>
-              </div>
-              <div class="mt-2 text-sm leading-6">
-                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(planned)}</span></div>
-                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedSKU)}</span></div>
-                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctSKU}%</span></div>
-                <div><span class="text-gray-500">POs (count):</span> <span class="font-semibold tabular-nums">${new Set(skuPlanRows.map(r=>String(r.po_number).trim()).filter(Boolean)).size}</span></div>
-              </div>
-            </div>
-          `);
-        }
-
-        // fallback to simple rows if no plan context
-        if (!cards.length && rows.length){
-          cards.push(...rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`));
-        }
-
-        wrap.innerHTML = cards.length ? cards.join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
+        wrap.innerHTML = rows.length ? rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`).join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
       },300);
     });
   })();
@@ -3440,15 +3044,16 @@ if (Array.isArray(body.results) && body.results.length) {
 
     // Refresh dashboard + intake metrics
 await loadOpsMetrics();
-await setWeek(state.weekStart);
-    await refreshDashboardTotals();
-    // 🔄 refresh state.records so downloads reflect deletes
+await refreshDashboardTotals();
+await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
 
   } catch (e) {
     console.error(e);
     status.textContent = 'Error deleting: ' + (e.message || e);
   }
 }
+
+
 
 // ---------- Routing & Init ----------
 (function init(){
@@ -4719,7 +4324,6 @@ window.addEventListener('state:ready', () => {
 
 window.addEventListener('hashchange', () => show(getRouteHash()));
 window.addEventListener('popstate', () => show(getRouteHash()));
-  show(getRouteHash()); // initial render
   try{ wireOpsDownloads(); }catch{}
   try{ wireOpsInsights(); }catch{}
 
@@ -4744,763 +4348,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 })();
 
   
-
-// ==== RESTORED INTAKE (from old working index) ====
-// ===================== INTAKE (same features you validated) =====================
-  const intakeRows=[];
-  function newRow(){return {id:crypto.randomUUID(), selected:false, date_local:iso(new Date()), mobile_bin:'', sscc_label:'', po_number:'', sku_code:'', uid:'', status:'draft', sync:'pending', _pending:{}};}
-  function requiredFilled(r){return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;}
-  function syncClass(s){return s==='synced'?'bg-green-500':(s==='pending'?'bg-amber-500':'bg-gray-400');}
-  function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
-
-  function renderIntake(){
-    const tb=$('#intake-body'); tb.innerHTML='';
-    if(!intakeRows.length) intakeRows.push(newRow());
-    let drafts=0, synced=0;
-    intakeRows.forEach((r,i)=>{
-      const tr=document.createElement('tr'); tr.className=i%2?'bg-gray-50':'bg-white';
-      if(r.status!=='complete') drafts++; else synced++;
-      tr.innerHTML=`
-        <td class="border px-2 py-2"><input type="checkbox" ${r.selected?'checked':''} data-id="${r.id}" data-role="sel"/></td>
-        <td class="border px-2 py-2"><input class="cell" value="${toUI(r.date_local)}" data-id="${r.id}" data-f="date_local"/></td>
-        <td class="border px-2 py-2"><input class="cell" value="${r.mobile_bin}" data-id="${r.id}" data-f="mobile_bin"/></td>
-        <td class="border px-2 py-2"><input class="cell" value="${r.sscc_label}" data-id="${r.id}" data-f="sscc_label" placeholder="(optional)"/></td>
-        <td class="border px-2 py-2"><input class="cell" value="${r.po_number}" data-id="${r.id}" data-f="po_number"/></td>
-        <td class="border px-2 py-2"><input class="cell" value="${r.sku_code}" data-id="${r.id}" data-f="sku_code"/></td>
-        <td class="border px-2 py-2"><input class="cell" value="${r.uid}" data-id="${r.id}" data-f="uid" data-last="1"/></td>
-        <td class="border px-2 py-2 text-center"><span class="dot ${syncClass(r.sync)}"></span></td>`;
-      tb.appendChild(tr);
-    });
-
-    tb.querySelectorAll('input[data-role="sel"]').forEach(chk=>{
-      chk.addEventListener('change',e=>{
-        const id=e.target.dataset.id; const row=intakeRows.find(x=>x.id===id); if(row){row.selected=e.target.checked;}
-        $('#chk-all').checked = intakeRows.length && intakeRows.every(r=>r.selected);
-      });
-    });
-
-    tb.querySelectorAll('input[data-f]').forEach(inp=>{
-      const id=inp.dataset.id, f=inp.dataset.f;
-      if(f==='uid'){
-        inp.addEventListener('keydown',(ev)=>{
-          if(ev.key==='Tab' && !ev.shiftKey){
-            const idx=intakeRows.findIndex(x=>x.id===id);
-            if(idx===intakeRows.length-1){ setTimeout(()=>{ intakeRows.push(newRow()); renderIntake(); },0); }
-          }
-        });
-      }
-      inp.addEventListener('input',e=>{
-        const row=intakeRows.find(x=>x.id===id); if(!row) return;
-        if (f === 'uid') {
-  row[f] = String(e.target.value ?? '');
-} else if (f === 'date_local') {
-  row[f] = toISODate(String(e.target.value || '').trim());
-} else {
-  row[f] = String(e.target.value || '').trim();
-} // UID verbatim
-        row.status = requiredFilled(row) ? 'complete' : 'draft';
-        row.sync = 'pending';
-      });
-      inp.addEventListener('change', async e=>{
-        const row=intakeRows.find(x=>x.id===id); if(!row) return;
-        if(!apiBase || !requiredFilled(row)){ renderIntake(); return; }
-        try{
-          const res=await fetch(`${apiBase}/records`,{
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({
-              id:row.id, date_local:row.date_local, mobile_bin:row.mobile_bin, sscc_label:row.sscc_label,
-              po_number:row.po_number, sku_code:row.sku_code, uid:row.uid
-            })
-          });
-          const j=await res.json().catch(()=>({}));
-          if(res.ok && j.ok){ row.status='complete'; row.sync='synced'; }
-          else { row.sync='pending'; }
-        }catch{ row.sync='pending'; }
-        renderIntake();
-        await loadOpsMetrics(); await refreshDashboardTotals();
-await setWeek(state.weekStart);   // 🔄 keep state.records in sync
-      });
-    });
-
-    // ribbon quick badges
-    $('#ops-drafts').textContent = drafts;
-    $('#ops-sync-badges').innerHTML =
-      `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
-       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
-  }
-
-  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
-  $('#btn-delete-selected').onclick=async()=>{
-    const selected=intakeRows.filter(r=>r.selected);
-    if(!selected.length) return alert('Select at least one row.');
-    if(!confirm(`Delete ${selected.length} row(s)?`)) return;
-
-    if(apiBase){
-      const pairs=selected.filter(r=>r.uid && r.sku_code).map(r=>({uid:r.uid, sku_code:r.sku_code}));
-      if(pairs.length){
-        try{ await fetch(`${apiBase}/records/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pairs)}); }catch(e){ console.warn('Server delete error',e); }
-      }
-    }
-    for(let i=intakeRows.length-1;i>=0;i--){ if(intakeRows[i].selected) intakeRows.splice(i,1); }
-    if(!intakeRows.length) intakeRows.push(newRow());
-    renderIntake();
-    await loadOpsMetrics(); await refreshDashboardTotals();
-  };
-  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
-
-function toISODate(v) {
-  if (v == null || v === '') return '';
-  if (typeof v === 'number') {
-    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-    return iso(d);
-  }
-  if (v instanceof Date) return iso(v);
-  const str = String(v).trim();
-  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-  if (m) {
-    const [_, d, mth, y] = m;
-    const yyyy = y.length === 2 ? '20' + y : y;
-    return `${yyyy}-${mth.padStart(2, '0')}-${d.padStart(2, '0')}`;
-  }
-  const d2 = new Date(str);
-  return isNaN(d2) ? '' : iso(d2);
-}
-
-  // Upload UIDs → table → sync (unchanged)
-  (function wireUploadUIDs(){
-    const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
-    btn.onclick=()=>file.click();
-    file.addEventListener('change', async (e)=>{
-      const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
-      try{
-        let rows=[];
-        if(/\.xlsx?$/i.test(f.name)){
-          const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:'array'}); const ws=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}); rows=ws;
-        }else{
-          const text=await f.text(); const lines=text.split(/\r?\n/).filter(Boolean);
-          const hdr=lines.shift().split(',').map(s=>s.trim()); rows=lines.map(l=>l.split(',')).map(c=>{const o={};hdr.forEach((h,i)=>o[h]=c[i]??'');return o;});
-        }
-        const normRow=(r)=>{const n={}; for(const k in r){
-          const key = k.trim().toLowerCase().replace(/\s+/g,'_');
-          n[key] = r[k];
-        }
-          const pick=(...a)=>{for(const x of a){const v=n[x]; if(v!=null && String(v).trim()!=='') return String(v).trim();} return '';}
-          const pickRaw=(...a)=>{for(const x of a){ if(x in n) return String(n[x]??''); } return '';}
-          return {
-  date_local: toISODate(pick('date_local','date')),
-  mobile_bin: pick('mobile_bin','mobile_bin_(box)','mobile_bin (box)'),
-  sscc_label: pick('sscc_label','sscc','sscc_label (box)'),
-  po_number: pick('po_number','po','po#'),
-  sku_code:  pick('sku_code','sku'),
-  uid:       pickRaw('uid','u_id','u id')
-};
-
-};
-
-const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==''));
-        if(!items.length) return alert('No valid rows found (need PO_Number, SKU_Code, UID).');
-
-        // Build UI rows & a bulk payload for the backend
-        const payload = [];
-        for (const r of items) {
-          const ui = newRow();
-          ui.date_local  = r.date_local || iso(new Date()); // r.date_local is already YYYY-MM-DD
-          ui.mobile_bin  = r.mobile_bin || '';
-          ui.sscc_label  = r.sscc_label || '';
-          ui.po_number   = r.po_number;
-          ui.sku_code    = r.sku_code;
-          ui.uid         = r.uid; // verbatim
-          ui.status      = requiredFilled(ui) ? 'complete' : 'draft';
-          ui.sync        = 'pending';
-          intakeRows.push(ui);
-
-          // Always send to backend; backend will validate required fields
-          payload.push({
-            date_local: ui.date_local,
-            mobile_bin: ui.mobile_bin,
-            sscc_label: ui.sscc_label,
-            po_number:  ui.po_number,
-            sku_code:   ui.sku_code,
-            uid:        ui.uid
-          });
-        }
-
-        if (apiBase && payload.length) {
-          try {
-            const res = await fetch(`${apiBase}/records/import`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            const j = await res.json().catch(() => ({}));
-
-            if (res.ok && j.ok) {
-              const insertedCount = j.inserted ?? payload.length;
-              const rejectedCount = j.rejected ?? 0;
-              const newlyAdded = intakeRows.slice(-items.length);
-
-              // Mark UI rows as synced if they look complete on the client side
-              for (const ui of newlyAdded) {
-                if (requiredFilled(ui)) {
-                  ui.sync = 'synced';
-                  ui.status = 'complete';
-                }
-              }
-
-              if (rejectedCount) {
-                console.warn('Some rows were rejected by the server', j.errors || []);
-                alert(`Upload finished.\nInserted: ${insertedCount}\nRejected: ${rejectedCount}`);
-              }
-            } else {
-              alert('Upload failed on server.');
-            }
-          } catch (err) {
-            console.error(err);
-            alert('Upload failed: ' + (err?.message || err));
-          }
-        }
-
-        renderIntake();
-        await loadOpsMetrics();
-        await refreshDashboardTotals();
-
-      }catch(err){ console.error(err); alert('Upload failed: '+(err?.message||err)); }
-    });
-  })();
-
-
-// ===== Upload Bin Manifest (intake page) =====
-(function wireUploadBins(){
-  const btn  = document.getElementById('btn-upload-bins');
-  const file = document.getElementById('file-bins');
-  if (!btn || !file) return;
-
-  btn.onclick = () => file.click();
-
-  function toNumberOrNull(v) {
-    const n = Number(String(v ?? '').toString().replace(/,/g,'').trim());
-    return Number.isFinite(n) ? n : null;
-  }
-
-  // Flexible header mapping
-  function normalizeRow(r) {
-    const n = {};
-    for (const k in r) n[k.toLowerCase().replace(/\s+/g,'_')] = r[k];
-    const pick = (...keys) => {
-      for (const k of keys) {
-        const v = n[k];
-        if (v != null && String(v).trim() !== '') return String(v).trim();
-      }
-      return '';
-    };
-    // Expected columns (lenient): mobile_bin, bin_id, total_units, units, weight_kg, weight, date
-    const id   = pick('mobile_bin','bin_id','bin','bin_no','bin_number');
-    const unitsRaw = pick('total_units','units','qty','quantity');
-    const weightRaw= pick('weight_kg','weight','kg');
-    const dateRaw  = pick('date','date_local','created_at');
-
-    return {
-      mobile_bin: id,
-      total_units: toNumberOrNull(unitsRaw),
-      weight_kg: toNumberOrNull(weightRaw),
-      date_local: toISODate(dateRaw) || todayInTZ()     // default to business day
-    };
-  }
-
-  // lightweight front-end validation
-  function validateBin(b) {
-    const errs = [];
-    if (!b.mobile_bin) errs.push('Missing mobile_bin');
-    if (b.total_units != null && b.total_units < 0) errs.push('total_units < 0');
-    if (b.weight_kg != null && b.weight_kg < 0) errs.push('weight_kg < 0');
-    // soft plausibility (don’t block upload—backend will enforce)
-    if (b.total_units != null && b.weight_kg != null) {
-      const perUnit = b.weight_kg / Math.max(1, b.total_units);
-      if (perUnit < 0.001 || perUnit > 10) {
-        // mark as suspicious; let backend record and flag
-        b._suspicious = true;
-      }
-    }
-    return errs;
-  }
-
-  file.addEventListener('change', async (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (!f || !apiBase) return;
-
-    try {
-      // Parse CSV/XLSX using SheetJS (already loaded on page)
-      let rows = [];
-      if (/\.xlsx?$/i.test(f.name)) {
-        const buf = await f.arrayBuffer();
-        const wb  = XLSX.read(buf, { type: 'array' });
-        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
-      } else {
-        const buf = await f.arrayBuffer();
-        const wb  = XLSX.read(new Uint8Array(buf), { type: 'array' });
-        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
-      }
-
-      if (!rows.length) { alert('No rows found in manifest.'); return; }
-
-      const ws = state.weekStart;   // current Monday anchor (business TZ)
-      const items = rows.map(normalizeRow)
-        .filter(r => r.mobile_bin); // require at least an ID
-
-      // Client-side validate and split into valid + rejected (still send valid)
-      const rejected = [];
-      for (const it of items) {
-        const errs = validateBin(it);
-        if (errs.length) rejected.push({ it, errs });
-      }
-      const valid = items.filter(it => !rejected.find(x => x.it === it));
-
-      if (!valid.length) {
-        alert('No valid bin rows to upload.');
-        return;
-      }
-
-      // Send to backend (bulk upsert)
-      const resp = await fetch(`${apiBase}/bins/weeks/${ws}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(valid)
-      });
-      if (!resp.ok) {
-        const msg = await resp.text().catch(()=> 'Upload failed');
-        alert(msg);
-        return;
-      }
-
-      const summary = await resp.json().catch(()=> ({}));
-      const ok = summary?.ok ?? true;
-      alert(ok
-        ? `Bin manifest uploaded: ${valid.length} row(s).${rejected.length ? `  Rejected: ${rejected.length}` : ''}`
-        : `Upload finished with warnings. Accepted: ${valid.length}${rejected.length ? `, Rejected: ${rejected.length}` : ''}`
-      );
-
-      // Refresh week so bin QA & insights update
-      await setWeek(state.weekStart);
-    } catch (err) {
-      console.error(err);
-      alert('Upload failed: ' + (err?.message || err));
-    }
-  });
-})();
-
-  // ---------- Ops metrics & Ops Pulse ----------
-  function todayISO(){ return todayInTZ(); }
-async function loadOpsMetrics() {
-  if (!apiBase) return;
-  try {
-    // Fetch all recent completed records, up to 50k
-    const rows = await getRecordsSnapshot(15000);
-
-    const now = Date.now();
-    const startToday = new Date();
-    startToday.setHours(0, 0, 0, 0);
-    const hourAgo = now - 3600e3;
-    const halfAgo = now - 1800e3;
-
-    let scansToday = 0, lastHour = 0, rate = 0, drafts = 0, dupes = 0;
-    const syncCounts = {}, seen = new Set();
-
-    for (const r of rows) {
-      const ct = r.completed_at ? new Date(r.completed_at).getTime() : null;
-      const todayByCompletion = !!ct && ct >= startToday.getTime();
-
-      if (r.status === 'complete') {
-        if (todayByCompletion) scansToday++;
-        if (ct && ct >= hourAgo) lastHour++;
-        if (ct && ct >= halfAgo) rate++;
-        if (r.sku_code && r.uid) {
-          const k = r.sku_code + '|' + r.uid;
-          if (seen.has(k)) dupes++;
-          else seen.add(k);
-        }
-      } else drafts++;
-
-      const s = r.sync_state || 'unknown';
-      syncCounts[s] = (syncCounts[s] || 0) + 1;
-    }
-
-    $('#ops-today').textContent = scansToday.toLocaleString();
-    $('#ops-hour').textContent = lastHour.toLocaleString();
-    $('#ops-rate').textContent = (rate * 2).toLocaleString();
-    $('#ops-drafts').textContent = drafts.toLocaleString();
-    $('#ops-dupes').textContent = dupes.toLocaleString();
-    $('#ops-last-updated').textContent = new Date().toLocaleTimeString();
-
-    // Pulse animation + hearts
-    const bpm = Math.max(40, Math.min(200, rate * 2));
-    $('#intake-bpm').textContent = bpm;
-
-    const small = $('#ops-heart-small');
-    if (small) {
-      small.innerHTML = '';
-      small.appendChild(createHeart(18, BRAND, bpm));
-    }
-
-    const big = $('#ops-heart');
-    if (big) {
-      big.innerHTML = '';
-      big.appendChild(createHeart(24, BRAND, bpm));
-      $('#ops-bpm').textContent = bpm;
-      const delta = bpm - 40;
-      $('#ops-extra').textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
-    }
-
-    const wrap = $('#ops-sync-badges');
-    if (wrap) {
-      wrap.innerHTML = '';
-      Object.entries(syncCounts)
-        .sort((a, b) => b[1] - a[1])
-        .forEach(([name, count]) => {
-          const span = document.createElement('span');
-          span.className =
-            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
-            (name === 'synced'
-              ? 'border-green-200 bg-green-50 text-green-700'
-              : name === 'pending'
-              ? 'border-amber-200 bg-amber-50 text-amber-700'
-              : 'border-gray-200 bg-gray-50 text-gray-700');
-          span.textContent = `${name}: ${count}`;
-          wrap.appendChild(span);
-        });
-    }
-
-    const alerts = [];
-    if (drafts > 0)
-      alerts.push(
-        `There ${drafts === 1 ? 'is' : 'are'} ${drafts} draft${
-          drafts === 1 ? '' : 's'
-        } to complete.`
-      );
-    if (dupes > 0)
-      alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
-    $('#ops-alerts').innerHTML = alerts.length
-      ? alerts.map((t) => `<li>${t}</li>`).join('')
-      : '<li class="text-gray-400">No alerts.</li>';
-  } catch (e) {
-    console.warn('Ops ribbon metrics load failed:', e);
-  }
-}
-
-  
-  // Coalesce scan SSE updates to avoid UI hangs when scan events are frequent.
-  let __opsRefreshTimer = null;
-  let __opsRefreshRunning = false;
-  let __opsRefreshPending = false;
-  let __opsRefreshLast = 0;
-
-  function scheduleOpsRefresh() {
-    if (!apiBase) return;
-    if (document.hidden) return;
-    __opsRefreshPending = true;
-
-    if (__opsRefreshTimer) return;
-    const minGapMs = 1500; // at most ~1 refresh per 1.5s
-    const wait = Math.max(0, minGapMs - (Date.now() - __opsRefreshLast));
-
-    __opsRefreshTimer = setTimeout(runOpsRefresh, wait);
-  }
-
-  async function runOpsRefresh() {
-    __opsRefreshTimer = null;
-
-    if (__opsRefreshRunning) {
-      __opsRefreshPending = true;
-      return;
-    }
-
-    if (!__opsRefreshPending) return;
-    __opsRefreshPending = false;
-
-    __opsRefreshRunning = true;
-    __opsRefreshLast = Date.now();
-
-    try {
-      // Yield once so clicks/paint can happen.
-      await new Promise((r) => setTimeout(r, 0));
-      await loadOpsMetrics();
-      await refreshDashboardTotals();
-    } catch (e) {
-      console.warn('Ops refresh failed:', e);
-    } finally {
-      __opsRefreshRunning = false;
-      if (__opsRefreshPending) scheduleOpsRefresh();
-    }
-  }
-
-  function startSSE(){
-    if(!apiBase) return;
-    try{
-      const ev=new EventSource(`${apiBase}/events/scan`);
-      $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
-      ev.onmessage=()=>{ scheduleOpsRefresh(); };
-      ev.onerror = ()=>{
-        try{ev.close();}catch{}
-        $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500');
-        setTimeout(startSSE,3000);
-      };
-
-      // Refresh once when tab becomes visible again.
-      document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) scheduleOpsRefresh();
-      });
-    }catch{}
-  }
-
-
-  // ---------- Dashboard weekly refresh from completion timestamps ----------
-async function refreshDashboardTotals(){
-  if(!apiBase) return;
-  const ws = state.weekStart;
-  const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-  const we  = iso(weD);
-
-  const all = await getRecordsSnapshot(15000);
-
-  const inWeek = all.filter(r => {
-    if (r.status !== 'complete') return false;
-    if (r.completed_at) {
-      const ymd = ymdFromCompletedAtInTZ(r.completed_at); // CN business day
-      return ymd >= ws && ymd <= we;
-    }
-    // Fallback: use provided date_local (already Y-M-D)
-    const dl = toISODate(r.date_local);
-    return dl && dl >= ws && dl <= we;
-  });
-
-  const appliedTotal = inWeek.length;
-  const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
-  const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
-
-  $('#planned-total').textContent = plannedTotal.toLocaleString();
-  $('#applied-total').textContent = appliedTotal.toLocaleString();
-  $('#pct-week').textContent = pct+'%';
-  $('#avg-week').textContent = appliedTotal.toLocaleString();
-  $('#avg-day').textContent = Math.round((appliedTotal||0)/7).toLocaleString();
-  setFooterHealth(pct, appliedTotal);
-}
-
-  // ---------- Simple Search ----------
-  (function attachSearch(){
-    const el=$('#search-input'); if(!el) return; let t=null;
-    el.addEventListener('input',(e)=>{
-      clearTimeout(t);
-      t=setTimeout(()=>{
-        const term=String(e.target.value||'').trim();
-        const wrap=$('#search-results'); if(!term){wrap.classList.add('hidden'); wrap.innerHTML=''; return;}
-        const agg=aggregate(state.records); const rows=[];
-        const plannedPO=state.plan.filter(p=>String(p.po_number).trim()===term).reduce((s,p)=>s+toNum(p.target_qty),0);
-        let appliedPO=0; for(const [k,v] of agg.byPO.entries()){ if(k===term) appliedPO+=v; }
-        if(plannedPO||appliedPO) rows.push({scope:'PO',planned:plannedPO,applied:appliedPO,pct:plannedPO>0?Math.round((appliedPO/plannedPO)*100):0});
-        const plannedSKU=state.plan.filter(p=>String(p.sku_code).trim()===term).reduce((s,p)=>s+toNum(p.target_qty),0);
-        let appliedSKU=0; for(const [k,v] of agg.bySKU.entries()){ if(k===term) appliedSKU+=v; }
-        if(plannedSKU||appliedSKU) rows.push({scope:'SKU',planned:plannedSKU,applied:appliedSKU,pct:plannedSKU>0?Math.round((appliedSKU/plannedSKU)*100):0});
-        wrap.classList.remove('hidden');
-        wrap.innerHTML = rows.length ? rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`).join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
-      },300);
-    });
-  })();
-
-// ========== Delete UIDs (simple utility) ==========
-async function deleteUIDs() {
-  const ta = document.getElementById('uids-to-delete');
-  const status = document.getElementById('delete-uids-status');
-  if (!ta) return;
-  const raw = ta.value.trim();
-  if (!raw) {
-    alert('Please enter at least one UID.');
-    return;
-  }
-
-  // Split by commas, spaces, or newlines
-  const list = raw.split(/[\s,]+/).filter(Boolean);
-  if (!list.length) return alert('No valid UIDs found.');
-
-  if (!confirm(`Delete ${list.length} UID record(s)?`)) return;
-
-  status.textContent = 'Deleting...';
-
-  try {
-    // Send to backend
-    const res = await fetch(`${apiBase}/records/delete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(list.map(uid => ({ uid }))) // only UID is needed
-    });
-
-    if (!res.ok) throw new Error(await res.text());
-    // If your API returns {deleted:n}, you can show that instead:
-const body = await res.json().catch(()=>({}));
-const n = typeof body.total_deleted === 'number' ? body.total_deleted : list.length;
-status.textContent = `Deleted ${n} UID(s) successfully.`;
-if (Array.isArray(body.results) && body.results.length) {
-  const lines = body.results.map(r =>
-    `${r.uid}${r.sku_code ? ` (${r.sku_code})` : ''}: ${r.deleted}`
-  );
-  status.textContent += `  [ ${lines.join(' · ')} ]`;
-}
-
-    ta.value = '';
-
-    // Refresh dashboard + intake metrics
-await loadOpsMetrics();
-await refreshDashboardTotals();
-await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
-
-  } catch (e) {
-    console.error(e);
-    status.textContent = 'Error deleting: ' + (e.message || e);
-  }
-}
-
-// ---------- Routing & Init ----------
-(function init(){
-  const ws = mondayOfInTZ(todayInTZ());
-  $('#week-start').value = ws;
-  setWeek(ws);
-
-function syncNav() {
-  const hash = (location.hash || '#dashboard');
-  const dash   = document.getElementById('nav-dash');
-  const intake = document.getElementById('nav-intake');
-  const exec   = document.getElementById('nav-exec');
-  const recv   = document.getElementById('nav-receiving');
-  const flow   = document.getElementById('nav-flow');
-  if (!dash || !intake || !exec || !recv || !flow) return;
-
-  [dash, intake, exec, recv, flow].forEach(el => {
-    el.classList.remove('active');
-    el.removeAttribute('aria-current');
-  });
-
-if (hash === '#receiving') {
-  recv.classList.add('active');
-  recv.setAttribute('aria-current', 'page');
-} else if (hash === '#intake') {
-  intake.classList.add('active');
-  intake.setAttribute('aria-current', 'page');
-} else if (hash === '#exec') {
-  exec.classList.add('active');
-  exec.setAttribute('aria-current', 'page');
-} else if (hash === '#flow') {
-  flow.classList.add('active');
-  flow.setAttribute('aria-current', 'page');
-} else {
-  dash.classList.add('active');
-  dash.setAttribute('aria-current', 'page');
-}
-}
-
-  function show(hash){
-  document.getElementById('page-dashboard')?.classList.add('hidden');
-  document.getElementById('page-intake')?.classList.add('hidden');
-  document.getElementById('page-exec')?.classList.add('hidden');
-  document.getElementById('page-receiving')?.classList.add('hidden');
-  document.getElementById('page-flow')?.classList.add('hidden');
-
-
-if (hash === '#receiving') {
-  document.getElementById('page-receiving')?.classList.remove('hidden');
-} else if (hash === '#intake') {
-  document.getElementById('page-intake')?.classList.remove('hidden');
-} else if (hash === '#exec') {
-  document.getElementById('page-exec')?.classList.remove('hidden');
-  try {
-    const ws = state.weekStart;
-    const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-    const we = iso(weD);
-    const sub = document.getElementById('exec-sub');
-    if (sub) sub.textContent = `${ws} – ${we}`;
-  } catch {}
-} else if (hash === '#flow') {
-  document.getElementById('page-flow')?.classList.remove('hidden');
-} else {
-  document.getElementById('page-dashboard')?.classList.remove('hidden');
-}
-syncNav();
-}
-
-  window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
-  show(location.hash || '#dashboard'); // initial render
-
-  // Intake scaffold + checkbox handler
-  renderIntake();
-  document.getElementById('chk-all')?.addEventListener('change', (e) => {
-    const on = e.target.checked;
-    intakeRows.forEach(r => r.selected = on);
-    renderIntake();
-    document.getElementById('chk-all').checked = on;
-  });
-
-document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
-
-  // pulse hearts + metrics
-  $('#ops-heart').appendChild(createHeart(24, BRAND, 40));
-  $('#ops-heart-small').appendChild(createHeart(18, BRAND, 40));
-  loadOpsMetrics();
-  startSSE();
-})();
-
-  </script>
-
-
-<script>
-(function () {
-  function isReady(s) {
-    return s && (
-      (Array.isArray(s.plan)    && s.plan.length) ||
-      (Array.isArray(s.records) && s.records.length) ||
-      (Array.isArray(s.bins)    && s.bins.length)
-    );
-  }
-  function fire() { window.dispatchEvent(new Event('state:ready')); }
-  var fired = false;
-
-  if (isReady(window.state)) { fired = true; fire(); }
-  var t = setInterval(function () {
-    if (isReady(window.state)) {
-      if (!fired) { fired = true; fire(); }
-      clearInterval(t);
-    }
-  }, 300);
-})();
-</script>
-
-<script>
-(function () {
-  // Re-fire state:ready after Ops switches weeks (or re-populates state)
-  var oldSetWeek = window.setWeek;
-  if (typeof oldSetWeek === 'function') {
-    window.setWeek = async function () {
-      var r = await oldSetWeek.apply(this, arguments);
-      // At this point Ops has updated window.state.{weekStart, plan, records, bins}
-      window.dispatchEvent(new Event('state:ready'));
-      return r;
-    };
-  }
-})();
-</script>
-
-
-<script src="/exec_live_additive.js?v=8" defer></script>
-<script src="/receiving_live_additive.js?v=27" defer></script>
-  <script src="/flow_live_additive.js?v=61" defer></script>
-
-</body>
-</html>
-
-
-
-
-
-
-
-// ==== END RESTORED INTAKE ====
 </script>
 <script>
 (function () {
@@ -5624,7 +4471,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     if(input.value.trim()) renderPO(input.value);
   });
 })();
-
 
   
 </script>
