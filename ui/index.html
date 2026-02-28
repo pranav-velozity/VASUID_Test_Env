@@ -988,7 +988,29 @@ function computeBinQA(ws, records=[], bins=[]) {
   }
 
 
-  const seen=new Set(); const outRows=[];
+function buildDiscrepancyPOSKU(plan, records){
+const byPS=new Map();
+const binsByPS=new Map();
+
+for(const r of records||[]){
+  if(r.status!=='complete') continue;
+
+  const po=String(r.po_number||'').trim();
+  const sku=String(r.sku_code||'').trim();
+  if(!po||!sku) continue;
+
+  const k=`${po}|||${sku}`;
+  byPS.set(k,(byPS.get(k)||0)+1);
+
+  const mb = String(r.mobile_bin || r.bin || '').trim();
+  if (mb) {
+    if (!binsByPS.has(k)) binsByPS.set(k, new Set());
+    binsByPS.get(k).add(mb);
+  }
+}
+
+
+  const seen=new Set(); const rows=[];
   for(const p of plan||[]){
     const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim();
     if(!po||!sku) continue;
@@ -1001,7 +1023,7 @@ function computeBinQA(ws, records=[], bins=[]) {
 const binSet = binsByPS.get(k) || new Set();
 const binList = Array.from(binSet).sort();
 
-outRows.push({
+rows.push({
   'PO': po,
   'SKU': sku,
   'Supplier Name': p.supplier_name || '',
@@ -1015,7 +1037,7 @@ outRows.push({
   'Discrepancy (Applied - Planned)': applied - planned
 });
   }
-  return outRows;
+  return rows;
 }
 
 function buildDiscrepancyPO(joined, plan){
@@ -4845,4 +4867,3 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 
 </body>
 </html>
-
