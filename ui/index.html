@@ -7,100 +7,13 @@
 <meta content="https://vasuid-test-env.onrender.com" name="api-base"/>
 <meta content="Asia/Shanghai" name="business-tz"/>
 <title>VelOzity Pinpoint Test Env</title>
-<!-- Tailwind -->
-<script src="https://cdn.tailwindcss.com"></script>
-<!-- SheetJS -->
-<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-<style>
 
-/* OPS explicit palette classes (guaranteed) */
-.ops-bar-planned{ background: var(--ops-green) !important; }
-.ops-bar-applied{ background: var(--ops-yellow) !important; }
-.ops-bg-planned-soft{ background: rgba(var(--ops-green-rgb),0.20) !important; }
-.ops-bg-applied-soft{ background: rgba(var(--ops-yellow-rgb),0.20) !important; }
-.ops-dot-planned{ background: var(--ops-green) !important; }
-.ops-dot-applied{ background: var(--ops-yellow) !important; }
+   <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS -->
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
-
-/* OPS palette: force Tailwind green/emerald bars used in Supplier/Facility/PO progress to match ops palette */
-#ops-insights-content .ops-bar-planned,
-#ops-insights-content .ops-bar-planned,
-#ops-po-progress .ops-bar-planned,
-#ops-po-progress .ops-bar-planned{
-  background: var(--ops-green) !important;
-}
-#ops-insights-content .ops-bg-planned-soft,
-#ops-insights-content .ops-bg-planned-soft,
-#ops-po-progress .ops-bg-planned-soft,
-#ops-po-progress .ops-bg-planned-soft{
-  background: rgba(var(--ops-green-rgb),0.20) !important;
-}
-#ops-insights-content .ops-bg-planned-soft,
-#ops-po-progress .ops-bg-planned-soft{
-  background: rgba(var(--ops-green-rgb),0.28) !important;
-}
-
-
-/* OPS chart palette overrides */
-#opsRoot .ops-bar-planned{ background: var(--ops-green) !important; }
-#opsRoot .ops-bg-planned-soft{ background: rgba(var(--ops-green-rgb),0.20) !important; }
-#opsRoot .ops-bg-planned-soft{ background: rgba(var(--ops-green-rgb),0.28) !important; }
-
-
-:root{
-  --ops-green:#D1E231; /* planned / in */
-  --ops-yellow:#F0D731; /* applied / ready */
-  --ops-green-rgb:209,226,49;
-  --ops-yellow-rgb:240,215,49;
-}
-
-
-/* OPS: keep view buttons neutral (black text), independent of chart palette */
-.insights-view-btn,
-.insightsViewBtn,
-.insights-tabs button,
-.insights-tab-btn,
-.viewBtn,
-.view-btn{
-  color:#111 !important;
-  background:#fff !important;
-  border-color:#e5e7eb !important;
-}
-.insights-view-btn.active,
-.insightsViewBtn.active,
-.insights-tabs button.active,
-.insights-tab-btn.active,
-.viewBtn.active,
-.view-btn.active{
-  color:#111 !important;
-  background:#fff !important;
-  border-color:#11182733 !important;
-  box-shadow: 0 0 0 2px rgba(17,24,39,0.08) !important;
-}
-.insights-view-btn:hover,
-.insightsViewBtn:hover,
-.insights-tabs button:hover,
-.insights-tab-btn:hover,
-.viewBtn:hover,
-.view-btn:hover{
-  color:#111 !important;
-  background:#f9fafb !important;
-}
-
-
-:root{
-  --ops-green:#D1E231; /* planned / in */
-  --ops-yellow:#F0D731; /* applied / ready */
-  --ops-ink:#111827;
-}
-/* Keep view buttons neutral (black text), do NOT tint with ops colors */
-.insights-view-btn, .insightsViewBtn, .insights-tabs button, .insights-tab-btn, .viewBtn, .view-btn{
-  color: var(--ops-ink) !important;
-}
-.insights-view-btn.active, .insightsViewBtn.active, .insights-tabs button.active, .insights-tab-btn.active, .viewBtn.active, .view-btn.active{
-  color: var(--ops-ink) !important;
-}
-
+ <style>
     body{background:#f8fafc;color:#111827}
     .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
     .vo-wrap{
@@ -117,7 +30,7 @@
     @keyframes heartbeat{0%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}60%{transform:scale(1)}100%{transform:scale(1)}}
     .cell{width:100%;padding:.4rem .5rem;border:0;outline:none}
     .cell:focus{box-shadow:0 0 0 3px rgba(59,130,246,.25)}
-    .th{font-size:.75rem;font-weight:600;color:#F0D731}
+    .th{font-size:.75rem;font-weight:600;color:#374151}
     /* Shorter week capsule */
     .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
     .wkcap .m{font-size:10px}
@@ -158,7 +71,7 @@
   display:inline-flex; align-items:center; gap:.5rem;
   font-size:.875rem; line-height:1;
   padding:.5rem .75rem; border-radius:10px;
-  border:1px solid transparent; background:transparent; color:#111827;
+  border:1px solid transparent; background:transparent; color:#374151;
   transition:background .15s ease, border-color .15s ease, transform .05s ease;
 }
 .cmd:hover{ background:#f9fafb; border-color:#e5e7eb; }
@@ -187,62 +100,51 @@
 
 
 /* icon sizing */
-.cmd svg{ width:16px; height:16px; opacity:.75; }
+.cmd svg{ width:16px; height:16px; opacity:.85; }
 
-  
-/* Ops insights pills */
-.ops-pill{
-  display:inline-flex; align-items:center; justify-content:flex-start; gap:8px;
-  padding:0 10px;
-  min-width:96px; height:30px;
-  border:1px solid rgba(17,24,39,.12);
-  border-radius:9999px;
-  background:transparent;
-  font-size:11px;
-  font-weight:600;
-  color:#111827;
-  transition: all .12s ease;
-}
-.ops-pill svg{ width:14px; height:14px; }
-.ops-pill:hover{ background:#f9fafb; border-color: rgba(17,24,39,.18); }
-.ops-pill--active{
-  background:#fff;
-  border-color: rgba(153,0,51,.45);
-  box-shadow: 0 0 0 3px rgba(153,0,51,.08);
-  color:#111827;
-}
-</style>
+  </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-<!-- Top Nav -->
-<header class="vo-nav">
-<div class="vo-wrap py-3 flex items-center justify-between">
-<div class="flex items-center gap-3">
-<div class="text-xl font-semibold">VelOzity Pinpoint</div>
-<div class="text-gray-500 text-sm" id="vo-today"></div>
-</div>
-<nav class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300" id="nav-toggle">
-<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#exec" id="nav-exec">
+  <!-- Top Nav -->
+  <header class="vo-nav">
+    <div class="vo-wrap py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="text-xl font-semibold">VelOzity Pinpoint</div>
+        <div id="vo-today" class="text-gray-500 text-sm"></div>
+      </div>
+      <nav id="nav-toggle" class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300">
+
+<a href="#exec" id="nav-exec"
+   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
   Executive
 </a>
-<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#dashboard" id="nav-dash">
+
+  <a href="#dashboard" id="nav-dash"
+     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
     Operations
   </a>
-<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#receiving" id="nav-receiving">
+
+<a href="#receiving" id="nav-receiving"
+   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
   Receiving
 </a>
-<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#intake" id="nav-intake">
+        
+  <a href="#intake" id="nav-intake"
+     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
     Intake
   </a>
-<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#flow" id="nav-flow">
+
+  <a href="#flow" id="nav-flow"
+     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
     Flow
   </a>
 </nav>
-</div>
-</header>
-<main class="vo-wrap py-4">
-<!-- ================= Operations ================= -->
-<section class="hidden" id="page-dashboard">
+    </div>
+  </header>
+
+  <main class="vo-wrap py-4">
+    <!-- ================= Operations ================= -->
+    <section class="hidden" id="page-dashboard">
 <div class="flex items-center justify-between mb-2 basis-full w-full">
 <div class="text-2xl font-semibold">Operations</div>
 <div class="flex items-center gap-2">
@@ -299,47 +201,49 @@
 </div>
 </div>
 <div class="mt-3 grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-<div class="lg:col-span-3 min-w-0">
-<!-- Ops insights (switchable views) -->
+  <div class="lg:col-span-3 min-w-0">
+    <!-- Ops insights (switchable views) -->
 <div class="ring-gray-100 min-h-0 border bg-white min-h-[520px] shadow rounded-2xl p-5 ring-1 mb-3">
 <div class="flex flex-col gap-3">
 <div class="min-h-[520px] min-w-0 min-h-0 h-full">
 <div class="flex items-start justify-between gap-3">
-<div class="min-w-0">
-<div class="text-base font-semibold">Insights</div>
-<div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Week overview</div>
-</div>
-<div class="flex flex-wrap justify-end gap-2 shrink-0">
-<button class="ops-pill ops-pill--active" data-opsview="overview" title="Overview"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24">
-<path d="M4 13h6V4H4v9Zm10 7h6v-6h-6v6ZM14 4v6h6V4h-6ZM4 20h6v-5H4v5Z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path>
+  <div class="min-w-0">
+    <div class="text-base font-semibold">Insights</div>
+    <div class="text-xs text-gray-500 mb-3" id="ops-insights-subtitle">Week overview</div>
+  </div>
+  <div class="flex flex-wrap justify-end gap-2 shrink-0">
+<button class="ops-pill ops-pill--active" data-opsview="overview" title="Overview"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 13h6V4H4v9Zm10 7h6v-6h-6v6ZM14 4v6h6V4h-6ZM4 20h6v-5H4v5Z"/>
 </svg><span>Overview</span></button>
-<button class="ops-pill" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24">
-<path d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path>
-<path d="M4 20a8 8 0 0 1 16 0" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path>
+<button class="ops-pill" data-opsview="supplier" title="Supplier"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20a8 8 0 0 1 16 0"/>
 </svg><span>Supplier</span></button>
-<button class="ops-pill" data-opsview="facility" title="Facility"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 20V6a2 2 0 0 1 2-2h6v16" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M14 20V10a2 2 0 0 1 2-2h4v12" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M7 8h2" stroke-linecap="round" stroke-width="1.6"></path><path d="M7 11h2" stroke-linecap="round" stroke-width="1.6"></path><path d="M7 14h2" stroke-linecap="round" stroke-width="1.6"></path></svg><span>Facility</span></button>
-<button class="ops-pill" data-opsview="zendesk" title="Zendesk"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M7 9h10" stroke-linecap="round" stroke-width="1.6"></path><path d="M7 13h6" stroke-linecap="round" stroke-width="1.6"></path><path d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H10l-4 3v-3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path></svg><span>Zendesk</span></button>
-<button class="ops-pill" data-opsview="freight" title="Freight type"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 7h11v10H3z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M14 10h4l3 3v4h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M6.5 19a1.5 1.5 0 1 0 0-.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M17.5 19a1.5 1.5 0 1 0 0-.01" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path></svg><span>Freight</span></button>
-<button class="ops-pill" data-opsview="carton" title="Cartons"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M21 8.5 12 3 3 8.5l9 5.5 9-5.5Z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M21 8.5v7L12 21l-9-5.5v-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path><path d="M12 14v7" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path></svg><span>Carton</span></button>
-<button class="ops-pill" data-opsview="placeholder" title="Placeholder"><svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24">
-<path d="M12 2l1.2 3.6L17 7l-3.8 1.4L12 12l-1.2-3.6L7 7l3.8-1.4L12 2Z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path>
-<path d="M5 13l.8 2.4L8 16l-2.2.6L5 19l-.8-2.4L2 16l2.2-.6L5 13Z" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"></path>
+<button class="ops-pill" data-opsview="facility" title="Facility"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 20V6a2 2 0 0 1 2-2h6v16"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 20V10a2 2 0 0 1 2-2h4v12"/><path stroke-width="1.6" stroke-linecap="round" d="M7 8h2"/><path stroke-width="1.6" stroke-linecap="round" d="M7 11h2"/><path stroke-width="1.6" stroke-linecap="round" d="M7 14h2"/></svg><span>Facility</span></button>
+<button class="ops-pill" data-opsview="zendesk" title="Zendesk"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" d="M7 9h10"/><path stroke-width="1.6" stroke-linecap="round" d="M7 13h6"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6 3h12a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H10l-4 3v-3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z"/></svg><span>Zendesk</span></button>
+<button class="ops-pill" data-opsview="freight" title="Freight type"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 7h11v10H3z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M14 10h4l3 3v4h-7z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M6.5 19a1.5 1.5 0 1 0 0-.01"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M17.5 19a1.5 1.5 0 1 0 0-.01"/></svg><span>Freight</span></button>
+<button class="ops-pill" data-opsview="carton" title="Cartons"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 8.5 12 3 3 8.5l9 5.5 9-5.5Z"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M21 8.5v7L12 21l-9-5.5v-7"/><path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 14v7"/></svg><span>Carton</span></button>
+<button class="ops-pill" data-opsview="placeholder" title="Placeholder"><svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 2l1.2 3.6L17 7l-3.8 1.4L12 12l-1.2-3.6L7 7l3.8-1.4L12 2Z"/>
+<path stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M5 13l.8 2.4L8 16l-2.2.6L5 19l-.8-2.4L2 16l2.2-.6L5 13Z"/>
 </svg><span>Placeholder</span></button>
-</div>
+
+  </div>
 </div>
 <div class="pr-2 space-y-3 overflow-auto" id="ops-insights-content">
 <div class="text-sm text-gray-600">Select a view on the right to see progress &amp; exceptions.</div>
 </div>
 </div>
 <!-- view buttons -->
+
 </div>
 </div>
 <!-- PO progress (planned / received / applied) placeholder removed from right panel -->
 <!-- (hidden legacy progress tiles kept for stability) -->
 <div class="hidden" id="ops-progress-tiles"></div>
-</div>
-<div class="lg:col-span-2 min-w-0 flex flex-col gap-3 min-h-[520px]">
-<!-- Ops right panel: Week totals (Flow-style) -->
+  </div>
+  <div class="lg:col-span-2 min-w-0 flex flex-col gap-3 min-h-[520px]">
+    <!-- Ops right panel: Week totals (Flow-style) -->
 <div class="bg-white rounded-2xl border shadow p-4 mb-3">
 <div class="text-base font-semibold">Week totals</div>
 <div class="text-xs text-gray-500 mb-3">Week of <span id="ops-week-of">—</span></div>
@@ -371,12 +275,13 @@
             </div>
 <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cartons-in">0</span> – <span id="ops-week-cartons-out">0</span></div>
 </div>
+
 <div class="flex items-center justify-between py-1.5">
 <div class="flex items-center gap-2 text-sm text-gray-700">
 <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
 <svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24">
-<path d="M6 4h12v16H6z" stroke-width="1.5"></path>
-<path d="M8 8h8M8 12h8M8 16h8" stroke-width="1.5"></path>
+  <path d="M6 4h12v16H6z" stroke-width="1.5"></path>
+  <path d="M8 8h8M8 12h8M8 16h8" stroke-width="1.5"></path>
 </svg>
 </span>
               CBM in – CBM out
@@ -384,22 +289,23 @@
 <div class="text-sm font-semibold tabular-nums"><span id="ops-week-cbm-in">0</span> – <span id="ops-week-cbm-out">0</span></div>
 </div>
 <div class="flex items-center justify-between gap-2 mt-1.5">
-<div class="flex items-center gap-2 text-sm text-gray-700">
-<span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
-<svg aria-hidden="true" fill="none" stroke="currentColor" viewbox="0 0 24 24">
-<path d="M3 7h18" stroke-width="1.5"></path>
-<path d="M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" stroke-width="1.5"></path>
-<path d="M7 11h10" stroke-width="1.5"></path>
-</svg>
-</span>
+  <div class="flex items-center gap-2 text-sm text-gray-700">
+    <span class="inline-flex h-5 w-5 items-center justify-center rounded-md bg-white border">
+      <svg aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path d="M3 7h18" stroke-width="1.5"></path>
+        <path d="M6 7v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7" stroke-width="1.5"></path>
+        <path d="M7 11h10" stroke-width="1.5"></path>
+      </svg>
+    </span>
     Approx. containers
   </div>
-<div class="text-sm font-semibold tabular-nums">
-<span id="ops-week-cont-40">0</span> × 40' HQ
+  <div class="text-sm font-semibold tabular-nums">
+    <span id="ops-week-cont-40">0</span> × 40' HQ
     <span class="text-gray-400 mx-1">•</span>
-<span id="ops-week-cont-20">0</span> × 20' GP
+    <span id="ops-week-cont-20">0</span> × 20' GP
   </div>
 </div>
+
 <div class="grid grid-cols-2 gap-2 mt-3">
 <div class="bg-white border rounded-xl p-3">
 <div class="text-xs text-gray-500">Total suppliers</div>
@@ -419,8 +325,10 @@
 <div class="text-xs text-gray-500">Updated on refresh</div>
 </div>
 </div>
-</div>
-<div class="lg:col-span-5 w-full min-w-0 mt-3">
+
+
+  </div>
+  <div class="lg:col-span-5 w-full min-w-0 mt-3">
 <!-- Reports & downloads (bottom full-width) -->
 <div class="bg-white rounded-2xl border shadow p-4">
 <div class="text-base font-semibold mb-3">Reports &amp; downloads</div>
@@ -435,187 +343,246 @@
 </div>
 </div>
 </div>
+
 <!-- ================= Intake ================= -->
-<section class="hidden" id="page-intake">
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-5">
-<div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
-<div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
-<svg aria-hidden="true" class="heartbeat" focusable="false" height="18" viewbox="0 0 24 24" width="18">
-<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"></path>
-</svg>
-<div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
-</div>
-</div>
-<div class="flex items-center gap-2">
-<button aria-label="Export XLSX" class="px-3 py-2 rounded-lg text-sm border" id="btn-export-day">Export XLSX</button>
-<button aria-label="Upload UIDs" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-applied">Upload UIDs</button>
-<button aria-label="Upload Bin Manifest" class="px-3 py-2 rounded-lg text-sm border" id="btn-upload-bins">Upload Bin Manifest</button>
-<input accept=".xlsx,.csv" class="hidden" id="file-bins" type="file"/>
-<input accept=".xlsx,.csv" class="hidden" id="file-upload-applied" type="file"/>
-<button aria-label="Delete Selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" id="btn-delete-selected">Delete Selected</button>
-</div>
-</div>
-<!-- Ops ribbon -->
-<div class="mt-3 bg-white border rounded-xl shadow p-3" id="ops-ribbon">
-<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
-<div class="flex gap-3">
-<div class="flex-1 border rounded-lg p-3">
-<div class="text-xs text-gray-500">Scans Today</div>
-<div class="text-2xl font-bold tabular-nums" id="ops-today">0</div>
-</div>
-<div class="flex-1 border rounded-lg p-3">
-<div class="text-xs text-gray-500">Last Hour</div>
-<div class="text-2xl font-bold tabular-nums" id="ops-hour">0</div>
-</div>
-</div>
-<div class="flex items-center gap-4 border rounded-lg p-3">
-<div id="ops-heart-small"></div>
-<div>
-<div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
-<div class="text-2xl font-bold tabular-nums" id="ops-rate">0</div>
-</div>
-</div>
-<div class="border rounded-lg p-3">
-<div class="text-sm font-semibold mb-1">Data Quality</div>
-<div class="flex items-center justify-between text-sm">
-<span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
-</div>
-<div class="flex items-center justify-between text-sm">
-<span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
-</div>
-<div class="text-xs text-gray-500 mt-2">Sync states</div>
-<div class="flex flex-wrap gap-2 mt-1" id="ops-sync-badges"></div>
-</div>
-<div class="border rounded-lg p-3">
-<div class="flex items-center justify-between">
-<div class="text-sm font-semibold">Alerts</div>
-<small class="text-gray-500">
-<span id="ops-last-updated">—</span>
-<span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
-<span class="w-2 h-2 rounded-full bg-gray-300" id="ops-dot"></span>SSE
+<section id="page-intake" class="hidden">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-5">
+          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
+            </svg>
+            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
+          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
+<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
+<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
+        </div>
+      </div>
+
+      <!-- Ops ribbon -->
+      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+          <div class="flex gap-3">
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Scans Today</div>
+              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Last Hour</div>
+              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 border rounded-lg p-3">
+            <div id="ops-heart-small"></div>
+            <div>
+              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
+              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="text-sm font-semibold mb-1">Data Quality</div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">Sync states</div>
+            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Alerts</div>
+              <small class="text-gray-500">
+                <span id="ops-last-updated">—</span>
+                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
+                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
                 </span>
-</small>
-</div>
-<ul aria-live="polite" class="list-disc ml-4 mt-1 text-sm" id="ops-alerts"><li class="text-gray-400">No alerts.</li></ul>
-</div>
-</div>
-</div>
-<!-- Intake Table -->
-<div class="mt-3 overflow-auto">
-<table class="w-full min-w-[1100px] border-collapse border">
-<thead class="bg-gray-100">
-<tr>
-<th class="th border px-2 py-1 text-left w-8"><input id="chk-all" type="checkbox"/></th>
-<th class="th border px-2 py-1 text-left">Date</th>
-<th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
-<th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
-<th class="th border px-2 py-1 text-left">PO_Number</th>
-<th class="th border px-2 py-1 text-left">SKU_Code</th>
-<th class="th border px-2 py-1 text-left">UID</th>
-<th class="th border px-2 py-1 text-center">Sync</th>
-</tr>
-</thead>
-<tbody id="intake-body"></tbody>
-</table>
-</div>
-<div class="mt-3">
-<button class="px-3 py-2 rounded-lg border text-sm" id="btn-add-row">Add Row</button>
-</div>
+              </small>
+            </div>
+            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intake Table -->
+      <div class="mt-3 overflow-auto">
+        <table class="w-full min-w-[1100px] border-collapse border">
+          <thead class="bg-gray-100">
+          <tr>
+            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
+            <th class="th border px-2 py-1 text-left">Date</th>
+            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
+            <th class="th border px-2 py-1 text-left">PO_Number</th>
+            <th class="th border px-2 py-1 text-left">SKU_Code</th>
+            <th class="th border px-2 py-1 text-left">UID</th>
+            <th class="th border px-2 py-1 text-center">Sync</th>
+          </tr>
+          </thead>
+          <tbody id="intake-body"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3">
+        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
+      </div>
+
 <!-- Quick Delete by UID -->
 <div class="mt-4 bg-white rounded-2xl border shadow p-4">
-<div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
-<p class="text-xs text-gray-500 mb-2">
+  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+  <p class="text-xs text-gray-500 mb-2">
     Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
   </p>
-<textarea class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2" id="uids-to-delete" placeholder="Paste UIDs here…" rows="3"></textarea>
-<div class="mt-2 flex items-center gap-2">
-<button class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700" id="btn-delete-uids">Delete UID(s)</button>
-<span class="text-xs text-gray-500" id="delete-uids-status"></span>
+  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
+  <div class="mt-2 flex items-center gap-2">
+    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
+    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
+  </div>
 </div>
-</div>
-</section>
-<script>
-    // ---------------------------
-    // ---------------------------
-// Small utilities (safe HTML, formatting)
-// ---------------------------
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+    </section>
 
-
-function firstTwoWords(name){
-  const s = String(name ?? '').trim();
-  if(!s) return '';
-  const parts = s.split(/\s+/).filter(Boolean);
-  return parts.slice(0,2).join(' ');
-}
-function fmt(n, digits = 0) {
-  const x = Number(n);
-  if (!isFinite(x)) return '0';
-  return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function pct(n, d, digits = 0) {
-  const nn = Number(n) || 0, dd = Number(d) || 0;
-  if (!dd) return '0%';
-  return (100 * nn / dd).toFixed(digits) + '%';
-}
-
-// Softer / matte palette for Ops insight bars
-const OPS_PLANNED_BG = 'rgb(55,65,81)'; // dark grey planned baseline // slate-400 @ 16% (matte)
-const OPS_PLANNED_FG = 'rgb(55,65,81)'; // dark grey legend dot // slate-400 @ 32%
-const OPS_RECEIVED_FG = 'rgb(240,215,49)'; // matte yellow for received // sky-400 @ 20% (soft)
-const OPS_APPLIED_OPACITY = '1'; // applied solid // applied overlay opacity (matte)
-
-// Bar row helper used by Ops insights (safe even if not used everywhere)
-function barRowHtml(label, val, denom, barColor) {
-  const v = Number(val) || 0, d = Number(denom) || 0;
-  const p = d > 0 ? Math.max(0, Math.min(100, 100 * v / d)) : 0;
-  const c = barColor || OPS_PLANNED_FG;
-  return `
-    <div class="flex items-center gap-3">
-      <div class="w-20 shrink-0 text-[11px] text-gray-500">${escapeHtml(label)}</div>
-      <div class="flex-1 h-2 rounded-full overflow-hidden" style="background:${OPS_PLANNED_BG};">
-        <div class="h-2 rounded-full" style="width:${p}%; background:${c};"></div>
+    <!-- ================= UID Intake ================= -->
+    <section id="page-intake" class="hidden">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-5">
+          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
+            </svg>
+            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
+          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
+<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
+<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
+          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
+        </div>
       </div>
-      <div class="w-24 text-right text-[11px] tabular-nums text-gray-700">${fmt(v)}</div>
+
+      <!-- Ops ribbon -->
+      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+          <div class="flex gap-3">
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Scans Today</div>
+              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+            <div class="flex-1 border rounded-lg p-3">
+              <div class="text-xs text-gray-500">Last Hour</div>
+              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 border rounded-lg p-3">
+            <div id="ops-heart-small"></div>
+            <div>
+              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
+              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
+            </div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="text-sm font-semibold mb-1">Data Quality</div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
+            </div>
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">Sync states</div>
+            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
+          </div>
+          <div class="border rounded-lg p-3">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Alerts</div>
+              <small class="text-gray-500">
+                <span id="ops-last-updated">—</span>
+                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
+                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
+                </span>
+              </small>
+            </div>
+            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Intake Table -->
+      <div class="mt-3 overflow-auto">
+        <table class="w-full min-w-[1100px] border-collapse border">
+          <thead class="bg-gray-100">
+          <tr>
+            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
+            <th class="th border px-2 py-1 text-left">Date</th>
+            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
+            <th class="th border px-2 py-1 text-left">PO_Number</th>
+            <th class="th border px-2 py-1 text-left">SKU_Code</th>
+            <th class="th border px-2 py-1 text-left">UID</th>
+            <th class="th border px-2 py-1 text-center">Sync</th>
+          </tr>
+          </thead>
+          <tbody id="intake-body"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3">
+        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
+      </div>
+
+<!-- Quick Delete by UID -->
+<div class="mt-4 bg-white rounded-2xl border shadow p-4">
+  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+  <p class="text-xs text-gray-500 mb-2">
+    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
+  </p>
+  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
+  <div class="mt-2 flex items-center gap-2">
+    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
+    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
+  </div>
+</div>
+    </section>
+
+<!-- ================= Executive (Client) ================= -->
+<section id="page-exec" class="hidden">
+  <div class="flex items-center justify-between mb-3">
+    <div>
+      <div class="text-2xl font-semibold">Executive Summary</div>
+      <div id="exec-sub" class="text-xs text-rose-900/70 mt-0.5"></div>
     </div>
-  `;
-}
-
-// Back-compat alias (older refactors called this progressHtml)
-function progressHtml(label, val, denom, barColor) {
-  return barRowHtml(label, val, denom, barColor);
-}
-
-// Single progress bar: received (soft) + applied (matte) over planned baseline
-function progressBarHtml(planned, received, applied) {
-  const p = Number(planned) || 0, r = Number(received) || 0, a = Number(applied) || 0;
-  const recPct = p > 0 ? Math.max(0, Math.min(100, 100 * r / p)) : 0;
-  const appPct = p > 0 ? Math.max(0, Math.min(100, 100 * a / p)) : 0;
-  return `
-    <div class="relative h-2.5 rounded-full overflow-hidden" style="background:${OPS_PLANNED_BG};">
-      <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
-      <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR}; opacity:${OPS_APPLIED_OPACITY};"></div>
+    <div class="flex items-center gap-2">
+      <button id="btn-exec-doc" class="cmd cmd--primary">Download .doc</button>
+      <button id="btn-exec-csv" class="cmd">PO×SKU CSV</button>
     </div>
-  `;
-}
+  </div>
+</section>
 
-function shortTwoWords(name) {
-      const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
-      const s = parts.slice(0, 2).join(' ');
-      return s || '—';
-    }
+<!-- ================= Flow ================= -->
+<section id="page-flow" class="hidden"></section>
+  </main>
+
+  <!-- Footer health pill (shows Applied this week) -->
+  <div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
+    <span id="health-pill" class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300">
+      <span id="health-dot" class="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+      Health: <span id="vo-health" class="ml-1">n/a</span>
+    </span>
+    <span id="vo-footer-text">Applied this week: 0</span>
+  </div>
+
+  <script>
   const BRAND = '#990033';
-  const APPLIED_COLOR = 'rgb(209,226,49)'; // same as cartons IN (ops-green) // matte green (soft) for applied
-  const PLANNED_COLOR = 'rgb(55,65,81)'; // dark grey for planned
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
   const $ = (s)=>document.querySelector(s);
@@ -628,7 +595,7 @@ const BASE_BPM = 40;
   const tzShort = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
     .formatToParts(d)
     .find(p => p.type === 'timeZoneName')?.value || '';
-      const __el_vo_today = document.getElementById('vo-today'); if(__el_vo_today) __el_vo_today.textContent = `${month} ${day} ${year} • ${tzShort}`;
+  $('#vo-today').textContent = `${month} ${day} ${year} • ${tzShort}`;
 })();
 const iso = (d) => {
   const x = new Date(d);
@@ -692,7 +659,39 @@ function createHeart(size=24, color=BRAND, bpm=40){
   return svg;
 }
   // API helpers
-  const state={weekStart:'', plan:[], records:[], opsView:'overview', weekCartonsIn:0, weekCartonsOut:0};
+  const state={weekStart:'', plan:[], records:[]};
+
+  // ---- lightweight fetch cache (prevents repeated 150k pulls) ----
+  // Many views reuse the same /records payload. When the browser/network is shaky,
+  // repeated large downloads create lag. This cache de-dupes in-flight requests
+  // and reuses results for a short TTL.
+  const __fetchCache = new Map(); // url -> { ts, data, promise }
+  async function fetchJSONCached(url, ttlMs = 15000) {
+    const now = Date.now();
+    const hit = __fetchCache.get(url);
+
+    if (hit) {
+      if (hit.data && (now - hit.ts) < ttlMs) return hit.data;
+      if (hit.promise) return hit.promise;
+    }
+
+    const prom = fetch(url, { cache: 'no-store' })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await r.text());
+        return r.json();
+      })
+      .then((data) => {
+        __fetchCache.set(url, { ts: Date.now(), data, promise: null });
+        return data;
+      })
+      .catch((err) => {
+        __fetchCache.delete(url);
+        throw err;
+      });
+
+    __fetchCache.set(url, { ts: now, data: hit ? hit.data : null, promise: prom });
+    return prom;
+  }
 
   async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
   async function fetchPlan(w){
@@ -704,8 +703,7 @@ function createHeart(size=24, color=BRAND, bpm=40){
   }
 }
 
-  // Summary-first: dashboards never pull raw /records.
-  async function fetchSummary(fromYMD, toYMD, status='complete'){
+async function fetchSummary(fromYMD, toYMD, status='complete'){
     try{
       const q = new URLSearchParams();
       if(fromYMD) q.set('from', fromYMD);
@@ -718,51 +716,6 @@ function createHeart(size=24, color=BRAND, bpm=40){
     }
   }
 
-
-  // Fallback: pull raw records (used only if /records/summary is unavailable)
-  async function fetchRecordsRange(fromYMD, toYMD, status='complete', limit=200000){
-    try{
-      const q = new URLSearchParams();
-      if(status) q.set('status', status);
-      if(fromYMD) q.set('from', fromYMD);
-      if(toYMD) q.set('to', toYMD);
-      q.set('limit', String(limit));
-      const r = await api(`/records?${q.toString()}`);
-      // API sometimes returns {records:[...]}
-      if(Array.isArray(r)) return r;
-      if(Array.isArray(r?.records)) return r.records;
-      return [];
-    }catch{ return []; }
-  }
-
-  function buildSummaryFromRaw(records){
-    const byPO = new Map();
-    let total = 0;
-    for(const r of (records||[])){
-      if(!r) continue;
-      if(r.status && r.status !== 'complete') continue;
-      const po = String(r.po_number||r.po||'').trim();
-      if(!po) continue;
-      byPO.set(po, (byPO.get(po)||0) + 1);
-      total += 1;
-    }
-    const by_po = Array.from(byPO.entries()).map(([po, units]) => ({po, units}));
-    return { by_po, total_units: total };
-  }
-
-
-  // --- Fetch bins for a week (business week start) ---
-async function fetchBins(ws) {
-  if (!apiBase) return [];
-  try {
-    const r = await api(`/bins/weeks/${ws}`);
-    return Array.isArray(r) ? r : (r.bins || []);
-  } catch {
-    return [];
-  }
-}
-
-// --- Fetch receiving rows for a week (used to estimate cartons-in and "approx received units") ---
 async function fetchReceiving(ws) {
   if (!apiBase) return [];
   try {
@@ -774,6 +727,41 @@ async function fetchReceiving(ws) {
   }
 }
 
+
+
+async function fetchActualsAll(){
+  if (!apiBase) return [];
+  try {
+    const d = await fetchJSONCached(`${apiBase}/records?limit=65000`, 20000);
+    return (d && d.records) || [];
+  } catch {
+    return [];
+  }
+}
+
+// Shared snapshot for all /records consumers.
+// IMPORTANT: Keep the URL identical everywhere so fetchJSONCached can de-dupe.
+async function getRecordsSnapshot(ttlMs = 15000) {
+  if (!apiBase) return [];
+  try {
+    const d = await fetchJSONCached(`${apiBase}/records?limit=65000`, ttlMs);
+    return (d && d.records) || [];
+  } catch {
+    return [];
+  }
+}
+  async function fetchActuals(f,t){ if(!apiBase) return []; try{const d=await api(`/records?from=${f}&to=${t}&status=complete&limit=65000`); return d.records||[];}catch{return [];} }
+
+// --- Fetch bins for a week (business week start) ---
+async function fetchBins(ws) {
+  if (!apiBase) return [];
+  try {
+    const r = await api(`/bins/weeks/${ws}?limit=65000`);
+    return Array.isArray(r) ? r : (r.bins || []);
+  } catch {
+    return [];
+  }
+}
 
 // --- Compute bin QA (cross-check with applied records) ---
 function computeBinQA(ws, records=[], bins=[]) {
@@ -882,7 +870,7 @@ function computeBinQA(ws, records=[], bins=[]) {
     el.className = 'wkcap bg-white hover:scale-[1.02] transition';
     el.style.borderColor = (id === state.weekStart ? BRAND : 'rgba(0,0,0,.12)');
     el.innerHTML = `
-      <div class="m" style="color:${id === state.weekStart ? BRAND : '#D1E231'}">${mon}</div>
+      <div class="m" style="color:${id === state.weekStart ? BRAND : '#6b7280'}">${mon}</div>
       <div class="d">${day}</div>
       <div class="t" id="cap-total-${id}">${fmtInt(stats.planned || 0)}</div>
       <div class="bar"><div id="cap-bar-${id}"></div></div>
@@ -900,27 +888,7 @@ function computeBinQA(ws, records=[], bins=[]) {
 }
 
   // ---------- Aggregations ----------
-  // aggregate() supports:
-  // 1) raw records: { status:'complete', po_number, sku_code }
-  // 2) summary rows: { po, units } (from /records/summary by_po)
-  function aggregate(rows){
-    const byPO=new Map(),bySKU=new Map();
-    for(const r of (rows||[])){
-      if(!r) continue;
-      // summary row
-      if(('po' in r) && ('units' in r) && !('po_number' in r)){
-        const po=String(r.po||'').trim();
-        const u=Number(r.units||0)||0;
-        if(po) byPO.set(po,(byPO.get(po)||0)+u);
-        continue;
-      }
-      if(r.status!=='complete') continue;
-      const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim();
-      if(po) byPO.set(po,(byPO.get(po)||0)+1);
-      if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);
-    }
-    return {byPO,bySKU};
-  }
+  function aggregate(records){const byPO=new Map(),bySKU=new Map(); for(const r of records){ if(r.status!=='complete') continue; const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim(); if(po) byPO.set(po,(byPO.get(po)||0)+1); if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);} return {byPO,bySKU};}
   function joinPOProgress(plan, byPO){
     const map=new Map();
     for(const p of plan||[]){ const po=String(p.po_number||'').trim(); if(!po) continue; const rec=map.get(po)||{due:p.due_date,planned:0,applied:0}; rec.planned+=toNum(p.target_qty); if(rec.due!==p.due_date) rec.due = rec.due < p.due_date ? rec.due : p.due_date; map.set(po,rec); }
@@ -975,7 +943,12 @@ function computeBinQA(ws, records=[], bins=[]) {
     if(__el_vo_footer_text) __el_vo_footer_text.textContent = `Applied this week: ${fmtInt(appliedWeek)}`;
   }
 
-
+  // ---------- Downloads ----------
+  function toCSV(header,rows){
+    const esc=v=>{v=String(v??''); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v;}
+    const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
+    return '\ufeff'+head+'\r\n'+body+'\r\n';
+  }
 function buildDiscrepancyPOSKU(plan, records){
 const byPS=new Map();
 const binsByPS=new Map();
@@ -1266,24 +1239,42 @@ async function downloadAppliedWeek() {
   weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
-  if (!apiBase) {
-    alert('API not configured');
+  // Risk-averse: export exactly what Ops is already using for this week
+  const records = (state.records || []).filter(r => r.status === 'complete');
+
+
+  if (!records.length) {
+    alert('No applied UIDs found for this week.');
     return;
   }
 
-  // At scale, never build this CSV in the browser.
-  // Stream it from the server (fast + safe for 2M+ rows).
-  const url = `${apiBase}/export/applied?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete`;
+  // Build export-friendly rows
+  const rows = records.map(r => ({
+    'Date Applied': toUI(r.date_local),
+    'Mobile Bin': r.mobile_bin || '',
+    'SSCC Label': r.sscc_label || '',
+    'PO Number': r.po_number || '',
+    'SKU Code': r.sku_code || '',
+    'UID': r.uid || ''
+  }));
 
-  // Use a temporary <a> so the browser downloads the file without navigating away.
+  // Convert to CSV (simple)
+  const header = Object.keys(rows[0]);
+  const esc = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
+  const csv =
+    '\ufeff' +
+    header.join(',') +
+    '\r\n' +
+    rows.map(r => header.map(h => esc(r[h])).join(',')).join('\r\n');
+
+  // Download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
-  a.href = url;
+  a.href = URL.createObjectURL(blob);
   a.download = `Applied_UIDs_${ws}_to_${we}.csv`;
-  document.body.appendChild(a);
   a.click();
-  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 250);
 }
-
 
   function buildExecHTML({
   ws, we,
@@ -1348,25 +1339,25 @@ async function downloadAppliedWeek() {
 
   <div>
     <h1>VAS Weekly Executive Summary</h1>
-    <div style="color:#555;font-size:11px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
+    <div style="color:#555;font-size:12px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
 
     <!-- KPIs -->
     <table class="kpi">
       <tr>
         <td>
-          <div style="font-size:11px;color:#666;margin-bottom:4px">Planned</div>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Planned</div>
           <div style="font-size:20px;font-weight:700">${plannedTotal.toLocaleString()}</div>
         </td>
         <td>
-          <div style="font-size:11px;color:#666;margin-bottom:4px">Applied</div>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Applied</div>
           <div style="font-size:20px;font-weight:700">${appliedTotal.toLocaleString()}</div>
         </td>
         <td>
-          <div style="font-size:11px;color:#666;margin-bottom:4px">Completion</div>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Completion</div>
           <div style="font-size:20px;font-weight:700">${pct}%</div>
         </td>
         <td>
-          <div style="font-size:11px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
+          <div style="font-size:12px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
           <div style="font-size:20px;font-weight:700">${uniqueBins.toLocaleString()}</div>
         </td>
       </tr>
@@ -1477,7 +1468,7 @@ function facilityBarHTML(applied, planned) {
   return `
     <div class="w-full">
       <div class="h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full" style="background-color:${APPLIED_COLOR};width:${(ratio * 100).toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
       </div>
       <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
         <div class="tabular-nums">${fmtInt(a)} applied</div>
@@ -1533,7 +1524,7 @@ function freightLanesHTML(plannedMap, appliedMap) {
             <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
           </div>
           <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
-            <div class="h-full" style="background-color:${APPLIED_COLOR};width:${(ratio * 100).toFixed(1)}%"></div>
+            <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
           </div>
         </div>
       </div>
@@ -1565,7 +1556,7 @@ function zendeskBulletHTML(applied, planned) {
         ${over ? `<span class="ml-2 text-gray-900 font-semibold tabular-nums">Over by ${fmtInt(over)}</span>` : ``}
       </div>
       <div class="relative h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full" style="background-color:${APPLIED_COLOR};width:${appliedPct.toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:#990033;width:${appliedPct.toFixed(1)}%"></div>
         <div class="absolute top-[-2px] bottom-[-2px] w-[2px] bg-gray-700"
              style="left:${markerPct.toFixed(1)}%"></div>
       </div>
@@ -1582,32 +1573,16 @@ function renderProgressTiles(plan = [], records = []) {
   const tilesRoot = document.getElementById('ops-progress-tiles');
   if (!tilesRoot) return;
 
-  // Support two modes:
-  // 1) Raw records: [{status, po_number, sku_code, ...}]
-  // 2) Summary-by-PO (preferred at scale): [{po, units, cartons_out?}]
-  const sample = (records || [])[0] || null;
-  const isSummaryByPO = Boolean(sample && ('po' in sample) && ('units' in sample) && !('po_number' in sample));
+  // Only count "applied" as completed units
+  const completed = (records || []).filter(r => r.status === 'complete');
 
-  // Only count "applied" as completed units (raw mode)
-  const completed = isSummaryByPO ? [] : (records || []).filter(r => r.status === 'complete');
-
-  // Index plan by PO+SKU so we can map completed records to their plan metadata (raw mode)
+  // Index plan by PO+SKU so we can map completed records to their plan metadata
   const planByKey = new Map();
   for (const p of plan || []) {
     const po = String(p.po_number || '').trim();
     const sku = String(p.sku_code || '').trim();
     if (!po || !sku) continue;
     planByKey.set(`${po}|||${sku}`, p);
-  }
-
-  // In summary-by-PO mode, we need PO -> meta (supplier/facility/freight/zendesk)
-  const metaByPO = new Map();
-  if (isSummaryByPO) {
-    for (const p of plan || []) {
-      const po = String(p.po_number || '').trim();
-      if (!po || metaByPO.has(po)) continue;
-      metaByPO.set(po, p);
-    }
   }
 
   // Helper: normalize display values (blank -> (Unspecified))
@@ -1626,28 +1601,17 @@ function renderProgressTiles(plan = [], records = []) {
     return m;
   }
 
-  // Build applied totals by field value
+  // Build applied totals by field value by looking up each completed record's plan row
   function appliedByField(field) {
     const m = new Map();
-    if (isSummaryByPO) {
-      for (const r of records || []) {
-        const po = String(r.po || '').trim();
-        const u = Number(r.units || 0) || 0;
-        if (!po || u <= 0) continue;
-        const p = metaByPO.get(po);
-        const key = normVal(p?.[field]);
-        m.set(key, (m.get(key) || 0) + u);
-      }
-    } else {
-      for (const r of completed) {
-        const po = String(r.po_number || '').trim();
-        const sku = String(r.sku_code || '').trim();
-        if (!po || !sku) continue;
+    for (const r of completed) {
+      const po = String(r.po_number || '').trim();
+      const sku = String(r.sku_code || '').trim();
+      if (!po || !sku) continue;
 
-        const p = planByKey.get(`${po}|||${sku}`);
-        const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
-        m.set(key, (m.get(key) || 0) + 1);
-      }
+      const p = planByKey.get(`${po}|||${sku}`);
+      const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
+      m.set(key, (m.get(key) || 0) + 1);
     }
     return m;
   }
@@ -1786,36 +1750,21 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const clamp01 = n => (n < 1 ? 1 : n);
 
   // --- applied aggregates (this week window only) ---
-  const rows = Array.isArray(records) ? records : [];
-  const isSummary = rows.length && ('po' in (rows[0] || {})) && ('units' in (rows[0] || {})) && !('po_number' in (rows[0] || {}));
-
-  let weekRows = [];
-  if (isSummary) {
-    // In summary-only mode, "records" is actually /records/summary.by_po already scoped to the week.
-    weekRows = rows;
-  } else {
-    const inWeek = (r) => {
-      if (!r || r.status !== 'complete') return false;
-      const dl = toISODate(r.date_local);
-      return dl && dl >= ws && dl <= we;
-    };
-    weekRows = rows.filter(inWeek);
-  }
+  const inWeek = (r) => {
+  if (r.status !== 'complete') return false;
+  const dl = toISODate(r.date_local);   // normalize to YYYY-MM-DD
+  return dl && dl >= ws && dl <= we;
+};
+  const weekRecords = (records || []).filter(inWeek);
 
   // per-PO & per-SKU counts in week
   const appliedPO  = new Map();
   const appliedSKU = new Map();
-  for (const r of weekRows) {
-    if (isSummary) {
-      const po = String(r.po || '').trim();
-      const u = Number(r.units || 0) || 0;
-      if (po) appliedPO.set(po, (appliedPO.get(po) || 0) + u);
-    } else {
-      const po  = String(r.po_number||'').trim();
-      const sku = String(r.sku_code||'').trim();
-      if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
-      if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
-    }
+  for (const r of weekRecords) {
+    const po  = String(r.po_number||'').trim();
+    const sku = String(r.sku_code||'').trim();
+    if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
+    if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
   }
 
   // --- plan aggregates (planned totals & earliest due) ---
@@ -1862,46 +1811,40 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const prioritySKU = buildPriority(planSKU, appliedSKU, 'sku');
 
 
-// --- Mobile bins / Duplicate UIDs ---
-// These require raw records. In summary-only mode we skip these insights.
-const binsWeek = new Set();
-const binsByDiversity = [];
-let dupScanCount = 0;
-let dupPairs = [];
-let dupExamples = [];
+// --- Mobile bins: unique (this week) + top 5 by SKU diversity (this week) ---
+const binsWeek = new Set(
+  (weekRecords || [])
+    .map(r => String(r.mobile_bin || '').trim())
+    .filter(Boolean)
+);
 
-if (!isSummary) {
-  // Mobile bins: unique (this week) + top 5 by SKU diversity (this week)
-  for (const r of (weekRows || [])) {
-    const bin = String(r.mobile_bin || '').trim();
-    if (bin) binsWeek.add(bin);
-  }
+// diversity across the week: bin -> set(sku)
+const binSkuSet = new Map();
+for (const r of weekRecords) {
+  const bin = String(r.mobile_bin || '').trim();
+  const sku = String(r.sku_code  || '').trim();
+  if (!bin || !sku) continue;
+  if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+  binSkuSet.get(bin).add(sku);
+}
 
-  // diversity across the week: bin -> set(sku)
-  const binSkuSet = new Map();
-  for (const r of (weekRows || [])) {
-    const bin = String(r.mobile_bin || '').trim();
-    const sku = String(r.sku_code  || '').trim();
-    if (!bin || !sku) continue;
-    if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
-    binSkuSet.get(bin).add(sku);
-  }
-  binsByDiversity.push(
-    ...Array.from(binSkuSet.entries())
-      .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
-      .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
-      .slice(0, 5)
-  );
+const binsByDiversity = Array.from(binSkuSet.entries())
+  .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
+  .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
+  .slice(0, 5);
 
-  // Duplicate UID detection (this week)
+  // --- Duplicate UID detection (this week) ---
+  // “Duplicate” is defined as the same (SKU, UID) appearing more than once
   const pairCounts = new Map();
-  for (const r of (weekRows || [])) {
+  for (const r of weekRecords) {
     const sku = String(r.sku_code||'').trim();
     const uid = String(r.uid||'').trim();
     if (!sku || !uid) continue;
     const k = `${sku}||${uid}`;
     pairCounts.set(k, (pairCounts.get(k)||0) + 1);
   }
+  let dupScanCount = 0;
+  const dupPairs = [];
   for (const [k, c] of pairCounts.entries()) {
     if (c > 1) {
       const [sku, uid] = k.split('||');
@@ -1910,14 +1853,11 @@ if (!isSummary) {
     }
   }
   dupPairs.sort((a,b)=> b.count - a.count);
-  dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
-}
+  const dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
 
   // --- Pace calculations (week + due-in-3-days horizon) ---
   const daysElapsed       = clamp01(7 - clamp01(dayDiff(ws, today) * -1));
-  const appliedSoFar      = isSummary
-    ? Array.from(appliedPO.values()).reduce((s, v) => s + (Number(v) || 0), 0)
-    : (weekRows || []).length;
+  const appliedSoFar      = weekRecords.length;
   const avgPerDaySoFar    = Math.round(appliedSoFar / daysElapsed);
   const daysLeftInWeek    = clamp01(dayDiff(we, today) + 1);
   const remainingWeek     = Math.max(0, plannedTotal - appliedSoFar);
@@ -1990,9 +1930,34 @@ if (binsByDiversity.length) {
   if (mini) mini.textContent = `Applied so far: ${appliedSoFar.toLocaleString()} • Remaining: ${remainingWeek.toLocaleString()}`;
 }
 
+async function fetchActualsInWeek(ws, we) {
 
+  if (!apiBase) return [];
+  try {
+    // get everything, we’ll filter locally
+    const d = await fetchJSONCached(`${apiBase}/records?limit=65000`, 20000);
+    const all = (d && d.records) || [];
 
-function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate() + 6); return iso(d); }
+    const startTs = new Date(ws + 'T00:00:00Z').getTime();
+    const endTs   = startTs + 7 * 86400000;
+
+    return all.filter(r => {
+      if (r.status !== 'complete') return false;
+      // Prefer the business date
+      if (r.date_local && r.date_local >= ws && r.date_local <= we) return true;
+      // Fallback to completion timestamp if date_local missing
+      if (r.completed_at) {
+        const t = new Date(r.completed_at).getTime();
+        return t >= startTs && t < endTs;
+      }
+      return false;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate()+6); return iso(d); }
 
 function inWeekByDateLocal(r, ws){
   if (!r || r.status !== 'complete') return false;
@@ -2005,7 +1970,7 @@ function inWeekByCompletedAt(r, ws){
   if (!r || r.status !== 'complete' || !r.completed_at) return false;
   const ymd = ymdFromCompletedAtInTZ(r.completed_at); // business-day bucket
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-  const we  = iso(weD); // NOTE: 'to' is treated as exclusive in most endpoints
+  const we  = iso(weD);
   return ymd && ymd >= ws && ymd <= we;
 }
 
@@ -2323,11 +2288,8 @@ document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
     } catch (e) {}
 };
 
-
   // ---------- Plan upload / zero (unchanged) ----------
-  const __btnUploadPlan = $('#btn-upload-plan');
-  const __filePlan = $('#file-plan');
-  if(__btnUploadPlan && __filePlan) __btnUploadPlan.onclick=()=>__filePlan.click();
+  $('#btn-upload-plan').onclick=()=>$('#file-plan').click();
 $('#file-plan').addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
   e.target.value = '';
@@ -2408,8 +2370,7 @@ if (!putRes.ok) {
   alert(`Plan uploaded: ${items.length} rows`);
   setWeek(weekStart);
 });
-  const __btnZeroPlan = $('#btn-zero-plan');
-  if(__btnZeroPlan) __btnZeroPlan.onclick=async()=>{
+  $('#btn-zero-plan').onclick=async()=>{
     if(!apiBase) return alert('API not configured');
     const ws=$('#week-start').value;
     try{
@@ -2768,47 +2729,25 @@ const items = rows.map(normRow).filter(r=>r.po_number && r.sku_code && (r.uid!==
 async function loadOpsMetrics() {
   if (!apiBase) return;
   try {
-    // Fetch all recent completed records, up to 50k
-    const rows = await getRecordsSnapshot(15000);
+    // Summary-first: tiny endpoint backed by indexed queries.
+    const stats = await api(`/summary/ops`);
+    const scansToday = Number(stats?.scans_today || 0);
+    const lastHour   = Number(stats?.last_hour || 0);
+    const rate30m    = Number(stats?.last_30m || 0);
+    const drafts     = Number(stats?.drafts || 0);
+    const dupes      = Number(stats?.dupes || 0);
+    const syncCounts = (stats && typeof stats.sync_counts === 'object' && stats.sync_counts) ? stats.sync_counts : {};
 
-    const now = Date.now();
-    const startToday = new Date();
-    startToday.setHours(0, 0, 0, 0);
-    const hourAgo = now - 3600e3;
-    const halfAgo = now - 1800e3;
-
-    let scansToday = 0, lastHour = 0, rate = 0, drafts = 0, dupes = 0;
-    const syncCounts = {}, seen = new Set();
-
-    for (const r of rows) {
-      const ct = r.completed_at ? new Date(r.completed_at).getTime() : null;
-      const todayByCompletion = !!ct && ct >= startToday.getTime();
-
-      if (r.status === 'complete') {
-        if (todayByCompletion) scansToday++;
-        if (ct && ct >= hourAgo) lastHour++;
-        if (ct && ct >= halfAgo) rate++;
-        if (r.sku_code && r.uid) {
-          const k = r.sku_code + '|' + r.uid;
-          if (seen.has(k)) dupes++;
-          else seen.add(k);
-        }
-      } else drafts++;
-
-      const s = r.sync_state || 'unknown';
-      syncCounts[s] = (syncCounts[s] || 0) + 1;
-    }
-
-    $('#ops-today').textContent = scansToday.toLocaleString();
-    $('#ops-hour').textContent = lastHour.toLocaleString();
-    $('#ops-rate').textContent = (rate * 2).toLocaleString();
-    $('#ops-drafts').textContent = drafts.toLocaleString();
-    $('#ops-dupes').textContent = dupes.toLocaleString();
-    $('#ops-last-updated').textContent = new Date().toLocaleTimeString();
+      const __el_ops_today = document.getElementById('ops-today'); if(__el_ops_today) __el_ops_today.textContent = scansToday.toLocaleString();
+      const __el_ops_hour = document.getElementById('ops-hour'); if(__el_ops_hour) __el_ops_hour.textContent = lastHour.toLocaleString();
+      const __el_ops_rate = document.getElementById('ops-rate'); if(__el_ops_rate) __el_ops_rate.textContent = (rate30m * 2).toLocaleString();
+      const __el_ops_drafts = document.getElementById('ops-drafts'); if(__el_ops_drafts) __el_ops_drafts.textContent = drafts.toLocaleString();
+      const __el_ops_dupes = document.getElementById('ops-dupes'); if(__el_ops_dupes) __el_ops_dupes.textContent = dupes.toLocaleString();
+      const __el_ops_last_updated = document.getElementById('ops-last-updated'); if(__el_ops_last_updated) __el_ops_last_updated.textContent = new Date().toLocaleTimeString();
 
     // Pulse animation + hearts
-    const bpm = Math.max(40, Math.min(200, rate * 2));
-    $('#intake-bpm').textContent = bpm;
+    const bpm = Math.max(40, Math.min(200, rate30m * 2));
+      const __el_intake_bpm = document.getElementById('intake-bpm'); if(__el_intake_bpm) __el_intake_bpm.textContent = bpm;
 
     const small = $('#ops-heart-small');
     if (small) {
@@ -2820,9 +2759,9 @@ async function loadOpsMetrics() {
     if (big) {
       big.innerHTML = '';
       big.appendChild(createHeart(24, BRAND, bpm));
-      $('#ops-bpm').textContent = bpm;
+      const __el_ops_bpm = document.getElementById('ops-bpm'); if(__el_ops_bpm) __el_ops_bpm.textContent = bpm;
       const delta = bpm - 40;
-      $('#ops-extra').textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
+      const __el_ops_extra = document.getElementById('ops-extra'); if(__el_ops_extra) __el_ops_extra.textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
     }
 
     const wrap = $('#ops-sync-badges');
@@ -2835,7 +2774,7 @@ async function loadOpsMetrics() {
           span.className =
             'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
             (name === 'synced'
-              ? 'border-green-200 bg-green-50 text-green-700'
+              ? 'border-green-200 ops-bg-planned-soft text-green-700'
               : name === 'pending'
               ? 'border-amber-200 bg-amber-50 text-amber-700'
               : 'border-gray-200 bg-gray-50 text-gray-700');
@@ -2853,9 +2792,12 @@ async function loadOpsMetrics() {
       );
     if (dupes > 0)
       alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
-    $('#ops-alerts').innerHTML = alerts.length
-      ? alerts.map((t) => `<li>${t}</li>`).join('')
-      : '<li class="text-gray-400">No alerts.</li>';
+        const __opsAlertsEl = $('#ops-alerts');
+    if (__opsAlertsEl) {
+      __opsAlertsEl.innerHTML = alerts.length
+        ? alerts.map((t) => '<li>' + t + '</li>').join('')
+        : '<li class="text-gray-400">No alerts.</li>';
+    }
   } catch (e) {
     console.warn('Ops ribbon metrics load failed:', e);
   }
@@ -2911,11 +2853,11 @@ async function loadOpsMetrics() {
     if(!apiBase) return;
     try{
       const ev=new EventSource(`${apiBase}/events/scan`);
-      $('#ops-dot')?.classList.replace('bg-gray-300','bg-green-500');
+      $('#ops-dot')?.classList.replace('bg-gray-300','ops-bar-planned');
       ev.onmessage=()=>{ scheduleOpsRefresh(); };
       ev.onerror = ()=>{
         try{ev.close();}catch{}
-        $('#ops-dot')?.classList.replace('bg-green-500','bg-amber-500');
+        $('#ops-dot')?.classList.replace('ops-bar-planned','bg-amber-500');
         setTimeout(startSSE,3000);
       };
 
@@ -2923,7 +2865,7 @@ async function loadOpsMetrics() {
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) scheduleOpsRefresh();
       });
-    }catch{}
+    }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
   }
 
 
@@ -2934,28 +2876,344 @@ async function refreshDashboardTotals(){
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
   const we  = iso(weD);
 
-  const all = await getRecordsSnapshot(15000);
-
-  const inWeek = all.filter(r => {
-    if (r.status !== 'complete') return false;
-    if (r.completed_at) {
-      const ymd = ymdFromCompletedAtInTZ(r.completed_at); // CN business day
-      return ymd >= ws && ymd <= we;
-    }
-    // Fallback: use provided date_local (already Y-M-D)
-    const dl = toISODate(r.date_local);
-    return dl && dl >= ws && dl <= we;
-  });
-
-  const appliedTotal = inWeek.length;
+  const summary = await fetchSummary(ws, we, 'complete');
+  const summaryReceived = await fetchSummary(ws, we, 'received');
+  state._summary_complete = summary;
+  state._summary_received = summaryReceived;
+  const appliedTotal = Number(summary?.total_units || 0);
   const plannedTotal = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
   const pct = plannedTotal>0?Math.round(appliedTotal*100/plannedTotal):(state.plan.length?0:100);
+  // Week totals side panel (Ops)
+  try{
+    
+const poPlanned = new Set((state.plan||[]).map(p=>String(p.po_number||'').trim()).filter(Boolean));
 
-  $('#planned-total').textContent = plannedTotal.toLocaleString();
-  $('#applied-total').textContent = appliedTotal.toLocaleString();
-  $('#pct-week').textContent = pct+'%';
-  $('#avg-week').textContent = appliedTotal.toLocaleString();
-  $('#avg-day').textContent = Math.round((appliedTotal||0)/7).toLocaleString();
+// Normalize /records/summary by_po which can be either:
+//  - object keyed by PO: { "WACA000123": {..}, ... }
+//  - array of rows:      [ {po_number:"WACA000123", ..}, ... ]
+const normByPO = (by_po) => {
+  const map = {};
+  const list = [];
+  if (Array.isArray(by_po)){
+    for (const it of by_po){
+      if(!it) continue;
+      const po = String(it.po_number ?? it.po ?? it.poNumber ?? it.po_id ?? it.key ?? '').trim();
+      if (po) map[po] = it;
+      list.push(it);
+    }
+  } else if (by_po && typeof by_po === 'object'){
+    for (const [k,v] of Object.entries(by_po)){
+      if(!v) continue;
+      const po = String(k||'').trim();
+      if (po) map[po] = v;
+      list.push(v);
+    }
+  }
+  return { map, list };
+};
+
+const recvNorm = normByPO(summaryReceived?.by_po);
+const compNorm = normByPO(summary?.by_po);
+
+const byPORecv = recvNorm.map;
+const byPORecvList = recvNorm.list;
+const byPOCompList = compNorm.list;
+
+let poReceived = new Set(Object.keys(byPORecv));
+// Fallback: derive received POs from /receiving endpoint if summary received is empty
+if(poReceived.size===0 && Array.isArray(state.receiving)){
+  for(const r of state.receiving){
+    const po = String(r?.po_number ?? r?.po ?? r?.poNumber ?? r?.po_id ?? '').trim();
+    const ci = Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
+    if(po && ci>0) poReceived.add(po);
+  }
+}
+
+
+    const appliedTotal2 = Number(summary?.total_units || 0);
+
+    // Approximate received units using cartons-in by PO (same principle as Flow):
+    // - If planned cartons are available, scale planned units by cartons_in / planned_cartons.
+    // - If planned cartons are missing, treat any cartons_in>0 as fully received (planned units).
+    let receivedTotal = 0;
+    for (const p of (state.plan||[])){
+      const po = String(p.po_number||'').trim();
+      if(!po) continue;
+      const planned = toNum(p.target_qty);
+      const plannedCartons = toNum(p.planned_cartons ?? p.cartons_planned ?? p.planned_carton_count ?? p.planned_cartons_count);
+      const cartonsInPO = toNum(byPORecv[po]?.cartons_in ?? byPORecv[po]?.cartons_out);
+      if(planned<=0) continue;
+      if(plannedCartons>0){
+        const ratio = Math.min(1, cartonsInPO / plannedCartons);
+        receivedTotal += planned * ratio;
+      } else if(cartonsInPO>0){
+        receivedTotal += planned;
+      }
+    }
+    receivedTotal = Math.round(receivedTotal);
+
+    const unitOf = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
+    };
+
+    
+const getCartonsIn = (o) => {
+  if(!o) return 0;
+  const v = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
+  const v2 = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
+  return Number(v ?? v2) || 0;
+};
+const getCartonsOut = (o) => {
+  if(!o) return 0;
+  const v = (o.cartons_out ?? o.cartonsOut ?? o.cartons_complete ?? o.ready_cartons ?? o.bins_out ?? o.mobile_bins_out);
+  const v2 = (o.cartons_in ?? o.cartonsIn ?? o.cartons_received ?? o.received_cartons ?? o.cartons ?? o.bin_count ?? o.bins ?? o.mobile_bins);
+  return Number(v ?? v2) || 0;
+};
+
+// Cartons IN from RECEIVED status summary (shape-safe)
+const cartonsIn  = byPORecvList.reduce((s,o)=> s + getCartonsIn(o), 0);
+// Cartons OUT from COMPLETE status summary (shape-safe)
+const cartonsOut = byPOCompList.reduce((s,o)=> s + getCartonsOut(o), 0);
+// If summary doesn't expose carton fields (common), fall back to raw records:
+// we approximate cartons as UNIQUE mobile_bin counts for the week.
+let cartonsInFinal = cartonsIn;
+let cartonsOutFinal = cartonsOut;
+
+const summaryHasAnyCartonField = (list, getter) => (list||[]).some(o => {
+  if(!o) return false;
+  return (o.cartons_in!=null || o.cartons_out!=null || o.cartonsIn!=null || o.cartonsOut!=null ||
+          o.bin_count!=null || o.bins!=null || o.mobile_bins!=null || o.mobile_bin_count!=null ||
+          o.mobile_bins_out!=null || o.bins_out!=null || o.cartons!=null);
+});
+
+const recvHasCartons = summaryHasAnyCartonField(byPORecvList, getCartonsIn);
+const compHasCartons = summaryHasAnyCartonField(byPOCompList, getCartonsOut);
+
+if((!recvHasCartons && cartonsInFinal===0) || (!compHasCartons && cartonsOutFinal===0)){
+  try{
+    // Prefer /receiving for cartons-in when summary doesn't provide carton fields
+    if(!recvHasCartons && cartonsInFinal===0 && Array.isArray(state.receiving) && state.receiving.length){
+      let s=0;
+      for(const r of state.receiving){
+        s += Number(r?.cartons_in ?? r?.cartonsIn ?? r?.cartons_received ?? r?.cartonsReceived ?? r?.cartons ?? r?.carton_count ?? r?.cartons_received ?? r?.received_cartons ?? 0) || 0;
+      }
+      if(s>0) cartonsInFinal = s;
+    }
+
+    // /records (bins) is already loaded for this week; use it for cartons-out as unique bins if summary doesn't provide it
+    if(!compHasCartons && cartonsOutFinal===0 && Array.isArray(state.bins) && state.bins.length){
+      const set = new Set();
+      for(const row of state.bins){
+        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
+        if(b) set.add(b);
+      }
+      if(set.size>0) cartonsOutFinal = set.size;
+    }
+
+    const fetchAllRecords = async (status) => {
+      const u = `${apiBase}/records?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=${encodeURIComponent(status)}&limit=250000`;
+      const r = await fetch(u);
+      if(!r.ok) throw new Error(`records ${status} ${r.status}`);
+      const j = await r.json();
+      return j?.records || j?.data || j || [];
+    };
+
+    const uniqueBins = (rows) => {
+      const set = new Set();
+      for(const row of (rows||[])){
+        const b = String(row?.mobile_bin ?? row?.mobileBin ?? row?.bin ?? row?.bin_number ?? row?.mobile_bin_number ?? '').trim();
+        if(b) set.add(b);
+      }
+      return set.size;
+    };
+
+    if(!recvHasCartons && cartonsInFinal===0){
+      const rec = await fetchAllRecords('received');
+      cartonsInFinal = uniqueBins(rec);
+    }
+    if(!compHasCartons && cartonsOutFinal===0){
+      const comp = await fetchAllRecords('complete');
+      cartonsOutFinal = uniqueBins(comp);
+    }
+  }catch(e){
+    console.error('[OPS cartons fallback] raw records fallback failed:', e);
+  }
+}
+
+const cartonsInUse = cartonsInFinal;
+const cartonsOutUse = cartonsOutFinal;
+
+    const suppliers = new Set((state.plan||[]).map(p=>String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()).filter(Boolean));
+    const zendesk   = new Set((state.plan||[]).map(p=>String(p.zendesk_ticket||'').trim()).filter(Boolean));
+
+    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
+
+    setTxt('#ops-week-of', state.weekStart || '—');
+    setTxt('#ops-week-po-planned', poPlanned.size.toLocaleString());
+    setTxt('#ops-week-po-received', poReceived.size.toLocaleString());
+    setTxt('#ops-week-units-planned', plannedTotal.toLocaleString());
+    setTxt('#ops-week-units-applied', appliedTotal2.toLocaleString());
+    setTxt('#ops-week-cartons-in', cartonsInUse.toLocaleString());
+    setTxt('#ops-week-cartons-out', cartonsOutUse.toLocaleString());
+        const cbmIn = (Number(cartonsInUse)||0) * 0.046;
+    const cbmOut = (Number(cartonsOutUse)||0) * 0.046;
+    setTxt('#ops-week-cbm-in', cbmIn.toFixed(3));
+    setTxt('#ops-week-cbm-out', cbmOut.toFixed(3));
+    // Approximate containers (planning units as volume basis)
+    const unitsForShip = Number(plannedTotal||0) || 0;
+    const full40 = Math.floor(unitsForShip/16000);
+    const residual = unitsForShip - full40*16000;
+    let cont40 = full40;
+    let cont20 = 0;
+    if(residual>0){
+      if(residual<=8000){ cont20 = 1; }
+      else { cont40 = full40 + 1; cont20 = 0; }
+    }
+    setTxt('#ops-week-cont-40', String(cont40));
+    setTxt('#ops-week-cont-20', String(cont20));
+state.weekCartonsIn = cartonsInUse;
+    state.weekCartonsOut = cartonsOutUse;
+    // If user is currently on Carton view, re-render so waffle updates immediately
+    if(state.opsView==='carton'){ try{ renderOpsInsights('carton'); }catch(e){} }
+
+    setTxt('#ops-week-suppliers', suppliers.size.toLocaleString());
+    setTxt('#ops-week-zendesk', zendesk.size.toLocaleString());
+
+    const pctNow = plannedTotal>0?Math.round(appliedTotal2*100/plannedTotal):(state.plan.length?0:100);
+    const h=$('#ops-week-health');
+    if(h){
+      let label = 'On-Plan';
+      if(pctNow < 75) label='At-Risk';
+      if(pctNow < 50) label='Delayed';
+      h.textContent = label;
+    }
+  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
+  // PO progress tile (totals + table)
+  try{
+    const setTxt=(id,v)=>{ const el=$(id); if(el) el.textContent = v; };
+    const plannedTotal2 = (state.plan||[]).reduce((s,p)=>s+toNum(p.target_qty),0);
+    const receivedTotal2 = Number(summaryReceived?.total_units || 0);
+    const appliedTotal3 = Number(summary?.total_units || 0);
+
+    setTxt('#ops-po-planned-total', plannedTotal2.toLocaleString());
+    setTxt('#ops-po-planned-total-2', plannedTotal2.toLocaleString());
+    setTxt('#ops-po-received-total', receivedTotal2.toLocaleString());
+    setTxt('#ops-po-applied-total', appliedTotal3.toLocaleString());
+
+    const pctR = plannedTotal2>0 ? Math.min(100, Math.round(receivedTotal2*100/plannedTotal2)) : 0;
+    const pctA = plannedTotal2>0 ? Math.min(100, Math.round(appliedTotal3*100/plannedTotal2)) : 0;
+
+    const br=$('#ops-po-received-bar'); if(br) br.style.width = pctR + '%';
+    const ba=$('#ops-po-applied-bar'); if(ba) ba.style.width = pctA + '%';
+
+    const unitOf = (v) => {
+      if (v == null) return 0;
+      if (typeof v === 'number') return v;
+      return Number(v.total_units ?? v.units ?? v.count ?? 0) || 0;
+    };
+
+    // Build PO rows from plan + summaries
+    const planByPO = new Map(); // po -> {planned, supplier, facility, freight, zendesk}
+    for(const p of (state.plan||[])){
+      const po = String(p.po_number||'').trim();
+      if(!po) continue;
+      const r = planByPO.get(po) || {
+        po,
+        planned: 0,
+        supplier: String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim(),
+        facility: String(p.facility_name||'').trim(),
+        freight: String(p.freight_type||'').trim(),
+        zendesk: String(p.zendesk_ticket||'').trim(),
+      };
+      r.planned += toNum(p.target_qty);
+      // Prefer first non-empty meta
+      if(!r.supplier && (p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory)) r.supplier = String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory).trim();
+      if(!r.facility && p.facility_name) r.facility = String(p.facility_name).trim();
+      if(!r.freight && p.freight_type) r.freight = String(p.freight_type).trim();
+      if(!r.zendesk && p.zendesk_ticket) r.zendesk = String(p.zendesk_ticket).trim();
+      planByPO.set(po, r);
+    }
+
+    const byPOComplete = summary?.by_po || {};
+    const byPOReceived = summaryReceived?.by_po || {};
+
+    const rows = [];
+    for(const [po, r] of planByPO.entries()){
+      const planned = Number(r.planned||0);
+      const received = unitOf(byPOReceived[po]);
+      const applied = unitOf(byPOComplete[po]);
+      const rem = Math.max(0, planned - applied);
+      const pct = planned>0 ? Math.min(100, Math.round(applied*100/planned)) : 0;
+      rows.push({po, supplier:r.supplier, facility:r.facility, freight:r.freight, zendesk:r.zendesk, planned, received, applied, rem, pct});
+    }
+    rows.sort((a,b)=> (b.pct - a.pct) || (b.planned - a.planned) || a.po.localeCompare(b.po));
+    state._ops_po_rows = rows;
+
+    function renderTable(filterTerm){
+      const body = $('#ops-po-table-body'); if(!body) return;
+      const term = String(filterTerm||'').trim().toUpperCase();
+      const list = term ? rows.filter(x=> x.po.toUpperCase().includes(term)) : rows;
+
+      if(!list.length){
+        body.innerHTML = '<tr><td colspan="11" class="text-center text-xs text-gray-400 py-6">No matching POs.</td></tr>';
+        return;
+      }
+
+      const fmt = (n)=> (Number(n)||0).toLocaleString();
+      const esc = (s)=> String(s||'—').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+      body.innerHTML = list.slice(0, 500).map(r=>{
+        const wR = r.planned>0 ? Math.min(100, Math.round(r.received*100/r.planned)) : 0;
+        const wA = r.planned>0 ? Math.min(100, Math.round(r.applied*100/r.planned)) : 0;
+        return `<tr class="border-t">
+          <td class="py-2 px-3 font-medium">${esc(r.po)}</td>
+          <td class="py-2 px-3">${esc(r.supplier)}</td>
+          <td class="py-2 px-3">${esc(r.facility)}</td>
+          <td class="py-2 px-3">${esc(r.freight)}</td>
+          <td class="py-2 px-3">${esc(r.zendesk)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.planned)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.received)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.applied)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${fmt(r.rem)}</td>
+          <td class="py-2 px-3 text-right tabular-nums">${r.pct}%</td>
+          <td class="py-2 px-3">
+            <div class="h-2 bg-gray-100 rounded-full overflow-hidden relative">
+              <div class="h-full ops-bar-planned" style="width:${wR}%"></div>
+              <div class="h-full" style="width:${wA}%; background:${APPLIED_COLOR};opacity:.75; position:absolute; top:0; left:0;"></div>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Bind search once
+    if(!state._ops_po_bound){
+      state._ops_po_bound = true;
+      const input = $('#ops-po-search');
+      const clear = $('#ops-po-clear');
+      if(input){
+        input.addEventListener('input', ()=> renderTable(input.value));
+        input.addEventListener('change', ()=> renderTable(input.value));
+      }
+      if(clear && input){
+        clear.addEventListener('click', ()=>{ input.value=''; renderTable(''); });
+      }
+    }
+
+    // Initial render
+    const input = $('#ops-po-search');
+    renderTable(input ? input.value : '');
+
+  }catch(e){ console.error('[OPS refreshDashboardTotals] week totals error', e); }
+
+
+
+      const __el_planned_total = document.getElementById('planned-total'); if(__el_planned_total) __el_planned_total.textContent = plannedTotal.toLocaleString();
+      const __el_applied_total = document.getElementById('applied-total'); if(__el_applied_total) __el_applied_total.textContent = appliedTotal.toLocaleString();
+      const __el_pct_week = document.getElementById('pct-week'); if(__el_pct_week) __el_pct_week.textContent = pct+'%';
+      const __el_avg_week = document.getElementById('avg-week'); if(__el_avg_week) __el_avg_week.textContent = appliedTotal.toLocaleString();
+      const __el_avg_day = document.getElementById('avg-day'); if(__el_avg_day) __el_avg_day.textContent = Math.round((appliedTotal||0)/7).toLocaleString();
   setFooterHealth(pct, appliedTotal);
 }
 
@@ -3070,1240 +3328,37 @@ if (hash === '#receiving') {
 }
 }
 
-  
-function getRouteHash(){
-  // Support: #intake, #/intake, /intake (direct path), and default (/ or #)
-  let h = (location.hash || '').trim();
-  if (h === '#') h = '';
-  // Normalize hash formats like "#/intake" -> "#intake"
-  if (h.startsWith('#/')) h = '#' + h.slice(2);
-  if (h && h !== '#') return h;
+  function show(hash){
+  document.getElementById('page-dashboard')?.classList.add('hidden');
+  document.getElementById('page-intake')?.classList.add('hidden');
+  document.getElementById('page-exec')?.classList.add('hidden');
+  document.getElementById('page-receiving')?.classList.add('hidden');
+  document.getElementById('page-flow')?.classList.add('hidden');
 
-  const p = (location.pathname || '').toLowerCase();
-  if (p.endsWith('/intake')) return '#intake';
-  if (p.endsWith('/receiving')) return '#receiving';
-  if (p.endsWith('/operations')) return '#ops';
-  if (p.endsWith('/flow')) return '#flow';
-  // Default route (ops dashboard)
-  return '#ops';
-}
 
-function show(hash){
-  // Normalize hash formats like "#/intake" -> "#intake"
-  let h = (hash || '').trim();
-  if (h === '#') h = '';
-  if (h.startsWith('#/')) h = '#' + h.slice(2);
-  if (!h) h = '#operations';
-
-  // Hide all pages first
-  ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.add('hidden');
-  });
-
-  // Show target page + render hooks
-  if (h === '#intake') {
-    const el = document.getElementById('page-intake');
-    el && el.classList.remove('hidden');
-    if (typeof window.renderIntake === 'function') {
-      try { window.renderIntake(); } catch(e) { console.warn('renderIntake failed', e); }
-    }
-  } else if (h === '#receiving') {
-    const el = document.getElementById('page-receiving');
-    el && el.classList.remove('hidden');
-  } else if (h === '#flow') {
-    const el = document.getElementById('page-flow');
-    el && el.classList.remove('hidden');
-  } else if (h === '#exec') {
-    const el = document.getElementById('page-exec');
-    el && el.classList.remove('hidden');
-  } else {
-    // default ops
-    const el = document.getElementById('page-dashboard');
-    el && el.classList.remove('hidden');
-    if (typeof window.renderDashboard === 'function') {
-      try { window.renderDashboard(); } catch(e) { console.warn('renderDashboard failed', e); }
-    }
-  }
-
-  // Hard fallback: if Tailwind hidden class isn't behaving for some reason, enforce display.
-  ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.display = el.classList.contains('hidden') ? 'none' : 'block';
-  });
-
-  // Nav highlight helper (different baselines use different function names).
+if (hash === '#receiving') {
+  document.getElementById('page-receiving')?.classList.remove('hidden');
+} else if (hash === '#intake') {
+  document.getElementById('page-intake')?.classList.remove('hidden');
+} else if (hash === '#exec') {
+  document.getElementById('page-exec')?.classList.remove('hidden');
   try {
-    if (typeof syncNavActive === 'function') syncNavActive(h);
-    else if (typeof syncNav === 'function') syncNav(h);
-  } catch (e) {
-    // Never break routing due to nav highlighting.
-  }
+    const ws = state.weekStart;
+    const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
+    const we = iso(weD);
+    const sub = document.getElementById('exec-sub');
+    if (sub) sub.textContent = `${ws} – ${we}`;
+  } catch {}
+} else if (hash === '#flow') {
+  document.getElementById('page-flow')?.classList.remove('hidden');
+} else {
+  document.getElementById('page-dashboard')?.classList.remove('hidden');
+}
+syncNav();
 }
 
-
-  
-/* ================= Ops right panel wiring (downloads + insights) ================= */
-function wireOpsDownloads(){
-  // mirror old buttons into the new right-panel tile
-  const map = [
-    ['ops-dl-posku','btn-dl-posku'],
-    ['ops-dl-po','btn-dl-po'],
-    ['ops-dl-ship-summary','btn-ship-summary'],
-    ['ops-dl-ship-detail','btn-ship-detail'],
-    ['ops-dl-week-applied','btn-dl-week-applied'],
-  ];
-  for(const [newId, oldId] of map){
-    const a=document.getElementById(newId), b=document.getElementById(oldId);
-    if(a && b){
-      a.onclick = () => b.click();
-    }
-  }
-  const mb=document.getElementById('ops-dl-mobile-bin');
-  if(mb) mb.onclick = downloadMobileBins;
-}
-
-function downloadMobileBins(){
-  try{
-    const bins = Array.isArray(state.bins) ? state.bins : [];
-    const plan = Array.isArray(state.plan) ? state.plan : [];
-    const poToSupplier = new Map(plan.map(p => [String(p.po_number||p.po||'').trim(), String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()]));
-    const rows = [];
-    for(const b of bins){
-      const po = String(b.po_number || b.po || b.poNumber || '').trim();
-      const supplier = String(b.supplier || poToSupplier.get(po) || '').trim();
-      const mobileBin = String(b.mobile_bin || b.mobileBin || '').trim();
-      const weight = Number(b.weight_kg ?? b.weight ?? 0) || 0;
-      const units  = Number(b.total_units ?? b.units ?? 0) || 0;
-      if(!mobileBin) continue;
-      rows.push({Supplier:supplier, PO:po, Mobile_Bin_Number:mobileBin, Weight_kg:weight, Units:units});
-    }
-    rows.sort((a,b)=> (a.Supplier||'').localeCompare(b.Supplier||'') || (a.PO||'').localeCompare(b.PO||'') || (a.Mobile_Bin_Number||'').localeCompare(b.Mobile_Bin_Number||''));
-    const csv = toCsv(rows, ['Supplier','PO','Mobile_Bin_Number','Weight_kg','Units']);
-    downloadBlob(csv, `mobile_bins_${state.weekStart||'week'}.csv`, 'text/csv');
-  }catch(err){
-    console.error('mobile bin export failed', err);
-    toast('Mobile bin download failed');
-  }
-}
-
-function renderOpsInsights(view){
-  const sub = document.getElementById('ops-insights-subtitle');
-  const root = document.getElementById('ops-insights-content');
-  if(!root) return;
-
-  // Always replace insight content on view switch (prevents stacking previous view DOM)
-  root.innerHTML = '';
-
-  const plan = Array.isArray(state.plan) ? state.plan : [];
-  const recs = Array.isArray(state.records) ? state.records : []; // /records/summary (applied units etc)
-  const receiving = Array.isArray(state.receiving) ? state.receiving : []; // /receiving (cartons_in/out + received timestamps)
-  const bins = Array.isArray(state.bins) ? state.bins : []; // /records (mobile bins for cartons-out + mobile-bin download)
-
-  const toNum = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n : 0; };
-  const norm = (s)=>String(s||'').trim();
-  const esc = (s)=>String(s??'').replace(/[&<>"']/g, ch=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
-  const insightsBody = root; // legacy alias
-  const escapeHtml = esc; // legacy alias
-  const fmt = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n.toLocaleString() : String(v||''); };
-  const plannedCartonsFromPlan = (p)=>{
-    // try common keys; fallback 0 (cannot compute approx received units)
-    return toNum(p.cartons_in || p.cartons || p.carton_qty || p.planned_cartons || p.planned_cartons_in || p.cartons_planned);
-  };
-
-  // Applied units per PO (from /records/summary by_po)
-  const poToApplied = new Map(recs.map(r => [norm(r.po||r.po_number||r.poNumber), toNum(r.units||r.total_units||0)]));
-
-  // Cartons-in per PO from bins: distinct mobile_bin per PO
-  // Cartons-in by PO comes from /receiving (same source as Flow/Receiving pages).
-  // We use this to estimate "Approx received units" at PO level.
-  const poToCartonsIn = new Map();
-  const poReceivedAt = new Map();
-  for (const r of receiving) {
-    const po = String(r.po_number ?? r.po ?? '').trim();
-    if (!po) continue;
-
-    const receivedAt = r.received_at ?? r.receivedAt ?? r.received_timestamp ?? r.receivedTimestamp ?? null;
-    if (receivedAt) poReceivedAt.set(po, receivedAt);
-
-    const ciRaw =
-      r.cartons_in ??
-      r.cartonsIn ??
-      r.cartons_received ??
-      r.cartonsReceived ??
-      r.cartons_in_qty ??
-      r.cartonsInQty ??
-      r.cartons_in_count ??
-      r.cartonsInCount ??
-      0;
-
-    const ci = Number(ciRaw);
-    if (Number.isFinite(ci) && ci > 0) {
-      poToCartonsIn.set(po, (poToCartonsIn.get(po) || 0) + ci);
-    }
-  }
-
-  // Build per-PO planned + meta (so we don’t double count applied in grouped views)
-  const poPlan = new Map(); // po -> {plannedUnits, plannedCartons, supplier, facility, freight, zendesk}
-  const pickMeta = (curVal, cand)=>{
-    const c = norm(cand||'');
-    if(!c) return curVal;
-    if(!curVal || curVal==='Unspecified') return c;
-    return curVal;
-  };
-  for(const p of plan){
-    const po = norm(p.po_number||p.po);
-    if(!po) continue;
-    const cur = poPlan.get(po) || {
-      plannedUnits:0, plannedCartons:0,
-      supplier:'', facility:'', freight:'', zendesk:''
-    };
-    // meta (first non-empty wins; 'Unspecified' is treated as empty)
-    cur.supplier = pickMeta(cur.supplier, p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory);
-    cur.facility = pickMeta(cur.facility, p.facility_name||p.facility||p.vas_facility||p.warehouse||p.warehouse_name||p.site||p.site_name||p.location||p.facility_code||p.facility_id);
-    cur.freight  = pickMeta(cur.freight,  p.freight_type||p.freight||p.ship_mode||p.mode);
-    cur.zendesk  = pickMeta(cur.zendesk,  p.zendesk_ticket||p.zendesk||p.ticket||p.zd_ticket);
-
-    cur.plannedUnits += toNum(p.target_qty||p.planned_units||0);
-    cur.plannedCartons += plannedCartonsFromPlan(p);
-
-    // final fallbacks
-    cur.supplier = cur.supplier || 'Unspecified';
-    cur.facility = cur.facility || 'Unspecified';
-    cur.freight  = cur.freight  || 'Unspecified';
-    cur.zendesk  = cur.zendesk  || 'Unspecified';
-
-    poPlan.set(po, cur);
-  }
-
-  // Derive per-PO received units (approx) from cartons-in, per your definition:
-  // approxReceivedUnits = plannedUnits * (receivedCartonsIn / plannedCartonsIn) capped to 1
-  const poDerived = new Map(); // po -> {planned, received, applied, ...meta}
-  for(const [po, p] of poPlan.entries()){
-    const planned = p.plannedUnits;
-    const plannedCartons = p.plannedCartons;
-    const cartonsIn = poToCartonsIn.get(po) || 0;
-    let received = 0;
-    if(planned>0){
-      if(poReceivedAt.has(po)) { received = planned; }
-      else if(plannedCartons>0 && cartonsIn>0){ received = planned * Math.min(1, cartonsIn/plannedCartons); }
-      else if(cartonsIn>0){ received = planned; }
-    }
-    received = Math.round(received);
-    const applied = poToApplied.get(po) || 0;
-    poDerived.set(po, {planned, received, applied, cartonsIn, plannedCartons, ...p});
-  }
-
-  // Special carton view (kept)
-  if(view==='carton'){
-    const ci = Number(state.weekCartonsIn||0)||0;   // cartons (bins) IN
-    const co = Number(state.weekCartonsOut||0)||0;  // cartons (bins) OUT
-    const maxTotal = Math.max(ci, co, 1);
-
-    // Waffle scaling
-    const rows = 10;
-    const cols = 12;
-    const squares = rows * cols; // 120 squares
-    const base = 10; // prefer 1 square = 10 cartons
-    const perSquare = Math.max(base, Math.ceil((maxTotal / squares) / base) * base);
-
-    const calcFill = (v)=>{
-      if(v<=0) return 0;
-      const f = Math.ceil(v / perSquare);
-      return Math.min(squares, Math.max(1, f));
-    };
-
-    const fillIn = calcFill(ci);
-    const fillOut = calcFill(co);
-
-    const squareGrid = (filled, color) =>
-      `<div class="grid gap-[4px]" style="grid-template-columns: repeat(${cols}, 16px);">
-        ${Array.from({length:squares}).map((_,i)=>
-          `<div class="w-[16px] h-[16px] rounded-[4px]" style="background:${i<filled?color:'#f3f4f6'};"></div>`
-        ).join('')}
-      </div>`;
-
-    const delta = ci - co;
-    const deltaLabel = delta===0 ? 'Δ 0' : (delta>0 ? `Δ +${fmtInt(delta)} (Net In)` : `Δ ${fmtInt(delta)} (Net Out)`);
-
-    const inShown = Math.min(ci, fillIn * perSquare);
-    const outShown = Math.min(co, fillOut * perSquare);
-
-    root.innerHTML = `
-      <div class="bg-gray-50 rounded-xl border p-4">
-        <div class="flex items-center justify-between">
-          <div class="text-sm font-semibold">Cartons in vs cartons out</div>
-          <div class="text-xs text-gray-600">${deltaLabel}</div>
-        </div>
-        <div class="flex items-center justify-between mt-1">
-          <div class="text-xs text-gray-500">1 square = ${fmtInt(perSquare)} cartons</div>
-          <div class="text-xs text-gray-500 tabular-nums">Grid: ${rows}×${cols} (${squares} squares)</div>
-        </div>
-
-        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="bg-white rounded-xl border p-4">
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-xs font-semibold text-gray-700">IN</div>
-              <div class="text-sm font-semibold tabular-nums">${fmtInt(ci)}</div>
-            </div>
-            ${squareGrid(fillIn, 'var(--ops-green)')}
-            <div class="mt-2 text-[11px] text-gray-500">
-              Filled: <span class="tabular-nums">${fillIn}</span>/<span class="tabular-nums">${squares}</span> • Showing ~<span class="tabular-nums">${fmtInt(inShown)}</span> cartons
-            </div>
-          </div>
-
-          <div class="bg-white rounded-xl border p-4">
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-xs font-semibold text-gray-700">OUT</div>
-              <div class="text-sm font-semibold tabular-nums">${fmtInt(co)}</div>
-            </div>
-            ${squareGrid(fillOut, 'var(--ops-yellow)')}
-            <div class="mt-2 text-[11px] text-gray-500">
-              Filled: <span class="tabular-nums">${fillOut}</span>/<span class="tabular-nums">${squares}</span> • Showing ~<span class="tabular-nums">${fmtInt(outShown)}</span> cartons
-            </div>
-          </div>
-        </div>
-
-        <div class="text-xs text-gray-500 mt-3">
-          “Cartons out” is the mobile-bin count (summary). Colors: IN = #D1E231, OUT = #F0D731.
-        </div>
-      </div>
-    `;
-    if(sub) sub.textContent = 'Carton view';
-    return;
-  }
-  // Overview (default): meaningful week insights (NOT duplicating Week totals)
-  if(view==='overview'){
-    if(sub) sub.textContent = 'Week overview';
-
-    const totalPlanned = Array.from(poDerived.values()).reduce((a,x)=>a+(x.planned||0),0);
-    const totalReceived = Array.from(poDerived.values()).reduce((a,x)=>a+(x.received||0),0);
-    const totalApplied = Array.from(poDerived.values()).reduce((a,x)=>a+(x.applied||0),0);
-    const remaining = Math.max(0, totalPlanned - totalApplied);
-    const pct = totalPlanned>0 ? Math.round(100*totalApplied/totalPlanned) : 0;
-
-    const bandOf = (p)=>{
-      if(!(totalPlanned>0)) return 'No plan';
-      if(p>=90) return 'On track';
-      if(p>=75) return 'At risk';
-      return 'Delayed';
-    };
-    const bandColor = (b)=>{
-      if(b==='On track') return 'var(--ops-green)';
-      if(b==='At risk') return 'var(--ops-yellow)';
-      if(b==='Delayed') return '#ef4444';
-      return '#6b7280';
-    };
-    const overallBand = bandOf(pct);
-
-    const mkAgg = (keyFn)=>{
-      const m = new Map();
-      for(const x of poDerived.values()){
-        const k = norm(keyFn(x)) || '—';
-        if(k==='—') continue;
-        const v = m.get(k) || {planned:0, received:0, applied:0, remaining:0, airPlanned:0, seaPlanned:0, otherPlanned:0};
-        v.planned += x.planned||0;
-        v.received += x.received||0;
-        v.applied += x.applied||0;
-        m.set(k, v);
-      }
-      for(const [k,v] of m){
-        v.remaining = Math.max(0, v.planned - v.applied);
-        v.pct = v.planned>0 ? Math.round(100*v.applied/v.planned) : 0;
-        v.band = v.planned>0 ? (v.pct>=90?'On track':(v.pct>=75?'At risk':'Delayed')) : 'No plan';
-      }
-      return m;
-    };
-
-    const bySupplier = mkAgg(x=>x.supplier);
-    const byFacility = mkAgg(x=>x.facility);
-    const byZendesk = mkAgg(x=>x.zendesk);
-
-    // Freight mix (planned units)
-    const freightMix = {Air:0, Sea:0, Other:0};
-    for(const x of poDerived.values()){
-      const f = norm(x.freight) || 'Other';
-      const planned = x.planned||0;
-      if(/air/i.test(f)) freightMix.Air += planned;
-      else if(/sea|ocean/i.test(f)) freightMix.Sea += planned;
-      else freightMix.Other += planned;
-    }
-    const mixTotal = freightMix.Air + freightMix.Sea + freightMix.Other || 1;
-    const airPct = Math.round(100*freightMix.Air/mixTotal);
-    const seaPct = Math.round(100*freightMix.Sea/mixTotal);
-
-    const topN = (m, n=3)=>Array.from(m.entries())
-      .map(([k,v])=>({k,v}))
-      .sort((a,b)=> (b.v.remaining - a.v.remaining) || (b.v.planned - a.v.planned))
-      .slice(0,n);
-
-    const topSup = topN(bySupplier, 3);
-    const topFac = topN(byFacility, 3);
-
-    const bandCounts = { 'On track':0, 'At risk':0, 'Delayed':0, 'No plan':0 };
-    for(const agg of byZendesk.values()){
-      const b = agg && agg.band ? agg.band : 'No plan';
-      bandCounts[b] = (bandCounts[b]||0) + 1;
-    }
-
-    const topTickets = Array.from(byZendesk.entries())
-      .map(([k,v])=>({k,v}))
-      .filter(x=>x.k && x.k!=='—')
-      .sort((a,b)=> (b.v.remaining - a.v.remaining))
-      .slice(0,8);
-
-    const barRow = (label, value, denom, color)=> {
-      const p = denom>0 ? Math.max(0, Math.min(100, 100*value/denom)) : 0;
-      return `
-        <div class="flex items-center gap-3">
-          <div class="w-28 text-[11px] text-gray-600 truncate">${esc(label)}</div>
-          <div class="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-            <div class="h-full rounded-full" style="width:${p}%;background:${color};"></div>
-          </div>
-          <div class="w-16 text-right text-[11px] tabular-nums text-gray-700">${fmt(value)}</div>
-        </div>
-      `;
-    };
-
-    root.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div class="rounded-xl border bg-white p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="text-sm font-semibold">Week health</div>
-              <div class="text-xs text-gray-500">Fast signals (derived from plan + progress)</div>
-            </div>
-            <div class="px-2 py-1 rounded-full border text-[11px] font-semibold" style="border-color:${bandColor(overallBand)};color:${bandColor(overallBand)};">
-              ${overallBand}
-            </div>
-          </div>
-
-          <div class="mt-3 flex items-end justify-between">
-            <div class="text-3xl font-semibold tabular-nums">${pct}%</div>
-            <div class="text-right">
-              <div class="text-xs text-gray-500">Remaining units</div>
-              <div class="text-sm font-semibold tabular-nums">${fmt(remaining)}</div>
-            </div>
-          </div>
-
-          <div class="mt-3 space-y-2">
-            ${barRow('Applied', totalApplied, totalPlanned, 'var(--ops-green)')}
-            ${barRow('Received (approx)', totalReceived, totalPlanned, 'var(--ops-yellow)')}
-          </div>
-
-          <div class="mt-3 text-[11px] text-gray-500">
-            Use <b>Supplier/Facility</b> for details; this view focuses on the “what to look at first”.
-          </div>
-        </div>
-
-        <div class="rounded-xl border bg-white p-4">
-          <div class="text-sm font-semibold">Where the work is sitting</div>
-          <div class="text-xs text-gray-500">Top remaining (units)</div>
-
-          <div class="mt-3">
-            <div class="text-[11px] font-semibold text-gray-700 mb-2">Top suppliers</div>
-            <div class="space-y-2">
-              ${topSup.map(({k,v})=>barRow(k, v.remaining, Math.max(remaining,1), '#111827')).join('')}
-            </div>
-          </div>
-
-          <div class="mt-4">
-            <div class="text-[11px] font-semibold text-gray-700 mb-2">Top facilities</div>
-            <div class="space-y-2">
-              ${topFac.map(({k,v})=>barRow(k, v.remaining, Math.max(remaining,1), '#111827')).join('')}
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-xl border bg-white p-4">
-          <div class="flex items-start justify-between">
-            <div>
-              <div class="text-sm font-semibold">Zendesk signals</div>
-              <div class="text-xs text-gray-500">Tickets sized by planned units; remaining drives priority</div>
-            </div>
-            <div class="flex items-center gap-2 text-[11px]">
-              <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:var(--ops-green)"></span>On track</span>
-              <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:var(--ops-yellow)"></span>At risk</span>
-              <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:#ef4444"></span>Delayed</span>
-            </div>
-          </div>
-
-          <div class="mt-3 grid grid-cols-3 gap-2">
-            <div class="rounded-lg border p-2">
-              <div class="text-[11px] text-gray-500">On track</div>
-              <div class="text-sm font-semibold tabular-nums">${bandCounts['On track']||0}</div>
-            </div>
-            <div class="rounded-lg border p-2">
-              <div class="text-[11px] text-gray-500">At risk</div>
-              <div class="text-sm font-semibold tabular-nums">${bandCounts['At risk']||0}</div>
-            </div>
-            <div class="rounded-lg border p-2">
-              <div class="text-[11px] text-gray-500">Delayed</div>
-              <div class="text-sm font-semibold tabular-nums">${bandCounts['Delayed']||0}</div>
-            </div>
-          </div>
-
-          <div class="mt-3">
-            <div class="text-[11px] font-semibold text-gray-700 mb-2">Top tickets by remaining</div>
-            <div class="flex flex-wrap gap-2">
-              ${topTickets.map(({k,v})=>{
-                const c = bandColor(v.band);
-                return `<span class="px-2 py-1 rounded-full border bg-white text-[11px] font-semibold tabular-nums" style="border-color:${c};color:${c};">
-                  ${esc(k)} • ${fmt(v.remaining)}
-                </span>`;
-              }).join('')}
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-xl border bg-white p-4">
-          <div class="text-sm font-semibold">Freight mix</div>
-          <div class="text-xs text-gray-500">Planned volume split (helps anticipate handoffs)</div>
-
-          <div class="mt-3 space-y-2">
-            ${barRow('Air', freightMix.Air, mixTotal, 'var(--ops-green)')}
-            ${barRow('Sea', freightMix.Sea, mixTotal, 'var(--ops-yellow)')}
-            ${barRow('Other', freightMix.Other, mixTotal, '#9ca3af')}
-          </div>
-
-          <div class="mt-3 text-[11px] text-gray-600">
-            Air <b>${airPct}%</b> • Sea <b>${seaPct}%</b>
-          </div>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-
-
-
-  const groupKey = (x)=>{
-    if(view==='supplier') return x.supplier;
-    if(view==='facility') return x.facility;
-    if(view==='zendesk') return x.zendesk;
-    if(view==='freight') return x.freight;
-    return '—';
-  };
-
-  // Aggregate by selected dimension (planned/received/applied) + freight split for supplier
-  const agg = new Map(); // key -> {planned, received, applied, air:{...}, sea:{...}}
-  for(const x of poDerived.values()){
-    const key = groupKey(x) || 'Unspecified';
-    const cur = agg.get(key) || {planned:0, received:0, applied:0, freight:{}};
-    cur.planned += x.planned;
-    cur.received += x.received;
-    cur.applied += x.applied;
-    if(view==='supplier'){
-      const f = (x.freight||'Unspecified').toLowerCase();
-      const bucket = f.includes('air') ? 'Air' : (f.includes('sea') ? 'Sea' : 'Other');
-      cur.freight[bucket] = cur.freight[bucket] || {planned:0, received:0, applied:0};
-      cur.freight[bucket].planned += x.planned;
-      cur.freight[bucket].received += x.received;
-      cur.freight[bucket].applied += x.applied;
-    }
-    agg.set(key, cur);
-  }
-
-  const items=[...agg.entries()].map(([k,v])=>{
-    const pct = v.planned>0 ? (100*v.applied/v.planned) : 0;
-    const rem = Math.max(0, v.planned - v.applied);
-    return {k, ...v, pct, rem};
-  }).sort((a,b)=> b.rem - a.rem).slice(0, 12);
-
-  const bar = (label, val, planned, color)=>{
-    const pct = planned>0 ? Math.max(0, Math.min(100, 100*val/planned)) : 0;
-    return `
-      <div class="flex items-center gap-3">
-        <div class="w-20 shrink-0 text-xs text-gray-500">${label}</div>
-        <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-          <div class="h-2 rounded-full" style="width:${pct}%; background:${color};"></div>
-        </div>
-        <div class="w-24 text-right text-xs tabular-nums">${fmtInt(Math.round(val))}</div>
-      </div>
-    `;
-  };
-
-  if(sub){
-    const label = view==='supplier'?'Supplier view':view==='facility'?'Facility view':view==='zendesk'?'Zendesk view':view==='freight'?'Freight view':'—';
-    sub.textContent = label;
-  }
-
-  if(items.length===0){
-    root.innerHTML = `<div class="text-sm text-gray-600">No data for this week.</div>`;
-    return;
-  }
-
-  // Normalized PO-level rows used by multiple insight views
-  // NOTE: Facility view relies on `rows`.
-  const rows = Array.from(poDerived.values());
-
-  
-  // ----- Render -----
-  if(view==='supplier'){
-    // Build PO state counts per supplier
-    const poCounts = new Map(); // supplier -> {total, complete, partial, notSent}
-    for(const [po,x] of poDerived.entries()){
-      const key = x.supplier || 'Unspecified';
-      const cur = poCounts.get(key) || {total:0, complete:0, partial:0, notSent:0};
-      cur.total += 1;
-      const planned = x.planned||0, received = x.received||0, applied = x.applied||0;
-      if(received<=0) cur.notSent += 1;
-      else if(planned>0 && applied>=planned) cur.complete += 1;
-      else cur.partial += 1;
-      poCounts.set(key, cur);
-    }
-
-    const cards = [...agg.entries()].map(([k,v])=>{
-      const planned = v.planned||0, received=v.received||0, applied=v.applied||0;
-      const pct = planned>0 ? (100*applied/planned) : 0;
-      const rem = Math.max(0, planned - applied);
-      const counts = poCounts.get(k) || {total:0, complete:0, partial:0, notSent:0};
-      // Freight split (Air/Sea/Other) completion
-      const freightChips = ['Air','Sea','Other'].map(b=>{
-        const fv=v.freight?.[b];
-        if(!fv || !(fv.planned>0)) return '';
-        const fpct = Math.round(100*(fv.applied||0)/(fv.planned||1));
-        const label = b==='Other' ? 'Other' : b;
-        return `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]">${label} ${fpct}%</span>`;
-      }).join('');
-
-      // status badge
-      const badge =
-        planned<=0 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px] text-gray-600">No plan</span>` :
-        (pct>=90 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:var(--ops-green);color:var(--ops-green);">On track</span>` :
-         pct>=75 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:var(--ops-yellow);color:#b45309;">At risk</span>` :
-                  `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#ef4444;color:#b91c1c;">Delayed</span>`);
-
-      const bar2 = (label, val, denom, color)=>{
-        const p = denom>0 ? Math.max(0, Math.min(100, 100*val/denom)) : 0;
-        return `
-          <div class="flex items-center gap-2">
-            <div class="w-16 text-[11px] text-gray-500">${label}</div>
-            <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-              <div class="h-2 rounded-full" style="width:${p}%; background:${color};"></div>
-            </div>
-            <div class="w-20 text-right text-[11px] tabular-nums text-gray-700">${fmtInt(Math.round(val))}</div>
-          </div>
-        `;
-      };
-
-      return {k, planned, received, applied, pct, rem, counts, freightChips, badge, bar2};
-    }).sort((a,b)=> b.rem - a.rem).slice(0, 20);
-
-    root.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        ${cards.map(it=>{
-          const planned = it.planned||0, received=it.received||0, applied=it.applied||0;
-          const pct = planned>0 ? Math.round(100*applied/planned) : 0;
-          const remaining = Math.round(Math.max(0, planned-applied));
-          const recPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*received/planned))) : 0;
-          const appPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*applied/planned))) : 0;
-          const fullName = String(it.k||'Unspecified');
-          const shortName = fullName.split(/\s+/).slice(0,2).join(' ') || fullName;
-          return `
-            <div class="rounded-2xl border bg-white p-3 shadow-sm">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <div class="text-sm font-semibold truncate" title="${esc(fullName)}">${esc(shortName)}</div>
-                    ${it.badge}
-                  </div>
-                  <div class="text-[11px] text-gray-500 mt-0.5">
-                    Completion <span class="font-medium">${pct}%</span> • Remaining <span class="font-medium">${fmtInt(remaining)}</span>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-sm font-semibold tabular-nums">${fmtInt(Math.round(applied))}</div>
-                  <div class="text-[11px] text-gray-500 tabular-nums">/ ${fmtInt(Math.round(planned))}</div>
-                </div>
-              </div>
-
-              <!-- Single progress bar: received (light) + applied (solid) over planned baseline -->
-              <div class="mt-3">
-                <div class="relative h-2.5 rounded-full overflow-hidden" style="background:rgba(55,65,81,0.25);">
-                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
-                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR};opacity:.75;"></div>
-                </div>
-                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
-                  <div class="flex gap-3">
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${PLANNED_COLOR}"></span>Planned ${fmtInt(Math.round(planned))}</span>
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmtInt(Math.round(received))}</span>
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR};opacity:.75"></span>App ${fmtInt(Math.round(applied))}</span>
-                  </div>
-                  <div class="text-gray-600">${pct}%</div>
-                </div>
-              </div>
-
-              <div class="mt-2 flex items-center justify-between gap-3">
-                <div class="text-[11px] text-gray-500">
-                  POs: <span class="font-medium text-gray-700">${it.counts.total}</span>
-                  &nbsp;•&nbsp; <span class="text-gray-700">✓</span> ${it.counts.complete}
-                  &nbsp;<span class="text-gray-700">⚠</span> ${it.counts.partial}
-                  &nbsp;<span class="text-gray-700">⛔</span> ${it.counts.notSent}
-                </div>
-                <div class="flex gap-2 items-center">
-                  ${it.freightChips || ''}
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-      <div class="text-[11px] text-gray-500 mt-3">Received units are approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0. Complete = applied ≥ planned.</div>
-    `;
-    return;
-  }
-
-  // ----- Facility view (visual lanes) -----
-  if(view==='facility'){
-    // Group PO-derived rows by facility and compute totals + highlights
-    const meta = new Map();
-    for (const r of rows){
-      const fKey = (r.facility || 'Unspecified').toString().trim() || 'Unspecified';
-      let m = meta.get(fKey);
-      if(!m){
-        m = {
-          facility:fKey,
-          planned:0, received:0, applied:0,
-          posTotal:0, posNotSent:0,
-          suppliers:new Set(),
-          zendesks:new Set(),
-          bySup:new Map(),
-          byZend:new Map(),
-          airPlanned:0, seaPlanned:0, otherPlanned:0,
-          airApplied:0, seaApplied:0, otherApplied:0
-        };
-        meta.set(fKey, m);
-      }
-
-      const planned = Number(r.planned)||0;
-      const received = Number(r.received)||0;
-      const applied = Number(r.applied)||0;
-
-      m.planned += planned;
-      m.received += received;
-      m.applied += applied;
-      m.posTotal += 1;
-
-      // Freight split (for facility summary chips)
-      const fr = (r.freight || r.freight_type || '').toString().toLowerCase();
-      const bucket = fr.includes('air') ? 'air' : (fr.includes('sea') ? 'sea' : 'other');
-      if(bucket==='air'){ m.airPlanned += planned; m.airApplied += applied; }
-      else if(bucket==='sea'){ m.seaPlanned += planned; m.seaApplied += applied; }
-      else { m.otherPlanned += planned; m.otherApplied += applied; }
-
-
-      const cartonsIn = Number(r.cartonsIn ?? r.cartons_in ?? 0) || 0;
-      if(cartonsIn <= 0) m.posNotSent += 1;
-
-      const sup = (r.supplier || 'Unspecified').toString().trim() || 'Unspecified';
-      if(sup) m.suppliers.add(sup);
-
-      const zd = (r.zendesk || '').toString().trim();
-      if(zd && zd !== 'Unspecified') { m.zendesks.add(zd); }
-
-      const sr = m.bySup.get(sup) || { key:sup, planned:0, received:0, applied:0 };
-      sr.planned += planned; sr.received += received; sr.applied += applied;
-      m.bySup.set(sup, sr);
-
-      if(zd && zd !== 'Unspecified'){
-        const zr = m.byZend.get(zd) || { key:zd, planned:0, received:0, applied:0 };
-        zr.planned += planned; zr.received += received; zr.applied += applied;
-        m.byZend.set(zd, zr);
-      }
-    }
-
-    const facilities = [...meta.values()]
-      .sort((a,b)=> (b.planned-a.planned) || a.facility.localeCompare(b.facility));
-
-    const pill = (pctDone)=>{
-      if(pctDone>=98) return '<span class="inline-flex items-center rounded-full border border-emerald-200 ops-bg-planned-soft px-2 py-0.5 text-[11px] font-medium text-emerald-700">On track</span>';
-      if(pctDone>=85) return '<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">At risk</span>';
-      return '<span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">Delayed</span>';
-    };
-
-    const topChips = (items, icon)=>{
-      return items.map(x=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
-        <span class="mr-1">${icon}</span> ${escapeHtml(x.key)} • <b class="ml-1">${fmt(x.rem)}</b>
-      </span>`).join('');
-    };
-
-    root.innerHTML = `
-      <div class="space-y-3">
-        ${facilities.map(f=>{
-          const pctDone = f.planned>0 ? Math.round((f.applied/f.planned)*100) : 0;
-          const rem = Math.max(0, f.planned - f.applied);
-
-          const topSup = [...f.bySup.values()]
-            .map(s=>({ key:firstTwoWords(s.key), rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0 }))
-            .filter(x=>x.planned>0)
-            .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
-            .slice(0,4);
-
-          const topZend = [...f.byZend.values()]
-            .map(z=>({ key:z.key, rem: Math.max(0,(z.planned||0)-(z.applied||0)), planned:z.planned||0 }))
-            .filter(x=>x.planned>0)
-            .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
-            .slice(0,4);
-
-          return `
-            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-              <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <div class="font-semibold text-sm truncate">${escapeHtml(f.facility)}</div>
-                    ${pill(pctDone)}
-                  </div>
-                  <div class="mt-1 text-[12px] text-gray-500">
-                    Completion <b class="text-gray-700">${pctDone}%</b> • Remaining <b class="text-gray-700">${fmt(rem)}</b>
-                    • PO’s not sent <b class="text-gray-700">${fmt(f.posNotSent)}</b>/<b class="text-gray-700">${fmt(f.posTotal)}</b>
-                  </div>
-                </div>
-
-                <div class="flex flex-wrap gap-2 text-[12px] text-gray-600">
-                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">👥</span>Suppliers <b class="ml-1">${fmt(f.suppliers.size || 0)}</b></span>
-                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">🎫</span>Zendesk <b class="ml-1">${fmt(f.zendesks.size || 0)}</b></span>
-                  ${(() => { const p = Number(f.planned)||0; const airPct = p>0 ? Math.round(100*(f.airPlanned||0)/p) : 0; const seaPct = p>0 ? Math.round(100*(f.seaPlanned||0)/p) : 0; const parts=[]; if((f.airPlanned||0)>0) parts.push(`<span class=\"inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5\"><span class=\"mr-1\">✈️</span>Air <b class=\"ml-1\">${airPct}%</b></span>`); if((f.seaPlanned||0)>0) parts.push(`<span class=\"inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5\"><span class=\"mr-1\">🚢</span>Sea <b class=\"ml-1\">${seaPct}%</b></span>`); return parts.join(''); })()}
-                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">📦</span>Planned <b class="ml-1">${fmt(f.planned)}</b></span>
-                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">✅</span>Applied <b class="ml-1">${fmt(f.applied)}</b></span>
-                </div>
-              </div>
-
-              <div class="mt-3">
-                ${progressBarHtml(f.planned, f.received, f.applied)}
-                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
-                  <div class="flex gap-3 flex-wrap">
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_PLANNED_FG}"></span>Planned</span>
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec</span>
-                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}; opacity:${OPS_APPLIED_OPACITY}"></span>App</span>
-                  </div>
-                  <div class="text-gray-600">${fmt(f.applied)} / ${fmt(f.planned)}</div>
-                </div>
-              </div>
-
-              ${(topSup.length || topZend.length) ? `
-                <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  <div>
-                    <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining tickets</div>
-                    <div class="mt-1 flex flex-wrap gap-2">
-                      ${topZend.length ? topChips(topZend,'🎫') : '<span class="text-[12px] text-gray-400">—</span>'}
-                    </div>
-                  </div>
-                  <div>
-                    <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining suppliers</div>
-                    <div class="mt-1 flex flex-wrap gap-2">
-                      ${topSup.length ? topChips(topSup,'🏭') : '<span class="text-[12px] text-gray-400">—</span>'}
-                    </div>
-                  </div>
-                </div>
-              `:''}
-            </div>
-          `;
-        }).join('')}
-      </div>
-
-      <div class="text-[11px] text-gray-500 mt-3">
-        Facility completion is based on applied vs planned units. “Received” is approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0.
-      </div>
-    `;
-    return;
-  }
-
-
-  // ----- Freight cards -----
-
-  if(view==='freight'){
-    // Buckets: Air / Sea / Other. Show totals + key ops metrics (no progress bars).
-    const poCartonsOut = new Map();
-    for(const o of (state.records||[])){
-      const po = norm(o?.po || o?.po_number || o?.poNumber);
-      if(!po) continue;
-      poCartonsOut.set(po, toNum(o?.cartons_out || 0));
-    }
-
-    const CBM_PER_CARTON = 0.046;
-
-    const buckets = new Map([
-      ['Air',   {k:'Air',   icon:'✈️', planned:0, applied:0, cartonsIn:0, cartonsReady:0, pos:new Set(), suppliers:new Set()}],
-      ['Sea',   {k:'Sea',   icon:'🚢', planned:0, applied:0, cartonsIn:0, cartonsReady:0, pos:new Set(), suppliers:new Set()}],
-      ['Other', {k:'Other', icon:'📦', planned:0, applied:0, cartonsIn:0, cartonsReady:0, pos:new Set(), suppliers:new Set()}],
-    ]);
-
-    for(const r of rows){
-      const f = (r.freight||'').toString().toLowerCase();
-      const key = f.includes('air') ? 'Air' : (f.includes('sea') ? 'Sea' : 'Other');
-      const b = buckets.get(key);
-
-      const po = norm(r.po_number || r.po || r.poNumber);
-      const planned = toNum(r.planned);
-      const applied = toNum(r.applied);
-      const cartonsIn = toNum(r.cartonsIn);
-
-      b.planned += planned;
-      b.applied += applied;
-      b.cartonsIn += cartonsIn;
-      b.cartonsReady += (poCartonsOut.get(po) || 0);
-
-      if(po) b.pos.add(po);
-      if(r.supplier && r.supplier!=='Unspecified') b.suppliers.add(r.supplier);
-    }
-
-    const arr = [...buckets.values()].sort((a,b)=> (b.planned-a.planned) || a.k.localeCompare(b.k));
-
-    const maxPlanned = Math.max(1, ...arr.map(x=>x.planned||0));
-    const maxApplied = Math.max(1, ...arr.map(x=>x.applied||0));
-    const maxCartons = Math.max(1, ...arr.map(x=>Math.max(x.cartonsIn||0, x.cartonsReady||0)));
-    const maxCbm = Math.max(1, ...arr.map(x=>Math.max((x.cartonsIn||0)*CBM_PER_CARTON, (x.cartonsReady||0)*CBM_PER_CARTON)));
-
-    const barPair = (title, aLabel, aVal, bLabel, bVal, maxVal, fmtFn) => {
-      const aH = Math.round(64 * (maxVal>0 ? (aVal/maxVal) : 0));
-      const bH = Math.round(64 * (maxVal>0 ? (bVal/maxVal) : 0));
-      const aH2 = (aVal>0 && aH<3) ? 3 : aH;
-      const bH2 = (bVal>0 && bH<3) ? 3 : bH;
-      return `
-        <div class="bg-white rounded-xl border p-3">
-          <div class="text-[11px] text-gray-500 mb-2">${title}</div>
-          <div class="flex items-end gap-4 h-[76px]">
-            <div class="flex-1">
-              <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
-                <div style="height:${aH2}px; margin-top:${64-aH2}px; background:var(--ops-green);"></div>
-              </div>
-              <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
-                <span>${aLabel}</span><span class="tabular-nums">${fmtFn(aVal)}</span>
-              </div>
-            </div>
-            <div class="flex-1">
-              <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
-                <div style="height:${bH2}px; margin-top:${64-bH2}px; background:var(--ops-yellow);"></div>
-              </div>
-              <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
-                <span>${bLabel}</span><span class="tabular-nums">${fmtFn(bVal)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    };
-
-    const fmt0 = (v)=> fmtInt(Math.round(v||0));
-    const fmt2 = (v)=> (Number(v||0)).toFixed(2);
-
-    root.innerHTML = `
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        ${arr.map(b=>{
-          const cbmIn = (b.cartonsIn||0) * CBM_PER_CARTON;
-          const cbmReady = (b.cartonsReady||0) * CBM_PER_CARTON;
-          return `
-            <div class="bg-gray-50 rounded-2xl border p-3">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                  <div class="text-xl">${b.icon}</div>
-                  <div>
-                    <div class="text-sm font-semibold">${b.k}</div>
-                    <div class="text-[11px] text-gray-500">Suppliers ${b.suppliers.size} • POs ${b.pos.size}</div>
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="text-[11px] text-gray-500">Units</div>
-                  <div class="text-sm font-semibold tabular-nums">${fmt0(b.planned)}</div>
-                </div>
-              </div>
-
-              <div class="mt-3 grid grid-cols-1 gap-2">
-                ${barPair('Units', 'Planned', b.planned, 'Applied', b.applied, Math.max(maxPlanned, maxApplied), fmt0)}
-                ${barPair('Cartons', 'In', b.cartonsIn, 'Ready', b.cartonsReady, maxCartons, fmt0)}
-                ${barPair('CBM', 'In', cbmIn, 'Ready', cbmReady, maxCbm, fmt2)}
-              </div>
-
-              <div class="text-[11px] text-gray-500 mt-2">
-                CBM = 0.046 × cartons. “Ready” uses cartons_out from records summary when available.
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    `;
-    return;
-  }
-
-
-  // ----- Zendesk bubble matrix (risk vs volume) -----
-  if(view==='zendesk'){
-    // Build per-ticket aggregates including freight mix
-    const ticketAgg = new Map(); // ticket -> {planned, received, applied, air, sea, other}
-    for(const r of rows){
-      const t = (r.zendesk || 'Unspecified').toString().trim() || 'Unspecified';
-      const cur = ticketAgg.get(t) || {k:t, planned:0, received:0, applied:0, air:0, sea:0, other:0};
-      const p = Number(r.planned||0)||0, rc=Number(r.received||0)||0, ap=Number(r.applied||0)||0;
-      cur.planned += p; cur.received += rc; cur.applied += ap;
-      const f = (r.freight||'').toString().toLowerCase();
-      if(f.includes('air')) cur.air += p;
-      else if(f.includes('sea')) cur.sea += p;
-      else cur.other += p;
-      ticketAgg.set(t, cur);
-    }
-
-    const tickets = [...ticketAgg.values()]
-      .map(t=>{
-        const planned=t.planned||0, applied=t.applied||0, received=t.received||0;
-        const pct = planned>0 ? Math.max(0, Math.min(100, 100*applied/planned)) : 0;
-        const risk = 1 - (pct/100); // higher = worse
-        const rem = Math.max(0, planned - applied);
-        const mode = (t.air>=t.sea && t.air>=t.other) ? 'air' : (t.sea>=t.other ? 'sea' : 'other');
-        return {...t, planned, received, applied, pct, risk, rem, mode};
-      })
-      .filter(t=>t.planned>0 || t.applied>0 || t.received>0)
-      .sort((a,b)=> (b.planned||0) - (a.planned||0))
-      .slice(0, 36); // keep dense but non-scroll
-
-    if(tickets.length===0){
-      root.innerHTML = `<div class="text-sm text-gray-600">No data for this week.</div>`;
-      return;
-    }
-
-    const maxPlanned = Math.max(...tickets.map(t=>t.planned||0), 1);
-    const minPlanned = Math.min(...tickets.map(t=>t.planned||0), maxPlanned);
-
-    // scale helpers (work in SVG viewBox coordinates)
-    const W=1000, H=520;
-    const padL=70, padR=30, padT=30, padB=70;
-    const x0=padL, x1=W-padR, y0=H-padB, y1=padT;
-
-    const scaleX = (v)=>{
-      if(maxPlanned===minPlanned) return (x0+x1)/2;
-      // log scale keeps extremes readable
-      const lv = Math.log10(Math.max(1, v));
-      const lmin = Math.log10(Math.max(1, minPlanned));
-      const lmax = Math.log10(Math.max(1, maxPlanned));
-      const t = (lv - lmin) / (lmax - lmin || 1);
-      return x0 + t*(x1-x0);
-    };
-    const scaleY = (risk)=>{
-      const t = Math.max(0, Math.min(1, risk));
-      return y0 - t*(y0-y1);
-    };
-    const scaleR = (v)=>{
-      const t = Math.sqrt(Math.max(0, v) / maxPlanned);
-      return 18 + t*46; // 18..64
-    };
-
-    // collision-lite: single pass nudging to reduce heavy overlaps
-    const placed = [];
-    const bubbles = tickets.map(t=>{
-      let cx = scaleX(t.planned), cy = scaleY(t.risk), r = scaleR(t.planned);
-      for(let i=0;i<placed.length;i++){
-        const o=placed[i];
-        const dx=cx-o.cx, dy=cy-o.cy;
-        const dist=Math.sqrt(dx*dx+dy*dy) || 1;
-        const minDist = r + o.r + 8;
-        if(dist < minDist){
-          const push = (minDist - dist);
-          cx += (dx/dist)*push*0.6;
-          cy += (dy/dist)*push*0.6;
-        }
-      }
-      // clamp
-      cx = Math.max(x0+r, Math.min(x1-r, cx));
-      cy = Math.max(y1+r, Math.min(y0-r, cy));
-      placed.push({cx,cy,r});
-      return {...t, cx, cy, r};
-    });
-
-    const riskStroke = (pct)=>{
-      if(pct>=90) return 'rgba(var(--ops-green-rgb),0.50)';        // green
-      if(pct>=75) return 'rgba(var(--ops-yellow-rgb),0.60)';        // amber
-      return 'rgba(220,38,38,0.55)';                    // red
-    };
-    const fillFor = (pct)=>{
-      // Light, matte green; intensity tracks completion %
-      const a = 0.12 + 0.33*(pct/100);
-      return `rgba(var(--ops-green-rgb),${a.toFixed(3)})`;
-    };
-    const iconFor = (mode)=>{
-      if(mode==='air') return '✈';
-      if(mode==='sea') return '🚢';
-      return '◻';
-    };
-
-    // Build SVG
-    root.innerHTML = `
-      <div class="relative">
-        <div class="flex items-center justify-between mb-2">
-          <div class="text-xs text-gray-500">X: Volume (planned units) • Y: Risk (1 − completion)</div>
-          <div class="flex items-center gap-3 text-[11px] text-gray-500">
-            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(var(--ops-green-rgb),0.25)"></span> Complete</span>
-            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(var(--ops-yellow-rgb),0.30)"></span> At risk</span>
-            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(239,68,68,0.25)"></span> Delayed</span>
-          </div>
-        </div>
-
-        <div id="ops-zendesk-tooltip" class="pointer-events-none hidden absolute z-20 bg-white border rounded-lg shadow px-3 py-2 text-xs">
-          <div class="font-semibold" id="ops-ztt-title"></div>
-          <div class="text-gray-600 mt-0.5" id="ops-ztt-body"></div>
-        </div>
-
-        <svg id="ops-zendesk-matrix" class="w-full rounded-xl border bg-white" style="height:520px" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-
-          <!-- axes -->
-          <line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="rgba(148,163,184,0.6)" stroke-width="1"></line>
-          <line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="rgba(148,163,184,0.6)" stroke-width="1"></line>
-
-          <text x="${x0}" y="${y1-10}" font-size="12" fill="rgba(100,116,139,0.9)">Risk ↑</text>
-          <text x="${x1-120}" y="${y0+35}" font-size="12" fill="rgba(100,116,139,0.9)">Volume →</text>
-
-          ${bubbles.map((b,i)=>{
-            const ring = 2.5;
-            const circ = 2*Math.PI*(b.r-ring);
-            const dash = (circ*(b.pct/100)).toFixed(2);
-            const gap = (circ - dash).toFixed(2);
-            return `
-              <g class="ops-zb" data-k="${esc(b.k)}" data-planned="${b.planned}" data-received="${b.received}" data-applied="${b.applied}" data-pct="${b.pct.toFixed(1)}" data-mode="${b.mode}" transform="translate(0,0)">
-                <!-- outer risk ring (pops) -->
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${b.r.toFixed(2)}"
-                  fill="#ffffff" stroke="${riskStroke(b.pct)}" stroke-width="4"
-                  style="filter: drop-shadow(0 2px 6px rgba(15,23,42,0.18));"></circle>
-
-                <!-- base ring -->
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}"
-                  fill="#ffffff" stroke="rgba(100,116,139,0.22)" stroke-width="${ring}"></circle>
-
-                <!-- completion ring (applied color) -->
-                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}"
-                  fill="transparent" stroke="var(--ops-green)" stroke-width="${ring}"
-                  stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${b.cx.toFixed(2)} ${b.cy.toFixed(2)})"
-                  stroke-linecap="round"></circle>
-                <text x="${b.cx.toFixed(2)}" y="${(b.cy+4).toFixed(2)}" text-anchor="middle" font-size="${Math.max(14, Math.min(20, b.r/2)).toFixed(0)}" fill="rgba(15,23,42,0.85)">${iconFor(b.mode)}</text>
-                <text x="${b.cx.toFixed(2)}" y="${(b.cy + b.r + 14).toFixed(2)}" text-anchor="middle" font-size="12" fill="rgba(100,116,139,0.9)">${esc(b.k)}</text>
-              </g>
-            `;
-          }).join('')}
-        </svg>
-
-        <div class="text-[11px] text-gray-500 mt-2">
-          Bubble size = total planned units. Fill intensity = % complete. Outline indicates risk band. Hover for details.
-        </div>
-      </div>
-    `;
-
-    // tooltips
-    const tip = document.getElementById('ops-zendesk-tooltip');
-    const tTitle = document.getElementById('ops-ztt-title');
-    const tBody = document.getElementById('ops-ztt-body');
-    const svg = document.getElementById('ops-zendesk-matrix');
-    if(tip && tTitle && tBody && svg){
-      const show = (e, g)=>{
-        const k=g.getAttribute('data-k')||'';
-        const planned=+g.getAttribute('data-planned')||0;
-        const received=+g.getAttribute('data-received')||0;
-        const applied=+g.getAttribute('data-applied')||0;
-        const pct=+g.getAttribute('data-pct')||0;
-        const mode=g.getAttribute('data-mode')||'';
-        tTitle.textContent = `Ticket ${k}  •  ${mode==='air'?'Air':mode==='sea'?'Sea':'Other'}`;
-        tBody.textContent = `Planned ${fmtInt(Math.round(planned))} • Received ${fmtInt(Math.round(received))} • Applied ${fmtInt(Math.round(applied))} • ${pct.toFixed(0)}% complete`;
-        tip.classList.remove('hidden');
-        const rect = root.getBoundingClientRect();
-        const x = (e.clientX - rect.left) + 12;
-        const y = (e.clientY - rect.top) + 12;
-        tip.style.left = x + 'px';
-        tip.style.top = y + 'px';
-      };
-      const hide = ()=> tip.classList.add('hidden');
-      svg.querySelectorAll('.ops-zb').forEach(g=>{
-        g.style.cursor='default';
-        g.addEventListener('mousemove', (e)=>show(e,g));
-        g.addEventListener('mouseenter', (e)=>show(e,g));
-        g.addEventListener('mouseleave', hide);
-      });
-    }
-    return;
-  }
-
-// Default list view for other dimensions (facility, zendesk, freight)
-  root.innerHTML = `
-    <div class="space-y-3">
-      ${items.map(it=>{
-        const planned = it.planned||0;
-        const received = it.received||0;
-        const applied = it.applied||0;
-        const pct = planned>0 ? Math.round(100*applied/planned) : 0;
-
-        const freightRow = (view==='supplier') ? `
-          <div class="mt-2 text-[11px] text-gray-500 flex gap-3">
-            ${['Air','Sea','Other'].map(b=>{
-              const fv = it.freight?.[b];
-              if(!fv) return '';
-              const fpct = fv.planned>0 ? Math.round(100*fv.applied/fv.planned) : 0;
-              return `<span class="px-2 py-0.5 rounded-full border bg-white">${b}: ${fpct}%</span>`;
-            }).join('')}
-          </div>
-        ` : '';
-
-        return `
-          <div class="rounded-xl border bg-gray-50 p-3">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="text-sm font-semibold truncate">${esc(it.k)}</div>
-                <div class="text-xs text-gray-500">Completion: <span class="font-medium">${pct}%</span> &nbsp;•&nbsp; Remaining: <span class="font-medium">${fmtInt(Math.round(Math.max(0, planned-applied)))}</span></div>
-              </div>
-              <div class="text-right text-xs text-gray-500 tabular-nums">
-                <div>${fmtInt(Math.round(applied))} / ${fmtInt(Math.round(planned))}</div>
-              </div>
-            </div>
-            <div class="mt-3 space-y-2">
-              ${bar('Planned', planned, planned||1, OPS_PLANNED_FG)}
-              ${bar('Received', received, planned||1, OPS_RECEIVED_FG)}
-              ${bar('Applied', applied, planned||1, 'rgba(var(--ops-green-rgb),0.72)')}
-            </div>
-            ${freightRow}
-          </div>
-        `;
-      }).join('')}
-      <div class="text-xs text-gray-500">Received units are approximated from cartons-in by PO (as in Flow).</div>
-    </div>
-  `;
-}
-
-
-
-function wireOpsInsights(){
-  const pills = Array.from(document.querySelectorAll('.ops-pill'));
-  if(!pills.length) return;
-
-  pills.forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      pills.forEach(b=>b.classList.remove('ops-pill--active'));
-      btn.classList.add('ops-pill--active');
-      const v = (btn.getAttribute('data-opsview') || 'overview').trim();
-      state.opsView = v;
-      try { renderOpsInsights(v); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
-    });
-  });
-
-  // Initial view: respect existing active pill, otherwise keep last state, otherwise default to overview.
-  const active = document.querySelector('.ops-pill--active');
-  const initial = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
-  state.opsView = initial;
-  try { renderOpsInsights(initial); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
-}
-
-// Re-render insights whenever the week data finishes loading (setWeek wrapper dispatches state:ready).
-window.addEventListener('state:ready', () => {
-  try {
-    const active = document.querySelector('.ops-pill--active');
-    const v = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
-    state.opsView = v;
-    renderOpsInsights(v);
-  } catch (e) { console.warn('[OPS] state:ready render failed:', e); }
-});
-
-window.addEventListener('hashchange', () => show(getRouteHash()));
-window.addEventListener('popstate', () => show(getRouteHash()));
-  show(getRouteHash()); // initial render
-  try{ wireOpsDownloads(); }catch{}
-  try{ wireOpsInsights(); }catch{}
+  window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
+  show(location.hash || '#dashboard'); // initial render
 
   // Intake scaffold + checkbox handler
   renderIntake();
@@ -4317,15 +3372,15 @@ window.addEventListener('popstate', () => show(getRouteHash()));
 document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
 
   // pulse hearts + metrics
-  const _oh = $('#ops-heart');
-  if (_oh) _oh.appendChild(createHeart(24, BRAND, 40));
-  const _ohs = $('#ops-heart-small');
-  if (_ohs) _ohs.appendChild(createHeart(18, BRAND, 40));
+  $('#ops-heart').appendChild(createHeart(24, BRAND, 40));
+  $('#ops-heart-small').appendChild(createHeart(18, BRAND, 40));
   loadOpsMetrics();
   startSSE();
 })();
 
   </script>
+
+
 <script>
 (function () {
   function isReady(s) {
@@ -4347,6 +3402,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }, 300);
 })();
 </script>
+
 <script>
 (function () {
   // Re-fire state:ready after Ops switches weeks (or re-populates state)
@@ -4359,94 +3415,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
       return r;
     };
   }
-})();
-</script>
-<script defer="" src="/exec_live_additive.js?v=8"></script>
-<script defer="" src="/receiving_live_additive.js?v=27">
-// --- Ops: PO progress search (right panel) ---
-(function(){
-  function q(sel){ return document.querySelector(sel); }
-  const input = q('#ops-po-search');
-  const clearBtn = q('#ops-po-clear');
-  const out = q('#ops-po-detail');
-  if(!input || !out) return;
-
-  function fmt(n){
-    const x = Number(n);
-    return (isFinite(x)?Math.trunc(x):0).toLocaleString();
-  }
-
-  function findPlanRow(po){
-    const key = String(po||'').trim().toUpperCase();
-    return (window.state?.plan||[]).find(p => String(p.po_number||'').trim().toUpperCase() === key) || null;
-  }
-
-  function renderPO(po){
-    const key = String(po||'').trim().toUpperCase();
-    if(!key){ out.innerHTML = '<div class="text-xs text-gray-500">Enter a PO to view details.</div>'; return; }
-
-    const planRow = findPlanRow(key);
-    const planned = planRow ? toNum(planRow.target_qty) : 0;
-
-    const sumC = window.state?._summary_complete;
-    const sumR = window.state?._summary_received;
-
-    const applied = Number(sumC?.by_po?.[key]?.units || sumC?.by_po?.[key]?.total_units || 0);
-    const received = Number(sumR?.by_po?.[key]?.units || sumR?.by_po?.[key]?.total_units || 0);
-
-    const pctA = planned>0 ? Math.round(applied*100/planned) : 0;
-    const pctR = planned>0 ? Math.round(received*100/planned) : 0;
-
-    const supplier = planRow?.supplier_name || planRow?.supplier || '';
-    const facility = planRow?.facility || planRow?.facility_code || '';
-    const freight  = planRow?.freight_type || planRow?.freight || '';
-    const zendesk  = planRow?.zendesk_ticket || planRow?.zendesk || '';
-
-    out.innerHTML = `
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <div class="text-sm font-semibold">${key}</div>
-          <div class="text-xs text-gray-500 mt-0.5">${[supplier, facility, freight, zendesk].filter(Boolean).join(' • ') || '—'}</div>
-        </div>
-        <div class="text-right">
-          <div class="text-xs text-gray-500">Planned</div>
-          <div class="text-sm font-semibold tabular-nums">${fmt(planned)}</div>
-        </div>
-      </div>
-
-      <div class="mt-3 space-y-2">
-        <div>
-          <div class="flex items-center justify-between text-xs text-gray-600">
-            <div>Received</div><div class="font-semibold tabular-nums">${fmt(received)} <span class="text-gray-400">(${pctR}%)</span></div>
-          </div>
-          <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
-            <div class="h-full ops-bar-planned" style="width:${Math.min(100,pctR)}%"></div>
-          </div>
-        </div>
-
-        <div>
-          <div class="flex items-center justify-between text-xs text-gray-600">
-            <div>Applied</div><div class="font-semibold tabular-nums">${fmt(applied)} <span class="text-gray-400">(${pctA}%)</span></div>
-          </div>
-          <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
-            <div class="h-full" style="width:${Math.min(100,pctA)}%; background:${APPLIED_COLOR};"></div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  let t=null;
-  input.addEventListener('input', () => {
-    clearTimeout(t);
-    t=setTimeout(()=>renderPO(input.value), 250);
-  });
-  clearBtn?.addEventListener('click', () => { input.value=''; renderPO(''); });
-
-  // re-render on state:ready (week change / plan upload)
-  window.addEventListener('state:ready', () => {
-    if(input.value.trim()) renderPO(input.value);
-  });
 })();
 
   
