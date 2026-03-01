@@ -8,7 +8,7 @@
 <meta content="Asia/Shanghai" name="business-tz"/>
 <title>VelOzity Pinpoint Test Env</title>
 
-<!-- Tailwind -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -3596,11 +3596,21 @@ syncNav();
 
 document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
 
-  // pulse hearts + metrics
-  $('#ops-heart').appendChild(createHeart(24, BRAND, 40));
-  $('#ops-heart-small').appendChild(createHeart(18, BRAND, 40));
-  loadOpsMetrics();
-  startSSE();
+  // pulse hearts + metrics (dashboard only)
+  const __route = (location.hash || '#dashboard').replace('#','').trim();
+  const __isDash = (__route === '' || __route === 'dashboard' || __route === 'operations' || __route === 'ops');
+  if (__isDash) {
+    const __big = $('#ops-heart');
+    const __small = $('#ops-heart-small');
+    if (__big && __small) {
+      __big.innerHTML = '';
+      __small.innerHTML = '';
+      __big.appendChild(createHeart(24, BRAND, 40));
+      __small.appendChild(createHeart(18, BRAND, 40));
+      loadOpsMetrics();
+      startSSE();
+    }
+  }
 })();
 
   </script>
@@ -3642,7 +3652,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }
 })();
 </script>
-
 
    
 </script>
