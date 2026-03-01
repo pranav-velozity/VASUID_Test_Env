@@ -1,111 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta content="width=device-width,initial-scale=1" name="viewport"/>
-<!-- ⬇️ Set to your Render API base (no trailing slash) -->
-<meta content="https://vasuid-test-env.onrender.com" name="api-base"/>
-<meta content="Asia/Shanghai" name="business-tz"/>
-<title>VelOzity Pinpoint Test Env</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!-- ⬇️ Set to your Render API base (no trailing slash) -->
+  <meta name="api-base" content="https://vasuid-test-env.onrender.com"/>
+<meta name="business-tz" content="Asia/Shanghai"/>
+  <title>VelOzity Pinpoint Test Env</title>
 
- <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS -->
-  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-
- <style>
-    body{background:#f8fafc;color:#111827}
-    .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
-    .vo-wrap{
-  max-width:none;
-  width:min(96vw,1920px);
-  margin:0 auto;
-  padding:16px 24px;
-  box-sizing:border-box;
-}
-#page-dashboard .cmdbar, #capsules{ min-width:0; flex-wrap:wrap; }
-
-    .dot{width:.6rem;height:.6rem;border-radius:9999px;display:inline-block}
-    .heartbeat{animation:heartbeat 1.2s ease-in-out infinite;transform-origin:center}
-    @keyframes heartbeat{0%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}60%{transform:scale(1)}100%{transform:scale(1)}}
-    .cell{width:100%;padding:.4rem .5rem;border:0;outline:none}
-    .cell:focus{box-shadow:0 0 0 3px rgba(59,130,246,.25)}
-    .th{font-size:.75rem;font-weight:600;color:#374151}
-    /* Shorter week capsule */
-    .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
-    .wkcap .m{font-size:10px}
-    .wkcap .d{font-size:16px;font-weight:700;line-height:1.1}
-    .wkcap .t{font-size:11px;margin-top:2px;color:#990033}
-    .wkcap .bar{height:6px;border-radius:9999px;background:#e5e7eb;overflow:hidden;margin-top:4px}
-    .wkcap .bar>div{height:6px;border-radius:9999px;background:#990033;width:0%}
-
-/* Respect .hidden; only style when visible */
-#page-dashboard:not(.hidden){ display:block; }
-#page-dashboard:not(.hidden) > *{
-  position:relative;
-  display:block;
-  width:100%;
-  max-width:100%;
-  min-width:0;
-  margin-bottom:.75rem;
-}
-
-/* segmented toggle visuals (neutral) */
-.seg { color:#303030; }
-.seg.active {
-  background:#fff;
-  color:#303030;
-  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.1);
-}
-.seg:not(.active):hover { background: rgba(0,0,0,.06); }
-
-
-/* --- Command Bar (visual only) --- */
-.cmdbar{
-  display:flex; flex-wrap:wrap; gap:.25rem;
-  padding:.25rem; border-radius:12px;
-  background:#fff; border:1px solid #e5e7eb;
-  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.08);
-}
-.cmd{
-  display:inline-flex; align-items:center; gap:.5rem;
-  font-size:.875rem; line-height:1;
-  padding:.5rem .75rem; border-radius:10px;
-  border:1px solid transparent; background:transparent; color:#374151;
-  transition:background .15s ease, border-color .15s ease, transform .05s ease;
-}
-.cmd:hover{ background:#f9fafb; border-color:#e5e7eb; }
-.cmd:active{ transform:translateY(1px); }
-.cmd:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(153,0,51,.15); }
-
-/* variants */
-.cmd--primary{ background:#990033; color:#fff; }
-.cmd--primary:hover{ filter:brightness(.98); }
-.cmd--danger{ color:#991b1b; background:#fff5f5; border-color:#fecaca; }
-.cmd--ghost{ background:transparent; }
-
-/* Override colors for Upload/Zero buttons ONLY */
-#btn-upload-plan,
-#btn-zero-plan {
-  background: #E2E2E2 !important;
-  color: #303030 !important;
-  border-color: #e5e7eb !important;
-}
-
-#btn-upload-plan:hover,
-#btn-zero-plan:hover {
-  background: #d9d9d9 !important; /* subtle hover */
-}
-
-
-
-/* icon sizing */
-.cmd svg{ width:16px; height:16px; opacity:.85; }
-
-  
-
-/* --- Ops Dashboard styles (from new ops file) --- */
-
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- SheetJS -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<style>
 
 /* OPS explicit palette classes (guaranteed) */
 .ops-bar-planned{ background: var(--ops-green) !important; }
@@ -305,50 +212,38 @@
   box-shadow: 0 0 0 3px rgba(153,0,51,.08);
   color:#111827;
 }
-
 </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
-  <!-- Top Nav -->
-  <header class="vo-nav">
-    <div class="vo-wrap py-3 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="text-xl font-semibold">VelOzity Pinpoint</div>
-        <div id="vo-today" class="text-gray-500 text-sm"></div>
-      </div>
-      <nav id="nav-toggle" class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300">
-
-<a href="#exec" id="nav-exec"
-   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<!-- Top Nav -->
+<header class="vo-nav">
+<div class="vo-wrap py-3 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="text-xl font-semibold">VelOzity Pinpoint</div>
+<div class="text-gray-500 text-sm" id="vo-today"></div>
+</div>
+<nav class="inline-flex items-center gap-1 p-1 rounded-xl bg-[#E2E2E2] border border-gray-300" id="nav-toggle">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#exec" id="nav-exec">
   Executive
 </a>
-
-  <a href="#dashboard" id="nav-dash"
-     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#dashboard" id="nav-dash">
     Operations
   </a>
-
-<a href="#receiving" id="nav-receiving"
-   class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#receiving" id="nav-receiving">
   Receiving
 </a>
-        
-  <a href="#intake" id="nav-intake"
-     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#intake" id="nav-intake">
     Intake
   </a>
-
-  <a href="#flow" id="nav-flow"
-     class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none">
+<a class="seg px-3 py-1.5 rounded-lg text-sm font-medium transition select-none" href="#flow" id="nav-flow">
     Flow
   </a>
 </nav>
-    </div>
-  </header>
-
-  <main class="vo-wrap py-4">
-    <!-- ================= Operations ================= -->
-    <section class="hidden" id="page-dashboard">
+</div>
+</header>
+<main class="vo-wrap py-4">
+<!-- ================= Operations ================= -->
+<section class="hidden" id="page-dashboard">
 <div class="flex items-center justify-between mb-2 basis-full w-full">
 <div class="text-2xl font-semibold">Operations</div>
 <div class="flex items-center gap-2">
@@ -549,244 +444,141 @@
 </div>
 
 <!-- ================= Intake ================= -->
-<section id="page-intake" class="hidden">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-5">
-          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
-          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
-            </svg>
-            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
-          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
-<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
-<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
-          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
-          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
-        </div>
-      </div>
-
-      <!-- Ops ribbon -->
-      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
-          <div class="flex gap-3">
-            <div class="flex-1 border rounded-lg p-3">
-              <div class="text-xs text-gray-500">Scans Today</div>
-              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-            <div class="flex-1 border rounded-lg p-3">
-              <div class="text-xs text-gray-500">Last Hour</div>
-              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-4 border rounded-lg p-3">
-            <div id="ops-heart-small"></div>
-            <div>
-              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
-              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-          </div>
-          <div class="border rounded-lg p-3">
-            <div class="text-sm font-semibold mb-1">Data Quality</div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
-            </div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
-            </div>
-            <div class="text-xs text-gray-500 mt-2">Sync states</div>
-            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
-          </div>
-          <div class="border rounded-lg p-3">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold">Alerts</div>
-              <small class="text-gray-500">
-                <span id="ops-last-updated">—</span>
-                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
-                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
-                </span>
-              </small>
-            </div>
-            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- Intake Table -->
-      <div class="mt-3 overflow-auto">
-        <table class="w-full min-w-[1100px] border-collapse border">
-          <thead class="bg-gray-100">
-          <tr>
-            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
-            <th class="th border px-2 py-1 text-left">Date</th>
-            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
-            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
-            <th class="th border px-2 py-1 text-left">PO_Number</th>
-            <th class="th border px-2 py-1 text-left">SKU_Code</th>
-            <th class="th border px-2 py-1 text-left">UID</th>
-            <th class="th border px-2 py-1 text-center">Sync</th>
-          </tr>
-          </thead>
-          <tbody id="intake-body"></tbody>
-        </table>
-      </div>
-
-      <div class="mt-3">
-        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
-      </div>
-
-<!-- Quick Delete by UID -->
-<div class="mt-4 bg-white rounded-2xl border shadow p-4">
-  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
-  <p class="text-xs text-gray-500 mb-2">
-    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
-  </p>
-  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
-  <div class="mt-2 flex items-center gap-2">
-    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
-    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
-  </div>
-</div>
-    </section>
-
-    <!-- ================= UID Intake ================= -->
-    <section id="page-intake" class="hidden">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-5">
-          <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
-          <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" width="18" height="18" class="heartbeat">
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="#990033"/>
-            </svg>
-            <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
-          <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
-<button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
-<input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
-          <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
-          <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">Delete Selected</button>
-        </div>
-      </div>
-
-      <!-- Ops ribbon -->
-      <div id="ops-ribbon" class="mt-3 bg-white border rounded-xl shadow p-3">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
-          <div class="flex gap-3">
-            <div class="flex-1 border rounded-lg p-3">
-              <div class="text-xs text-gray-500">Scans Today</div>
-              <div id="ops-today" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-            <div class="flex-1 border rounded-lg p-3">
-              <div class="text-xs text-gray-500">Last Hour</div>
-              <div id="ops-hour" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-4 border rounded-lg p-3">
-            <div id="ops-heart-small"></div>
-            <div>
-              <div class="text-xs text-gray-500">Throughput / hr (last 30m)</div>
-              <div id="ops-rate" class="text-2xl font-bold tabular-nums">0</div>
-            </div>
-          </div>
-          <div class="border rounded-lg p-3">
-            <div class="text-sm font-semibold mb-1">Data Quality</div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">Drafts</span><strong id="ops-drafts">0</strong>
-            </div>
-            <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">Duplicates</span><strong id="ops-dupes">0</strong>
-            </div>
-            <div class="text-xs text-gray-500 mt-2">Sync states</div>
-            <div id="ops-sync-badges" class="flex flex-wrap gap-2 mt-1"></div>
-          </div>
-          <div class="border rounded-lg p-3">
-            <div class="flex items-center justify-between">
-              <div class="text-sm font-semibold">Alerts</div>
-              <small class="text-gray-500">
-                <span id="ops-last-updated">—</span>
-                <span class="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] text-gray-500">
-                  <span id="ops-dot" class="w-2 h-2 rounded-full bg-gray-300"></span>SSE
-                </span>
-              </small>
-            </div>
-            <ul id="ops-alerts" class="list-disc ml-4 mt-1 text-sm" aria-live="polite"><li class="text-gray-400">No alerts.</li></ul>
-          </div>
-        </div>
-      </div>
-
-      <!-- Intake Table -->
-      <div class="mt-3 overflow-auto">
-        <table class="w-full min-w-[1100px] border-collapse border">
-          <thead class="bg-gray-100">
-          <tr>
-            <th class="th border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
-            <th class="th border px-2 py-1 text-left">Date</th>
-            <th class="th border px-2 py-1 text-left">Mobile Bin (BOX)</th>
-            <th class="th border px-2 py-1 text-left">SSCC Label (BOX)</th>
-            <th class="th border px-2 py-1 text-left">PO_Number</th>
-            <th class="th border px-2 py-1 text-left">SKU_Code</th>
-            <th class="th border px-2 py-1 text-left">UID</th>
-            <th class="th border px-2 py-1 text-center">Sync</th>
-          </tr>
-          </thead>
-          <tbody id="intake-body"></tbody>
-        </table>
-      </div>
-
-      <div class="mt-3">
-        <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
-      </div>
-
-<!-- Quick Delete by UID -->
-<div class="mt-4 bg-white rounded-2xl border shadow p-4">
-  <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
-  <p class="text-xs text-gray-500 mb-2">
-    Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
-  </p>
-  <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
-  <div class="mt-2 flex items-center gap-2">
-    <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
-    <span id="delete-uids-status" class="text-xs text-gray-500"></span>
-  </div>
-</div>
-    </section>
-
-<!-- ================= Executive (Client) ================= -->
-<section id="page-exec" class="hidden">
+<section class="hidden" id="page-intake">
   <div class="flex items-center justify-between mb-3">
     <div>
-      <div class="text-2xl font-semibold">Executive Summary</div>
-      <div id="exec-sub" class="text-xs text-rose-900/70 mt-0.5"></div>
+      <div class="text-2xl font-semibold">Intake</div>
+      <div class="text-sm text-gray-500">Create / review UID records and manage deletes</div>
     </div>
-    <div class="flex items-center gap-2">
-      <button id="btn-exec-doc" class="cmd cmd--primary">Download .doc</button>
-      <button id="btn-exec-csv" class="cmd">PO×SKU CSV</button>
+  </div>
+
+  <div class="vo-card p-4">
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Add row</button>
+      <button id="btn-delete-selected" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete selected</button>
+      <button id="btn-export-day" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Export day CSV</button>
+      <div class="ml-auto text-xs text-gray-500">Tip: use the checkbox column to select multiple rows.</div>
+    </div>
+
+    <div class="overflow-auto border rounded-xl">
+      <table class="min-w-[1100px] w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="p-2 text-left w-10"><input id="chk-all" type="checkbox" /></th>
+            <th class="p-2 text-left">Date</th>
+            <th class="p-2 text-left">Mobile Bin</th>
+            <th class="p-2 text-left">SSCC</th>
+            <th class="p-2 text-left">PO</th>
+            <th class="p-2 text-left">SKU</th>
+            <th class="p-2 text-left">UID</th>
+            <th class="p-2 text-left">Status</th>
+            <th class="p-2 text-left">Sync</th>
+            <th class="p-2 text-left">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="intake-body" class="bg-white"></tbody>
+      </table>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mt-4">
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="font-semibold mb-2">Delete UIDs</div>
+        <textarea id="uids-to-delete" class="w-full border rounded-lg p-2 text-sm h-28" placeholder="Paste UID(s) to delete (comma, space, or newline separated)"></textarea>
+        <div class="flex items-center gap-2 mt-2">
+          <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete</button>
+          <span id="delete-uids-status" class="text-sm text-gray-600"></span>
+        </div>
+      </div>
+
+      <div class="border rounded-xl p-3 bg-white">
+        <div class="font-semibold mb-2">Intake BPM</div>
+        <div id="intake-bpm" class="text-3xl font-semibold tabular-nums">—</div>
+        <div class="text-xs text-gray-500 mt-1">Calculated from recent intake activity.</div>
+      </div>
     </div>
   </div>
 </section>
+<script>
+    // ---------------------------
+    // ---------------------------
+// Small utilities (safe HTML, formatting)
+// ---------------------------
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-<!-- ================= Flow ================= -->
-<section id="page-flow" class="hidden"></section>
-  </main>
 
-  <!-- Footer health pill (shows Applied this week) -->
-  <div id="vo-footer" style="position:fixed;left:0;right:0;bottom:0;z-index:50;font-size:12px;background:transparent;padding:.5rem .75rem;display:flex;gap:.75rem;align-items:center;">
-    <span id="health-pill" class="inline-flex items-center gap-2 px-3 py-1 rounded-full border bg-amber-100 text-amber-900 border-amber-300">
-      <span id="health-dot" class="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
-      Health: <span id="vo-health" class="ml-1">n/a</span>
-    </span>
-    <span id="vo-footer-text">Applied this week: 0</span>
-  </div>
+function firstTwoWords(name){
+  const s = String(name ?? '').trim();
+  if(!s) return '';
+  const parts = s.split(/\s+/).filter(Boolean);
+  return parts.slice(0,2).join(' ');
+}
+function fmt(n, digits = 0) {
+  const x = Number(n);
+  if (!isFinite(x)) return '0';
+  return x.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
 
-  <script>
+function pct(n, d, digits = 0) {
+  const nn = Number(n) || 0, dd = Number(d) || 0;
+  if (!dd) return '0%';
+  return (100 * nn / dd).toFixed(digits) + '%';
+}
+
+// Softer / matte palette for Ops insight bars
+const OPS_PLANNED_BG = 'rgb(55,65,81)'; // dark grey planned baseline // slate-400 @ 16% (matte)
+const OPS_PLANNED_FG = 'rgb(55,65,81)'; // dark grey legend dot // slate-400 @ 32%
+const OPS_RECEIVED_FG = 'rgb(240,215,49)'; // matte yellow for received // sky-400 @ 20% (soft)
+const OPS_APPLIED_OPACITY = '1'; // applied solid // applied overlay opacity (matte)
+
+// Bar row helper used by Ops insights (safe even if not used everywhere)
+function barRowHtml(label, val, denom, barColor) {
+  const v = Number(val) || 0, d = Number(denom) || 0;
+  const p = d > 0 ? Math.max(0, Math.min(100, 100 * v / d)) : 0;
+  const c = barColor || OPS_PLANNED_FG;
+  return `
+    <div class="flex items-center gap-3">
+      <div class="w-20 shrink-0 text-[11px] text-gray-500">${escapeHtml(label)}</div>
+      <div class="flex-1 h-2 rounded-full overflow-hidden" style="background:${OPS_PLANNED_BG};">
+        <div class="h-2 rounded-full" style="width:${p}%; background:${c};"></div>
+      </div>
+      <div class="w-24 text-right text-[11px] tabular-nums text-gray-700">${fmt(v)}</div>
+    </div>
+  `;
+}
+
+// Back-compat alias (older refactors called this progressHtml)
+function progressHtml(label, val, denom, barColor) {
+  return barRowHtml(label, val, denom, barColor);
+}
+
+// Single progress bar: received (soft) + applied (matte) over planned baseline
+function progressBarHtml(planned, received, applied) {
+  const p = Number(planned) || 0, r = Number(received) || 0, a = Number(applied) || 0;
+  const recPct = p > 0 ? Math.max(0, Math.min(100, 100 * r / p)) : 0;
+  const appPct = p > 0 ? Math.max(0, Math.min(100, 100 * a / p)) : 0;
+  return `
+    <div class="relative h-2.5 rounded-full overflow-hidden" style="background:${OPS_PLANNED_BG};">
+      <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
+      <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR}; opacity:${OPS_APPLIED_OPACITY};"></div>
+    </div>
+  `;
+}
+
+function shortTwoWords(name) {
+      const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean);
+      const s = parts.slice(0, 2).join(' ');
+      return s || '—';
+    }
   const BRAND = '#990033';
+  const APPLIED_COLOR = 'rgb(209,226,49)'; // same as cartons IN (ops-green) // matte green (soft) for applied
+  const PLANNED_COLOR = 'rgb(55,65,81)'; // dark grey for planned
 const BASE_BPM = 40;
   const apiBase = (document.querySelector('meta[name="api-base"]')?.content || '').replace(/\/+$/,'');
   const $ = (s)=>document.querySelector(s);
@@ -799,7 +591,7 @@ const BASE_BPM = 40;
   const tzShort = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
     .formatToParts(d)
     .find(p => p.type === 'timeZoneName')?.value || '';
-  $('#vo-today').textContent = `${month} ${day} ${year} • ${tzShort}`;
+      const __el_vo_today = document.getElementById('vo-today'); if(__el_vo_today) __el_vo_today.textContent = `${month} ${day} ${year} • ${tzShort}`;
 })();
 const iso = (d) => {
   const x = new Date(d);
@@ -863,39 +655,7 @@ function createHeart(size=24, color=BRAND, bpm=40){
   return svg;
 }
   // API helpers
-  const state={weekStart:'', plan:[], records:[]};
-
-  // ---- lightweight fetch cache (prevents repeated 150k pulls) ----
-  // Many views reuse the same /records payload. When the browser/network is shaky,
-  // repeated large downloads create lag. This cache de-dupes in-flight requests
-  // and reuses results for a short TTL.
-  const __fetchCache = new Map(); // url -> { ts, data, promise }
-  async function fetchJSONCached(url, ttlMs = 15000) {
-    const now = Date.now();
-    const hit = __fetchCache.get(url);
-
-    if (hit) {
-      if (hit.data && (now - hit.ts) < ttlMs) return hit.data;
-      if (hit.promise) return hit.promise;
-    }
-
-    const prom = fetch(url, { cache: 'no-store' })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(await r.text());
-        return r.json();
-      })
-      .then((data) => {
-        __fetchCache.set(url, { ts: Date.now(), data, promise: null });
-        return data;
-      })
-      .catch((err) => {
-        __fetchCache.delete(url);
-        throw err;
-      });
-
-    __fetchCache.set(url, { ts: now, data: hit ? hit.data : null, promise: prom });
-    return prom;
-  }
+  const state={weekStart:'', plan:[], records:[], opsView:'overview', weekCartonsIn:0, weekCartonsOut:0};
 
   async function api(path,opts={}){const r=await fetch(`${apiBase}${path}`,{method:opts.method||'GET',headers:{'Content-Type':'application/json'},body:opts.body?JSON.stringify(opts.body):undefined}); if(!r.ok) throw new Error(await r.text()); const ct=r.headers.get('content-type')||''; return ct.includes('json')?r.json():r.text();}
   async function fetchPlan(w){
@@ -907,7 +667,8 @@ function createHeart(size=24, color=BRAND, bpm=40){
   }
 }
 
-async function fetchSummary(fromYMD, toYMD, status='complete'){
+  // Summary-first: dashboards never pull raw /records.
+  async function fetchSummary(fromYMD, toYMD, status='complete'){
     try{
       const q = new URLSearchParams();
       if(fromYMD) q.set('from', fromYMD);
@@ -920,6 +681,51 @@ async function fetchSummary(fromYMD, toYMD, status='complete'){
     }
   }
 
+
+  // Fallback: pull raw records (used only if /records/summary is unavailable)
+  async function fetchRecordsRange(fromYMD, toYMD, status='complete', limit=200000){
+    try{
+      const q = new URLSearchParams();
+      if(status) q.set('status', status);
+      if(fromYMD) q.set('from', fromYMD);
+      if(toYMD) q.set('to', toYMD);
+      q.set('limit', String(limit));
+      const r = await api(`/records?${q.toString()}`);
+      // API sometimes returns {records:[...]}
+      if(Array.isArray(r)) return r;
+      if(Array.isArray(r?.records)) return r.records;
+      return [];
+    }catch{ return []; }
+  }
+
+  function buildSummaryFromRaw(records){
+    const byPO = new Map();
+    let total = 0;
+    for(const r of (records||[])){
+      if(!r) continue;
+      if(r.status && r.status !== 'complete') continue;
+      const po = String(r.po_number||r.po||'').trim();
+      if(!po) continue;
+      byPO.set(po, (byPO.get(po)||0) + 1);
+      total += 1;
+    }
+    const by_po = Array.from(byPO.entries()).map(([po, units]) => ({po, units}));
+    return { by_po, total_units: total };
+  }
+
+
+  // --- Fetch bins for a week (business week start) ---
+async function fetchBins(ws) {
+  if (!apiBase) return [];
+  try {
+    const r = await api(`/bins/weeks/${ws}`);
+    return Array.isArray(r) ? r : (r.bins || []);
+  } catch {
+    return [];
+  }
+}
+
+// --- Fetch receiving rows for a week (used to estimate cartons-in and "approx received units") ---
 async function fetchReceiving(ws) {
   if (!apiBase) return [];
   try {
@@ -931,41 +737,6 @@ async function fetchReceiving(ws) {
   }
 }
 
-
-
-async function fetchActualsAll(){
-  if (!apiBase) return [];
-  try {
-    const d = await fetchJSONCached(`${apiBase}/records?limit=65000`, 20000);
-    return (d && d.records) || [];
-  } catch {
-    return [];
-  }
-}
-
-// Shared snapshot for all /records consumers.
-// IMPORTANT: Keep the URL identical everywhere so fetchJSONCached can de-dupe.
-async function getRecordsSnapshot(ttlMs = 15000) {
-  if (!apiBase) return [];
-  try {
-    const d = await fetchJSONCached(`${apiBase}/records?limit=65000`, ttlMs);
-    return (d && d.records) || [];
-  } catch {
-    return [];
-  }
-}
-  async function fetchActuals(f,t){ if(!apiBase) return []; try{const d=await api(`/records?from=${f}&to=${t}&status=complete&limit=65000`); return d.records||[];}catch{return [];} }
-
-// --- Fetch bins for a week (business week start) ---
-async function fetchBins(ws) {
-  if (!apiBase) return [];
-  try {
-    const r = await api(`/bins/weeks/${ws}?limit=65000`);
-    return Array.isArray(r) ? r : (r.bins || []);
-  } catch {
-    return [];
-  }
-}
 
 // --- Compute bin QA (cross-check with applied records) ---
 function computeBinQA(ws, records=[], bins=[]) {
@@ -1074,7 +845,7 @@ function computeBinQA(ws, records=[], bins=[]) {
     el.className = 'wkcap bg-white hover:scale-[1.02] transition';
     el.style.borderColor = (id === state.weekStart ? BRAND : 'rgba(0,0,0,.12)');
     el.innerHTML = `
-      <div class="m" style="color:${id === state.weekStart ? BRAND : '#6b7280'}">${mon}</div>
+      <div class="m" style="color:${id === state.weekStart ? BRAND : '#D1E231'}">${mon}</div>
       <div class="d">${day}</div>
       <div class="t" id="cap-total-${id}">${fmtInt(stats.planned || 0)}</div>
       <div class="bar"><div id="cap-bar-${id}"></div></div>
@@ -1092,7 +863,27 @@ function computeBinQA(ws, records=[], bins=[]) {
 }
 
   // ---------- Aggregations ----------
-  function aggregate(records){const byPO=new Map(),bySKU=new Map(); for(const r of records){ if(r.status!=='complete') continue; const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim(); if(po) byPO.set(po,(byPO.get(po)||0)+1); if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);} return {byPO,bySKU};}
+  // aggregate() supports:
+  // 1) raw records: { status:'complete', po_number, sku_code }
+  // 2) summary rows: { po, units } (from /records/summary by_po)
+  function aggregate(rows){
+    const byPO=new Map(),bySKU=new Map();
+    for(const r of (rows||[])){
+      if(!r) continue;
+      // summary row
+      if(('po' in r) && ('units' in r) && !('po_number' in r)){
+        const po=String(r.po||'').trim();
+        const u=Number(r.units||0)||0;
+        if(po) byPO.set(po,(byPO.get(po)||0)+u);
+        continue;
+      }
+      if(r.status!=='complete') continue;
+      const po=String(r.po_number||'').trim(), sku=String(r.sku_code||'').trim();
+      if(po) byPO.set(po,(byPO.get(po)||0)+1);
+      if(sku) bySKU.set(sku,(bySKU.get(sku)||0)+1);
+    }
+    return {byPO,bySKU};
+  }
   function joinPOProgress(plan, byPO){
     const map=new Map();
     for(const p of plan||[]){ const po=String(p.po_number||'').trim(); if(!po) continue; const rec=map.get(po)||{due:p.due_date,planned:0,applied:0}; rec.planned+=toNum(p.target_qty); if(rec.due!==p.due_date) rec.due = rec.due < p.due_date ? rec.due : p.due_date; map.set(po,rec); }
@@ -1128,23 +919,14 @@ function computeBinQA(ws, records=[], bins=[]) {
 }
   
   function setFooterHealth(pct, appliedWeek){
-    // Guard: footer elements may not exist on every route (e.g. Intake)
-    const pill = $('#health-pill');
-    const dot  = $('#health-dot');
-    if(!pill || !dot) return;
-
+    const pill=$('#health-pill'), dot=$('#health-dot');
     let cls='bg-amber-100 text-amber-900 border-amber-300', d='bg-amber-500', label='On-Plan';
     if(pct>=100){cls='ops-bg-planned-soft text-green-900 border-green-300'; d='ops-bar-planned'; label='Ahead-of-Plan';}
     else if(pct<80){cls='bg-rose-100 text-rose-900 border-rose-300'; d='bg-rose-500'; label='At-Risk';}
-
     pill.className='inline-flex items-center gap-2 px-3 py-1 rounded-full border '+cls;
     dot.className='inline-block w-2 h-2 rounded-full '+d;
-
-    const __el_vo_health = document.getElementById('vo-health');
-    if(__el_vo_health) __el_vo_health.textContent = label;
-
-    const __el_vo_footer_text = document.getElementById('vo-footer-text');
-    if(__el_vo_footer_text) __el_vo_footer_text.textContent = `Applied this week: ${fmtInt(appliedWeek)}`;
+      const __el_vo_health = document.getElementById('vo-health'); if(__el_vo_health) __el_vo_health.textContent = label;
+      const __el_vo_footer_text = document.getElementById('vo-footer-text'); if(__el_vo_footer_text) __el_vo_footer_text.textContent = `Applied this week: ${fmtInt(appliedWeek)}`;
   }
 
   // ---------- Downloads ----------
@@ -1153,17 +935,29 @@ function computeBinQA(ws, records=[], bins=[]) {
     const head=header.map(esc).join(','), body=rows.map(r=>header.map(h=>esc(r[h])).join(',')).join('\r\n');
     return '\ufeff'+head+'\r\n'+body+'\r\n';
   }
-function buildDiscrepancyPOSKU(plan, records){
+function buildDiscrepancyPOSKU(plan, recRows){
 const byPS=new Map();
 const binsByPS=new Map();
 
-for(const r of records||[]){
-  if(r.status!=='complete') continue;
+for(const r of recRows||[]){
+  if(!r) continue;
 
+  // Summary row: { po, sku, units }
+  if(('po' in r) && ('sku' in r) && ('units' in r) && !('po_number' in r)){
+    const po=String(r.po||'').trim();
+    const sku=String(r.sku||'').trim();
+    const u=Number(r.units||0)||0;
+    if(!po||!sku) continue;
+    const k=`${po}|||${sku}`;
+    byPS.set(k,(byPS.get(k)||0)+u);
+    continue;
+  }
+
+  // Raw record: { status, po_number, sku_code, mobile_bin }
+  if(r.status!=='complete') continue;
   const po=String(r.po_number||'').trim();
   const sku=String(r.sku_code||'').trim();
   if(!po||!sku) continue;
-
   const k=`${po}|||${sku}`;
   byPS.set(k,(byPS.get(k)||0)+1);
 
@@ -1175,7 +969,7 @@ for(const r of records||[]){
 }
 
 
-  const seen=new Set(); const rows=[];
+  const seen=new Set(); const outRows=[];
   for(const p of plan||[]){
     const po=String(p.po_number||'').trim(), sku=String(p.sku_code||'').trim();
     if(!po||!sku) continue;
@@ -1188,7 +982,7 @@ for(const r of records||[]){
 const binSet = binsByPS.get(k) || new Set();
 const binList = Array.from(binSet).sort();
 
-rows.push({
+outRows.push({
   'PO': po,
   'SKU': sku,
   'Supplier Name': p.supplier_name || '',
@@ -1202,7 +996,7 @@ rows.push({
   'Discrepancy (Applied - Planned)': applied - planned
 });
   }
-  return rows;
+  return outRows;
 }
 
 function buildDiscrepancyPO(joined, plan){
@@ -1443,42 +1237,24 @@ async function downloadAppliedWeek() {
   weDate.setDate(weDate.getDate() + 6);
   const we = iso(weDate);
 
-  // Risk-averse: export exactly what Ops is already using for this week
-  const records = (state.records || []).filter(r => r.status === 'complete');
-
-
-  if (!records.length) {
-    alert('No applied UIDs found for this week.');
+  if (!apiBase) {
+    alert('API not configured');
     return;
   }
 
-  // Build export-friendly rows
-  const rows = records.map(r => ({
-    'Date Applied': toUI(r.date_local),
-    'Mobile Bin': r.mobile_bin || '',
-    'SSCC Label': r.sscc_label || '',
-    'PO Number': r.po_number || '',
-    'SKU Code': r.sku_code || '',
-    'UID': r.uid || ''
-  }));
+  // At scale, never build this CSV in the browser.
+  // Stream it from the server (fast + safe for 2M+ rows).
+  const url = `${apiBase}/export/applied?from=${encodeURIComponent(ws)}&to=${encodeURIComponent(we)}&status=complete`;
 
-  // Convert to CSV (simple)
-  const header = Object.keys(rows[0]);
-  const esc = v => /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v;
-  const csv =
-    '\ufeff' +
-    header.join(',') +
-    '\r\n' +
-    rows.map(r => header.map(h => esc(r[h])).join(',')).join('\r\n');
-
-  // Download
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  // Use a temporary <a> so the browser downloads the file without navigating away.
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `Applied_UIDs_${ws}_to_${we}.csv`;
+  document.body.appendChild(a);
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 250);
+  a.remove();
 }
+
 
   function buildExecHTML({
   ws, we,
@@ -1543,25 +1319,25 @@ async function downloadAppliedWeek() {
 
   <div>
     <h1>VAS Weekly Executive Summary</h1>
-    <div style="color:#555;font-size:12px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
+    <div style="color:#555;font-size:11px;margin-bottom:16px">Week: ${pretty(ws)} – ${pretty(we)}</div>
 
     <!-- KPIs -->
     <table class="kpi">
       <tr>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Planned</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Planned</div>
           <div style="font-size:20px;font-weight:700">${plannedTotal.toLocaleString()}</div>
         </td>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Applied</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Applied</div>
           <div style="font-size:20px;font-weight:700">${appliedTotal.toLocaleString()}</div>
         </td>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Completion</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Completion</div>
           <div style="font-size:20px;font-weight:700">${pct}%</div>
         </td>
         <td>
-          <div style="font-size:12px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
+          <div style="font-size:11px;color:#666;margin-bottom:4px">Mobile Bins (wk, from UIDs)</div>
           <div style="font-size:20px;font-weight:700">${uniqueBins.toLocaleString()}</div>
         </td>
       </tr>
@@ -1672,7 +1448,7 @@ function facilityBarHTML(applied, planned) {
   return `
     <div class="w-full">
       <div class="h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:${APPLIED_COLOR};width:${(ratio * 100).toFixed(1)}%"></div>
       </div>
       <div class="mt-2 flex items-center justify-between text-xs text-gray-600">
         <div class="tabular-nums">${fmtInt(a)} applied</div>
@@ -1728,7 +1504,7 @@ function freightLanesHTML(plannedMap, appliedMap) {
             <div class="tabular-nums">${fmtInt(applied)} / ${fmtInt(planned)}</div>
           </div>
           <div class="h-2 w-full rounded-full bg-gray-200 overflow-hidden border mt-1">
-            <div class="h-full" style="background-color:#990033;width:${(ratio * 100).toFixed(1)}%"></div>
+            <div class="h-full" style="background-color:${APPLIED_COLOR};width:${(ratio * 100).toFixed(1)}%"></div>
           </div>
         </div>
       </div>
@@ -1760,7 +1536,7 @@ function zendeskBulletHTML(applied, planned) {
         ${over ? `<span class="ml-2 text-gray-900 font-semibold tabular-nums">Over by ${fmtInt(over)}</span>` : ``}
       </div>
       <div class="relative h-4 w-full rounded-full bg-gray-200 overflow-hidden border">
-        <div class="h-full" style="background-color:#990033;width:${appliedPct.toFixed(1)}%"></div>
+        <div class="h-full" style="background-color:${APPLIED_COLOR};width:${appliedPct.toFixed(1)}%"></div>
         <div class="absolute top-[-2px] bottom-[-2px] w-[2px] bg-gray-700"
              style="left:${markerPct.toFixed(1)}%"></div>
       </div>
@@ -1777,16 +1553,32 @@ function renderProgressTiles(plan = [], records = []) {
   const tilesRoot = document.getElementById('ops-progress-tiles');
   if (!tilesRoot) return;
 
-  // Only count "applied" as completed units
-  const completed = (records || []).filter(r => r.status === 'complete');
+  // Support two modes:
+  // 1) Raw records: [{status, po_number, sku_code, ...}]
+  // 2) Summary-by-PO (preferred at scale): [{po, units, cartons_out?}]
+  const sample = (records || [])[0] || null;
+  const isSummaryByPO = Boolean(sample && ('po' in sample) && ('units' in sample) && !('po_number' in sample));
 
-  // Index plan by PO+SKU so we can map completed records to their plan metadata
+  // Only count "applied" as completed units (raw mode)
+  const completed = isSummaryByPO ? [] : (records || []).filter(r => r.status === 'complete');
+
+  // Index plan by PO+SKU so we can map completed records to their plan metadata (raw mode)
   const planByKey = new Map();
   for (const p of plan || []) {
     const po = String(p.po_number || '').trim();
     const sku = String(p.sku_code || '').trim();
     if (!po || !sku) continue;
     planByKey.set(`${po}|||${sku}`, p);
+  }
+
+  // In summary-by-PO mode, we need PO -> meta (supplier/facility/freight/zendesk)
+  const metaByPO = new Map();
+  if (isSummaryByPO) {
+    for (const p of plan || []) {
+      const po = String(p.po_number || '').trim();
+      if (!po || metaByPO.has(po)) continue;
+      metaByPO.set(po, p);
+    }
   }
 
   // Helper: normalize display values (blank -> (Unspecified))
@@ -1805,17 +1597,28 @@ function renderProgressTiles(plan = [], records = []) {
     return m;
   }
 
-  // Build applied totals by field value by looking up each completed record's plan row
+  // Build applied totals by field value
   function appliedByField(field) {
     const m = new Map();
-    for (const r of completed) {
-      const po = String(r.po_number || '').trim();
-      const sku = String(r.sku_code || '').trim();
-      if (!po || !sku) continue;
+    if (isSummaryByPO) {
+      for (const r of records || []) {
+        const po = String(r.po || '').trim();
+        const u = Number(r.units || 0) || 0;
+        if (!po || u <= 0) continue;
+        const p = metaByPO.get(po);
+        const key = normVal(p?.[field]);
+        m.set(key, (m.get(key) || 0) + u);
+      }
+    } else {
+      for (const r of completed) {
+        const po = String(r.po_number || '').trim();
+        const sku = String(r.sku_code || '').trim();
+        if (!po || !sku) continue;
 
-      const p = planByKey.get(`${po}|||${sku}`);
-      const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
-      m.set(key, (m.get(key) || 0) + 1);
+        const p = planByKey.get(`${po}|||${sku}`);
+        const key = normVal(p?.[field]); // if record not in plan, it falls into (Unspecified)
+        m.set(key, (m.get(key) || 0) + 1);
+      }
     }
     return m;
   }
@@ -1954,21 +1757,36 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const clamp01 = n => (n < 1 ? 1 : n);
 
   // --- applied aggregates (this week window only) ---
-  const inWeek = (r) => {
-  if (r.status !== 'complete') return false;
-  const dl = toISODate(r.date_local);   // normalize to YYYY-MM-DD
-  return dl && dl >= ws && dl <= we;
-};
-  const weekRecords = (records || []).filter(inWeek);
+  const rows = Array.isArray(records) ? records : [];
+  const isSummary = rows.length && ('po' in (rows[0] || {})) && ('units' in (rows[0] || {})) && !('po_number' in (rows[0] || {}));
+
+  let weekRows = [];
+  if (isSummary) {
+    // In summary-only mode, "records" is actually /records/summary.by_po already scoped to the week.
+    weekRows = rows;
+  } else {
+    const inWeek = (r) => {
+      if (!r || r.status !== 'complete') return false;
+      const dl = toISODate(r.date_local);
+      return dl && dl >= ws && dl <= we;
+    };
+    weekRows = rows.filter(inWeek);
+  }
 
   // per-PO & per-SKU counts in week
   const appliedPO  = new Map();
   const appliedSKU = new Map();
-  for (const r of weekRecords) {
-    const po  = String(r.po_number||'').trim();
-    const sku = String(r.sku_code||'').trim();
-    if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
-    if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
+  for (const r of weekRows) {
+    if (isSummary) {
+      const po = String(r.po || '').trim();
+      const u = Number(r.units || 0) || 0;
+      if (po) appliedPO.set(po, (appliedPO.get(po) || 0) + u);
+    } else {
+      const po  = String(r.po_number||'').trim();
+      const sku = String(r.sku_code||'').trim();
+      if (po)  appliedPO.set(po,  (appliedPO.get(po)||0)  + 1);
+      if (sku) appliedSKU.set(sku, (appliedSKU.get(sku)||0) + 1);
+    }
   }
 
   // --- plan aggregates (planned totals & earliest due) ---
@@ -2015,40 +1833,46 @@ function renderInsights(records, plan = [], weekStartISO = '') {
   const prioritySKU = buildPriority(planSKU, appliedSKU, 'sku');
 
 
-// --- Mobile bins: unique (this week) + top 5 by SKU diversity (this week) ---
-const binsWeek = new Set(
-  (weekRecords || [])
-    .map(r => String(r.mobile_bin || '').trim())
-    .filter(Boolean)
-);
+// --- Mobile bins / Duplicate UIDs ---
+// These require raw records. In summary-only mode we skip these insights.
+const binsWeek = new Set();
+const binsByDiversity = [];
+let dupScanCount = 0;
+let dupPairs = [];
+let dupExamples = [];
 
-// diversity across the week: bin -> set(sku)
-const binSkuSet = new Map();
-for (const r of weekRecords) {
-  const bin = String(r.mobile_bin || '').trim();
-  const sku = String(r.sku_code  || '').trim();
-  if (!bin || !sku) continue;
-  if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
-  binSkuSet.get(bin).add(sku);
-}
+if (!isSummary) {
+  // Mobile bins: unique (this week) + top 5 by SKU diversity (this week)
+  for (const r of (weekRows || [])) {
+    const bin = String(r.mobile_bin || '').trim();
+    if (bin) binsWeek.add(bin);
+  }
 
-const binsByDiversity = Array.from(binSkuSet.entries())
-  .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
-  .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
-  .slice(0, 5);
+  // diversity across the week: bin -> set(sku)
+  const binSkuSet = new Map();
+  for (const r of (weekRows || [])) {
+    const bin = String(r.mobile_bin || '').trim();
+    const sku = String(r.sku_code  || '').trim();
+    if (!bin || !sku) continue;
+    if (!binSkuSet.has(bin)) binSkuSet.set(bin, new Set());
+    binSkuSet.get(bin).add(sku);
+  }
+  binsByDiversity.push(
+    ...Array.from(binSkuSet.entries())
+      .map(([bin, set]) => ({ bin, uniqueSkus: set.size }))
+      .sort((a,b) => b.uniqueSkus - a.uniqueSkus)
+      .slice(0, 5)
+  );
 
-  // --- Duplicate UID detection (this week) ---
-  // “Duplicate” is defined as the same (SKU, UID) appearing more than once
+  // Duplicate UID detection (this week)
   const pairCounts = new Map();
-  for (const r of weekRecords) {
+  for (const r of (weekRows || [])) {
     const sku = String(r.sku_code||'').trim();
     const uid = String(r.uid||'').trim();
     if (!sku || !uid) continue;
     const k = `${sku}||${uid}`;
     pairCounts.set(k, (pairCounts.get(k)||0) + 1);
   }
-  let dupScanCount = 0;
-  const dupPairs = [];
   for (const [k, c] of pairCounts.entries()) {
     if (c > 1) {
       const [sku, uid] = k.split('||');
@@ -2057,11 +1881,14 @@ const binsByDiversity = Array.from(binSkuSet.entries())
     }
   }
   dupPairs.sort((a,b)=> b.count - a.count);
-  const dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
+  dupExamples = dupPairs.slice(0,3).map(x => `${x.sku}×${x.uid}${x.count>2?`×${x.count}`:''}`);
+}
 
   // --- Pace calculations (week + due-in-3-days horizon) ---
   const daysElapsed       = clamp01(7 - clamp01(dayDiff(ws, today) * -1));
-  const appliedSoFar      = weekRecords.length;
+  const appliedSoFar      = isSummary
+    ? Array.from(appliedPO.values()).reduce((s, v) => s + (Number(v) || 0), 0)
+    : (weekRows || []).length;
   const avgPerDaySoFar    = Math.round(appliedSoFar / daysElapsed);
   const daysLeftInWeek    = clamp01(dayDiff(we, today) + 1);
   const remainingWeek     = Math.max(0, plannedTotal - appliedSoFar);
@@ -2134,34 +1961,9 @@ if (binsByDiversity.length) {
   if (mini) mini.textContent = `Applied so far: ${appliedSoFar.toLocaleString()} • Remaining: ${remainingWeek.toLocaleString()}`;
 }
 
-async function fetchActualsInWeek(ws, we) {
 
-  if (!apiBase) return [];
-  try {
-    // get everything, we’ll filter locally
-    const d = await fetchJSONCached(`${apiBase}/records?limit=65000`, 20000);
-    const all = (d && d.records) || [];
 
-    const startTs = new Date(ws + 'T00:00:00Z').getTime();
-    const endTs   = startTs + 7 * 86400000;
-
-    return all.filter(r => {
-      if (r.status !== 'complete') return false;
-      // Prefer the business date
-      if (r.date_local && r.date_local >= ws && r.date_local <= we) return true;
-      // Fallback to completion timestamp if date_local missing
-      if (r.completed_at) {
-        const t = new Date(r.completed_at).getTime();
-        return t >= startTs && t < endTs;
-      }
-      return false;
-    });
-  } catch {
-    return [];
-  }
-}
-
-function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate()+6); return iso(d); }
+function weekEndISO(ws){ const d=new Date(ws); d.setDate(d.getDate() + 6); return iso(d); }
 
 function inWeekByDateLocal(r, ws){
   if (!r || r.status !== 'complete') return false;
@@ -2174,43 +1976,11 @@ function inWeekByCompletedAt(r, ws){
   if (!r || r.status !== 'complete' || !r.completed_at) return false;
   const ymd = ymdFromCompletedAtInTZ(r.completed_at); // business-day bucket
   const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-  const we  = iso(weD);
+  const we  = iso(weD); // NOTE: 'to' is treated as exclusive in most endpoints
   return ymd && ymd >= ws && ymd <= we;
 }
 
-  function wireOpsInsights(){
-  const pills = Array.from(document.querySelectorAll('.ops-pill'));
-  if(!pills.length) return;
-
-  pills.forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      pills.forEach(b=>b.classList.remove('ops-pill--active'));
-      btn.classList.add('ops-pill--active');
-      const v = (btn.getAttribute('data-opsview') || 'overview').trim();
-      state.opsView = v;
-      try { renderOpsInsights(v); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
-    });
-  });
-
-  // Initial view: respect existing active pill, otherwise keep last state, otherwise default to overview.
-  const active = document.querySelector('.ops-pill--active');
-  const initial = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
-  state.opsView = initial;
-  try { renderOpsInsights(initial); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
-}
-
-  // Dashboard init should ONLY run when dashboard is visible.
-  // This prevents route-leak crashes and ensures Insights pills are wired.
-  let __dashboardWired = false;
-  function initDashboardOnce(){
-    if(__dashboardWired) return;
-    __dashboardWired = true;
-    try { wireOpsInsights(); } catch(e){ console.warn('wireOpsInsights failed', e); }
-  }
-
-
-
-// ---------- setWeek ----------
+  // ---------- setWeek ----------
   async function setWeek(ws){
     state.weekStart=ws; $('#week-start').value=ws;
     const weDate=new Date(ws); weDate.setDate(weDate.getDate() + 6); const we=iso(weDate);
@@ -2524,8 +2294,11 @@ document.getElementById('btn-exec-csv')?.addEventListener('click', () => {
     } catch (e) {}
 };
 
+
   // ---------- Plan upload / zero (unchanged) ----------
-  $('#btn-upload-plan').onclick=()=>$('#file-plan').click();
+  const __btnUploadPlan = $('#btn-upload-plan');
+  const __filePlan = $('#file-plan');
+  if(__btnUploadPlan && __filePlan) __btnUploadPlan.onclick=()=>__filePlan.click();
 $('#file-plan').addEventListener('change', async (e) => {
   const f = e.target.files?.[0];
   e.target.value = '';
@@ -2606,7 +2379,8 @@ if (!putRes.ok) {
   alert(`Plan uploaded: ${items.length} rows`);
   setWeek(weekStart);
 });
-  $('#btn-zero-plan').onclick=async()=>{
+  const __btnZeroPlan = $('#btn-zero-plan');
+  if(__btnZeroPlan) __btnZeroPlan.onclick=async()=>{
     if(!apiBase) return alert('API not configured');
     const ws=$('#week-start').value;
     try{
@@ -2621,11 +2395,13 @@ if (!putRes.ok) {
   const intakeRows=[];
   function newRow(){return {id:crypto.randomUUID(), selected:false, date_local:iso(new Date()), mobile_bin:'', sscc_label:'', po_number:'', sku_code:'', uid:'', status:'draft', sync:'pending', _pending:{}};}
   function requiredFilled(r){return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;}
-  function syncClass(s){return s==='synced'?'bg-green-500':(s==='pending'?'bg-amber-500':'bg-gray-400');}
+  function syncClass(s){return s==='synced'?'ops-bar-planned':(s==='pending'?'bg-amber-500':'bg-gray-400');}
   function toIntakeRow(r){return {id:r.id, selected:false, date_local:r.date_local||iso(new Date()), mobile_bin:r.mobile_bin||'', sscc_label:r.sscc_label||'', po_number:r.po_number||'', sku_code:r.sku_code||'', uid:r.uid??'', status:r.status||'complete', sync:'synced', _pending:{}};}
 
   function renderIntake(){
-    const tb=$('#intake-body'); tb.innerHTML='';
+    const tb=$('#intake-body');
+    if(!tb) return; // Intake DOM not present on this page
+    tb.innerHTML='';
     if(!intakeRows.length) intakeRows.push(newRow());
     let drafts=0, synced=0;
     intakeRows.forEach((r,i)=>{
@@ -2688,20 +2464,27 @@ if (!putRes.ok) {
           else { row.sync='pending'; }
         }catch{ row.sync='pending'; }
         renderIntake();
-        await loadOpsMetrics(); await refreshDashboardTotals();
-await setWeek(state.weekStart);   // 🔄 keep state.records in sync
+        await loadOpsMetrics(); await setWeek(state.weekStart);
+    await refreshDashboardTotals();
+    // 🔄 keep state.records in sync
       });
     });
 
-    // ribbon quick badges
-    $('#ops-drafts').textContent = drafts;
-    $('#ops-sync-badges').innerHTML =
-      `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 bg-green-50 text-green-700">synced: ${synced}</span>
-       <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
+    // ribbon quick badges (guarded: these elements may not exist on every page)
+    const elDrafts = $('#ops-drafts');
+    if(elDrafts) elDrafts.textContent = drafts;
+    const elBadges = $('#ops-sync-badges');
+    if(elBadges) {
+      elBadges.innerHTML =
+        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 ops-bg-planned-soft text-green-700">synced: ${synced}</span>
+         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
+    }
   }
 
-  $('#btn-add-row').onclick=()=>{intakeRows.push(newRow()); renderIntake();};
-  $('#btn-delete-selected').onclick=async()=>{
+  const __btnAddRow = $('#btn-add-row');
+  if(__btnAddRow) __btnAddRow.onclick=()=>{intakeRows.push(newRow()); renderIntake();};
+  const __btnDelSel = $('#btn-delete-selected');
+  if(__btnDelSel) __btnDelSel.onclick=async()=>{
     const selected=intakeRows.filter(r=>r.selected);
     if(!selected.length) return alert('Select at least one row.');
     if(!confirm(`Delete ${selected.length} row(s)?`)) return;
@@ -2717,7 +2500,8 @@ await setWeek(state.weekStart);   // 🔄 keep state.records in sync
     renderIntake();
     await loadOpsMetrics(); await refreshDashboardTotals();
   };
-  $('#btn-export-day').onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
+  const __btnExportDay = $('#btn-export-day');
+  if(__btnExportDay) __btnExportDay.onclick=()=>{ if(!apiBase) return; const d=iso(new Date()); window.location=`${apiBase}/export/xlsx?date=${d}`; };
 
 function toISODate(v) {
   if (v == null || v === '') return '';
@@ -2740,6 +2524,9 @@ function toISODate(v) {
   // Upload UIDs → table → sync (unchanged)
   (function wireUploadUIDs(){
     const btn=$('#btn-upload-applied'), file=$('#file-upload-applied');
+    // This handler exists on Receiving, but Ops page may not include these elements.
+    // Guard to avoid hard-crashing the entire dashboard script.
+    if(!btn || !file) return;
     btn.onclick=()=>file.click();
     file.addEventListener('change', async (e)=>{
       const f=e.target.files?.[0]; e.target.value=''; if(!f) return;
@@ -3469,7 +3256,94 @@ state.weekCartonsIn = cartonsInUse;
         let appliedSKU=0; for(const [k,v] of agg.bySKU.entries()){ if(k===term) appliedSKU+=v; }
         if(plannedSKU||appliedSKU) rows.push({scope:'SKU',planned:plannedSKU,applied:appliedSKU,pct:plannedSKU>0?Math.round((appliedSKU/plannedSKU)*100):0});
         wrap.classList.remove('hidden');
-        wrap.innerHTML = rows.length ? rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`).join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
+        // Rich cards + PO details table
+        const cards = [];
+        const poPlanRows = state.plan.filter(p=>String(p.po_number).trim()===term);
+        const skuPlanRows = state.plan.filter(p=>String(p.sku_code).trim()===term);
+
+        function safe(v){ return (v===undefined||v===null||v==='') ? '—' : String(v); }
+        function sumQty(list){ return list.reduce((s,p)=>s+toNum(p.target_qty),0); }
+
+        if (poPlanRows.length){
+          const sample = poPlanRows[0] || {};
+          const z = safe(sample.zendesk_ticket || sample.zendesk || sample.ticket);
+          const plannedU = sumQty(poPlanRows);
+          const pctPO = plannedU>0 ? Math.round(appliedPO*100/plannedU) : 0;
+
+          cards.push(`
+            <div class="bg-gray-50 rounded-xl p-3 border">
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-500">PO</div>
+                <div class="text-xs font-semibold">${safe(term)}</div>
+              </div>
+              <div class="mt-2 text-sm leading-6">
+                <div><span class="text-gray-500">Supplier:</span> <span class="font-medium">${safe(sample.supplier)}</span></div>
+                <div><span class="text-gray-500">Facility:</span> <span class="font-medium">${safe(sample.facility)}</span></div>
+                <div><span class="text-gray-500">Freight:</span> <span class="font-medium">${safe(sample.freight_type)}</span></div>
+                <div><span class="text-gray-500">Zendesk:</span> <span class="font-medium">${z}</span></div>
+              </div>
+              <div class="mt-2 text-sm">
+                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(plannedU)}</span></div>
+                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedPO)}</span></div>
+                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctPO}%</span></div>
+              </div>
+            </div>
+          `);
+
+          // PO details table
+          const tbody = $('#ops-po-detail-body');
+          const title = $('#ops-po-detail-title');
+          if (tbody){
+            title.textContent = String(term);
+            const skuCount = new Set(poPlanRows.map(r=>String(r.sku_code).trim()).filter(Boolean)).size;
+            const fields = [
+              ['PO #', term],
+              ['Supplier', safe(sample.supplier)],
+              ['Facility', safe(sample.facility)],
+              ['Freight type', safe(sample.freight_type)],
+              ['Zendesk ticket', z],
+              ['Planned units', fmtInt(plannedU)],
+              ['Applied units', fmtInt(appliedPO)],
+              ['Completion', pctPO+'%'],
+              ['SKUs (count)', String(skuCount)],
+            ];
+            tbody.innerHTML = fields.map(([k,v])=>`<tr><td class="py-1 pr-2 text-gray-500">${k}</td><td class="py-1 font-medium">${v}</td></tr>`).join('');
+          }
+        } else {
+          // Clear PO details if not a PO match
+          const tbody = $('#ops-po-detail-body');
+          const title = $('#ops-po-detail-title');
+          if (tbody){
+            title.textContent='—';
+            tbody.innerHTML = '<tr><td colspan="2" class="text-center text-xs text-gray-400 py-3">Search a PO to load details.</td></tr>';
+          }
+        }
+
+        if (skuPlanRows.length){
+          const planned = sumQty(skuPlanRows);
+          const pctSKU = planned>0 ? Math.round(appliedSKU*100/planned) : 0;
+          cards.push(`
+            <div class="bg-gray-50 rounded-xl p-3 border">
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-gray-500">SKU</div>
+                <div class="text-xs font-semibold">${safe(term)}</div>
+              </div>
+              <div class="mt-2 text-sm leading-6">
+                <div><span class="text-gray-500">Planned units:</span> <span class="font-semibold tabular-nums">${fmtInt(planned)}</span></div>
+                <div><span class="text-gray-500">Applied units:</span> <span class="font-semibold tabular-nums">${fmtInt(appliedSKU)}</span></div>
+                <div><span class="text-gray-500">Completion:</span> <span class="font-semibold tabular-nums">${pctSKU}%</span></div>
+                <div><span class="text-gray-500">POs (count):</span> <span class="font-semibold tabular-nums">${new Set(skuPlanRows.map(r=>String(r.po_number).trim()).filter(Boolean)).size}</span></div>
+              </div>
+            </div>
+          `);
+        }
+
+        // fallback to simple rows if no plan context
+        if (!cards.length && rows.length){
+          cards.push(...rows.map(r=>`<div class="bg-gray-50 rounded-xl p-3 border"><div class="text-xs text-gray-500">${r.scope}</div><div class="text-sm mt-1">Planned: ${fmtInt(r.planned)} · Applied: ${fmtInt(r.applied)} · ${r.pct}%</div></div>`));
+        }
+
+        wrap.innerHTML = cards.length ? cards.join('') : '<div class="text-xs text-gray-500">No matches in this week.</div>';
       },300);
     });
   })();
@@ -3517,8 +3391,9 @@ if (Array.isArray(body.results) && body.results.length) {
 
     // Refresh dashboard + intake metrics
 await loadOpsMetrics();
-await refreshDashboardTotals();
-await setWeek(state.weekStart); // 🔄 refresh state.records so downloads reflect deletes
+await setWeek(state.weekStart);
+    await refreshDashboardTotals();
+    // 🔄 refresh state.records so downloads reflect deletes
 
   } catch (e) {
     console.error(e);
@@ -3564,40 +3439,1240 @@ if (hash === '#receiving') {
 }
 }
 
-  function show(hash){
-  document.getElementById('page-dashboard')?.classList.add('hidden');
-  document.getElementById('page-intake')?.classList.add('hidden');
-  document.getElementById('page-exec')?.classList.add('hidden');
-  document.getElementById('page-receiving')?.classList.add('hidden');
-  document.getElementById('page-flow')?.classList.add('hidden');
+  
+function getRouteHash(){
+  // Support: #intake, #/intake, /intake (direct path), and default (/ or #)
+  let h = (location.hash || '').trim();
+  if (h === '#') h = '';
+  // Normalize hash formats like "#/intake" -> "#intake"
+  if (h.startsWith('#/')) h = '#' + h.slice(2);
+  if (h && h !== '#') return h;
 
+  const p = (location.pathname || '').toLowerCase();
+  if (p.endsWith('/intake')) return '#intake';
+  if (p.endsWith('/receiving')) return '#receiving';
+  if (p.endsWith('/operations')) return '#ops';
+  if (p.endsWith('/flow')) return '#flow';
+  // Default route (ops dashboard)
+  return '#ops';
+}
 
-if (hash === '#receiving') {
-  document.getElementById('page-receiving')?.classList.remove('hidden');
-} else if (hash === '#intake') {
-  document.getElementById('page-intake')?.classList.remove('hidden');
-  try { renderIntake(); } catch(e){ console.warn('renderIntake failed', e); }
-} else if (hash === '#exec') {
-  document.getElementById('page-exec')?.classList.remove('hidden');
+function show(hash){
+  // Normalize hash formats like "#/intake" -> "#intake"
+  let h = (hash || '').trim();
+  if (h === '#') h = '';
+  if (h.startsWith('#/')) h = '#' + h.slice(2);
+  if (!h) h = '#operations';
+
+  // Hide all pages first
+  ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('hidden');
+  });
+
+  // Show target page + render hooks
+  if (h === '#intake') {
+    const el = document.getElementById('page-intake');
+    el && el.classList.remove('hidden');
+    if (typeof window.renderIntake === 'function') {
+      try { window.renderIntake(); } catch(e) { console.warn('renderIntake failed', e); }
+    }
+  } else if (h === '#receiving') {
+    const el = document.getElementById('page-receiving');
+    el && el.classList.remove('hidden');
+  } else if (h === '#flow') {
+    const el = document.getElementById('page-flow');
+    el && el.classList.remove('hidden');
+  } else if (h === '#exec') {
+    const el = document.getElementById('page-exec');
+    el && el.classList.remove('hidden');
+  } else {
+    // default ops
+    const el = document.getElementById('page-dashboard');
+    el && el.classList.remove('hidden');
+    if (typeof window.renderDashboard === 'function') {
+      try { window.renderDashboard(); } catch(e) { console.warn('renderDashboard failed', e); }
+    }
+  }
+
+  // Hard fallback: if Tailwind hidden class isn't behaving for some reason, enforce display.
+  ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = el.classList.contains('hidden') ? 'none' : 'block';
+  });
+
+  // Nav highlight helper (different baselines use different function names).
   try {
-    const ws = state.weekStart;
-    const weD = new Date(ws); weD.setDate(weD.getDate() + 6);
-    const we = iso(weD);
-    const sub = document.getElementById('exec-sub');
-    if (sub) sub.textContent = `${ws} – ${we}`;
-  } catch {}
-} else if (hash === '#flow') {
-  document.getElementById('page-flow')?.classList.remove('hidden');
-} else {
-  document.getElementById('page-dashboard')?.classList.remove('hidden');
-  initDashboardOnce();
+    if (typeof syncNavActive === 'function') syncNavActive(h);
+    else if (typeof syncNav === 'function') syncNav(h);
+  } catch (e) {
+    // Never break routing due to nav highlighting.
+  }
 }
 
-syncNav();
+
+  
+/* ================= Ops right panel wiring (downloads + insights) ================= */
+function wireOpsDownloads(){
+  // mirror old buttons into the new right-panel tile
+  const map = [
+    ['ops-dl-posku','btn-dl-posku'],
+    ['ops-dl-po','btn-dl-po'],
+    ['ops-dl-ship-summary','btn-ship-summary'],
+    ['ops-dl-ship-detail','btn-ship-detail'],
+    ['ops-dl-week-applied','btn-dl-week-applied'],
+  ];
+  for(const [newId, oldId] of map){
+    const a=document.getElementById(newId), b=document.getElementById(oldId);
+    if(a && b){
+      a.onclick = () => b.click();
+    }
+  }
+  const mb=document.getElementById('ops-dl-mobile-bin');
+  if(mb) mb.onclick = downloadMobileBins;
 }
 
-  window.addEventListener('hashchange', () => show(location.hash || '#dashboard'));
-  show(location.hash || '#dashboard'); // initial render
+function downloadMobileBins(){
+  try{
+    const bins = Array.isArray(state.bins) ? state.bins : [];
+    const plan = Array.isArray(state.plan) ? state.plan : [];
+    const poToSupplier = new Map(plan.map(p => [String(p.po_number||p.po||'').trim(), String(p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory||'').trim()]));
+    const rows = [];
+    for(const b of bins){
+      const po = String(b.po_number || b.po || b.poNumber || '').trim();
+      const supplier = String(b.supplier || poToSupplier.get(po) || '').trim();
+      const mobileBin = String(b.mobile_bin || b.mobileBin || '').trim();
+      const weight = Number(b.weight_kg ?? b.weight ?? 0) || 0;
+      const units  = Number(b.total_units ?? b.units ?? 0) || 0;
+      if(!mobileBin) continue;
+      rows.push({Supplier:supplier, PO:po, Mobile_Bin_Number:mobileBin, Weight_kg:weight, Units:units});
+    }
+    rows.sort((a,b)=> (a.Supplier||'').localeCompare(b.Supplier||'') || (a.PO||'').localeCompare(b.PO||'') || (a.Mobile_Bin_Number||'').localeCompare(b.Mobile_Bin_Number||''));
+    const csv = toCsv(rows, ['Supplier','PO','Mobile_Bin_Number','Weight_kg','Units']);
+    downloadBlob(csv, `mobile_bins_${state.weekStart||'week'}.csv`, 'text/csv');
+  }catch(err){
+    console.error('mobile bin export failed', err);
+    toast('Mobile bin download failed');
+  }
+}
+
+function renderOpsInsights(view){
+  const sub = document.getElementById('ops-insights-subtitle');
+  const root = document.getElementById('ops-insights-content');
+  if(!root) return;
+
+  // Always replace insight content on view switch (prevents stacking previous view DOM)
+  root.innerHTML = '';
+
+  const plan = Array.isArray(state.plan) ? state.plan : [];
+  const recs = Array.isArray(state.records) ? state.records : []; // /records/summary (applied units etc)
+  const receiving = Array.isArray(state.receiving) ? state.receiving : []; // /receiving (cartons_in/out + received timestamps)
+  const bins = Array.isArray(state.bins) ? state.bins : []; // /records (mobile bins for cartons-out + mobile-bin download)
+
+  const toNum = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const norm = (s)=>String(s||'').trim();
+  const esc = (s)=>String(s??'').replace(/[&<>"']/g, ch=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
+  const insightsBody = root; // legacy alias
+  const escapeHtml = esc; // legacy alias
+  const fmt = (v)=>{ const n = Number(v); return Number.isFinite(n) ? n.toLocaleString() : String(v||''); };
+  const plannedCartonsFromPlan = (p)=>{
+    // try common keys; fallback 0 (cannot compute approx received units)
+    return toNum(p.cartons_in || p.cartons || p.carton_qty || p.planned_cartons || p.planned_cartons_in || p.cartons_planned);
+  };
+
+  // Applied units per PO (from /records/summary by_po)
+  const poToApplied = new Map(recs.map(r => [norm(r.po||r.po_number||r.poNumber), toNum(r.units||r.total_units||0)]));
+
+  // Cartons-in per PO from bins: distinct mobile_bin per PO
+  // Cartons-in by PO comes from /receiving (same source as Flow/Receiving pages).
+  // We use this to estimate "Approx received units" at PO level.
+  const poToCartonsIn = new Map();
+  const poReceivedAt = new Map();
+  for (const r of receiving) {
+    const po = String(r.po_number ?? r.po ?? '').trim();
+    if (!po) continue;
+
+    const receivedAt = r.received_at ?? r.receivedAt ?? r.received_timestamp ?? r.receivedTimestamp ?? null;
+    if (receivedAt) poReceivedAt.set(po, receivedAt);
+
+    const ciRaw =
+      r.cartons_in ??
+      r.cartonsIn ??
+      r.cartons_received ??
+      r.cartonsReceived ??
+      r.cartons_in_qty ??
+      r.cartonsInQty ??
+      r.cartons_in_count ??
+      r.cartonsInCount ??
+      0;
+
+    const ci = Number(ciRaw);
+    if (Number.isFinite(ci) && ci > 0) {
+      poToCartonsIn.set(po, (poToCartonsIn.get(po) || 0) + ci);
+    }
+  }
+
+  // Build per-PO planned + meta (so we don’t double count applied in grouped views)
+  const poPlan = new Map(); // po -> {plannedUnits, plannedCartons, supplier, facility, freight, zendesk}
+  const pickMeta = (curVal, cand)=>{
+    const c = norm(cand||'');
+    if(!c) return curVal;
+    if(!curVal || curVal==='Unspecified') return c;
+    return curVal;
+  };
+  for(const p of plan){
+    const po = norm(p.po_number||p.po);
+    if(!po) continue;
+    const cur = poPlan.get(po) || {
+      plannedUnits:0, plannedCartons:0,
+      supplier:'', facility:'', freight:'', zendesk:''
+    };
+    // meta (first non-empty wins; 'Unspecified' is treated as empty)
+    cur.supplier = pickMeta(cur.supplier, p.supplier_name||p.supplier||p.vendor||p.vendor_name||p.factory);
+    cur.facility = pickMeta(cur.facility, p.facility_name||p.facility||p.vas_facility||p.warehouse||p.warehouse_name||p.site||p.site_name||p.location||p.facility_code||p.facility_id);
+    cur.freight  = pickMeta(cur.freight,  p.freight_type||p.freight||p.ship_mode||p.mode);
+    cur.zendesk  = pickMeta(cur.zendesk,  p.zendesk_ticket||p.zendesk||p.ticket||p.zd_ticket);
+
+    cur.plannedUnits += toNum(p.target_qty||p.planned_units||0);
+    cur.plannedCartons += plannedCartonsFromPlan(p);
+
+    // final fallbacks
+    cur.supplier = cur.supplier || 'Unspecified';
+    cur.facility = cur.facility || 'Unspecified';
+    cur.freight  = cur.freight  || 'Unspecified';
+    cur.zendesk  = cur.zendesk  || 'Unspecified';
+
+    poPlan.set(po, cur);
+  }
+
+  // Derive per-PO received units (approx) from cartons-in, per your definition:
+  // approxReceivedUnits = plannedUnits * (receivedCartonsIn / plannedCartonsIn) capped to 1
+  const poDerived = new Map(); // po -> {planned, received, applied, ...meta}
+  for(const [po, p] of poPlan.entries()){
+    const planned = p.plannedUnits;
+    const plannedCartons = p.plannedCartons;
+    const cartonsIn = poToCartonsIn.get(po) || 0;
+    let received = 0;
+    if(planned>0){
+      if(poReceivedAt.has(po)) { received = planned; }
+      else if(plannedCartons>0 && cartonsIn>0){ received = planned * Math.min(1, cartonsIn/plannedCartons); }
+      else if(cartonsIn>0){ received = planned; }
+    }
+    received = Math.round(received);
+    const applied = poToApplied.get(po) || 0;
+    poDerived.set(po, {planned, received, applied, cartonsIn, plannedCartons, ...p});
+  }
+
+  // Special carton view (kept)
+  if(view==='carton'){
+    const ci = Number(state.weekCartonsIn||0)||0;   // cartons (bins) IN
+    const co = Number(state.weekCartonsOut||0)||0;  // cartons (bins) OUT
+    const maxTotal = Math.max(ci, co, 1);
+
+    // Waffle scaling
+    const rows = 10;
+    const cols = 12;
+    const squares = rows * cols; // 120 squares
+    const base = 10; // prefer 1 square = 10 cartons
+    const perSquare = Math.max(base, Math.ceil((maxTotal / squares) / base) * base);
+
+    const calcFill = (v)=>{
+      if(v<=0) return 0;
+      const f = Math.ceil(v / perSquare);
+      return Math.min(squares, Math.max(1, f));
+    };
+
+    const fillIn = calcFill(ci);
+    const fillOut = calcFill(co);
+
+    const squareGrid = (filled, color) =>
+      `<div class="grid gap-[4px]" style="grid-template-columns: repeat(${cols}, 16px);">
+        ${Array.from({length:squares}).map((_,i)=>
+          `<div class="w-[16px] h-[16px] rounded-[4px]" style="background:${i<filled?color:'#f3f4f6'};"></div>`
+        ).join('')}
+      </div>`;
+
+    const delta = ci - co;
+    const deltaLabel = delta===0 ? 'Δ 0' : (delta>0 ? `Δ +${fmtInt(delta)} (Net In)` : `Δ ${fmtInt(delta)} (Net Out)`);
+
+    const inShown = Math.min(ci, fillIn * perSquare);
+    const outShown = Math.min(co, fillOut * perSquare);
+
+    root.innerHTML = `
+      <div class="bg-gray-50 rounded-xl border p-4">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-semibold">Cartons in vs cartons out</div>
+          <div class="text-xs text-gray-600">${deltaLabel}</div>
+        </div>
+        <div class="flex items-center justify-between mt-1">
+          <div class="text-xs text-gray-500">1 square = ${fmtInt(perSquare)} cartons</div>
+          <div class="text-xs text-gray-500 tabular-nums">Grid: ${rows}×${cols} (${squares} squares)</div>
+        </div>
+
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl border p-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-xs font-semibold text-gray-700">IN</div>
+              <div class="text-sm font-semibold tabular-nums">${fmtInt(ci)}</div>
+            </div>
+            ${squareGrid(fillIn, 'var(--ops-green)')}
+            <div class="mt-2 text-[11px] text-gray-500">
+              Filled: <span class="tabular-nums">${fillIn}</span>/<span class="tabular-nums">${squares}</span> • Showing ~<span class="tabular-nums">${fmtInt(inShown)}</span> cartons
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border p-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-xs font-semibold text-gray-700">OUT</div>
+              <div class="text-sm font-semibold tabular-nums">${fmtInt(co)}</div>
+            </div>
+            ${squareGrid(fillOut, 'var(--ops-yellow)')}
+            <div class="mt-2 text-[11px] text-gray-500">
+              Filled: <span class="tabular-nums">${fillOut}</span>/<span class="tabular-nums">${squares}</span> • Showing ~<span class="tabular-nums">${fmtInt(outShown)}</span> cartons
+            </div>
+          </div>
+        </div>
+
+        <div class="text-xs text-gray-500 mt-3">
+          “Cartons out” is the mobile-bin count (summary). Colors: IN = #D1E231, OUT = #F0D731.
+        </div>
+      </div>
+    `;
+    if(sub) sub.textContent = 'Carton view';
+    return;
+  }
+  // Overview (default): meaningful week insights (NOT duplicating Week totals)
+  if(view==='overview'){
+    if(sub) sub.textContent = 'Week overview';
+
+    const totalPlanned = Array.from(poDerived.values()).reduce((a,x)=>a+(x.planned||0),0);
+    const totalReceived = Array.from(poDerived.values()).reduce((a,x)=>a+(x.received||0),0);
+    const totalApplied = Array.from(poDerived.values()).reduce((a,x)=>a+(x.applied||0),0);
+    const remaining = Math.max(0, totalPlanned - totalApplied);
+    const pct = totalPlanned>0 ? Math.round(100*totalApplied/totalPlanned) : 0;
+
+    const bandOf = (p)=>{
+      if(!(totalPlanned>0)) return 'No plan';
+      if(p>=90) return 'On track';
+      if(p>=75) return 'At risk';
+      return 'Delayed';
+    };
+    const bandColor = (b)=>{
+      if(b==='On track') return 'var(--ops-green)';
+      if(b==='At risk') return 'var(--ops-yellow)';
+      if(b==='Delayed') return '#ef4444';
+      return '#6b7280';
+    };
+    const overallBand = bandOf(pct);
+
+    const mkAgg = (keyFn)=>{
+      const m = new Map();
+      for(const x of poDerived.values()){
+        const k = norm(keyFn(x)) || '—';
+        if(k==='—') continue;
+        const v = m.get(k) || {planned:0, received:0, applied:0, remaining:0, airPlanned:0, seaPlanned:0, otherPlanned:0};
+        v.planned += x.planned||0;
+        v.received += x.received||0;
+        v.applied += x.applied||0;
+        m.set(k, v);
+      }
+      for(const [k,v] of m){
+        v.remaining = Math.max(0, v.planned - v.applied);
+        v.pct = v.planned>0 ? Math.round(100*v.applied/v.planned) : 0;
+        v.band = v.planned>0 ? (v.pct>=90?'On track':(v.pct>=75?'At risk':'Delayed')) : 'No plan';
+      }
+      return m;
+    };
+
+    const bySupplier = mkAgg(x=>x.supplier);
+    const byFacility = mkAgg(x=>x.facility);
+    const byZendesk = mkAgg(x=>x.zendesk);
+
+    // Freight mix (planned units)
+    const freightMix = {Air:0, Sea:0, Other:0};
+    for(const x of poDerived.values()){
+      const f = norm(x.freight) || 'Other';
+      const planned = x.planned||0;
+      if(/air/i.test(f)) freightMix.Air += planned;
+      else if(/sea|ocean/i.test(f)) freightMix.Sea += planned;
+      else freightMix.Other += planned;
+    }
+    const mixTotal = freightMix.Air + freightMix.Sea + freightMix.Other || 1;
+    const airPct = Math.round(100*freightMix.Air/mixTotal);
+    const seaPct = Math.round(100*freightMix.Sea/mixTotal);
+
+    const topN = (m, n=3)=>Array.from(m.entries())
+      .map(([k,v])=>({k,v}))
+      .sort((a,b)=> (b.v.remaining - a.v.remaining) || (b.v.planned - a.v.planned))
+      .slice(0,n);
+
+    const topSup = topN(bySupplier, 3);
+    const topFac = topN(byFacility, 3);
+
+    const bandCounts = { 'On track':0, 'At risk':0, 'Delayed':0, 'No plan':0 };
+    for(const agg of byZendesk.values()){
+      const b = agg && agg.band ? agg.band : 'No plan';
+      bandCounts[b] = (bandCounts[b]||0) + 1;
+    }
+
+    const topTickets = Array.from(byZendesk.entries())
+      .map(([k,v])=>({k,v}))
+      .filter(x=>x.k && x.k!=='—')
+      .sort((a,b)=> (b.v.remaining - a.v.remaining))
+      .slice(0,8);
+
+    const barRow = (label, value, denom, color)=> {
+      const p = denom>0 ? Math.max(0, Math.min(100, 100*value/denom)) : 0;
+      return `
+        <div class="flex items-center gap-3">
+          <div class="w-28 text-[11px] text-gray-600 truncate">${esc(label)}</div>
+          <div class="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+            <div class="h-full rounded-full" style="width:${p}%;background:${color};"></div>
+          </div>
+          <div class="w-16 text-right text-[11px] tabular-nums text-gray-700">${fmt(value)}</div>
+        </div>
+      `;
+    };
+
+    root.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="rounded-xl border bg-white p-4">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-sm font-semibold">Week health</div>
+              <div class="text-xs text-gray-500">Fast signals (derived from plan + progress)</div>
+            </div>
+            <div class="px-2 py-1 rounded-full border text-[11px] font-semibold" style="border-color:${bandColor(overallBand)};color:${bandColor(overallBand)};">
+              ${overallBand}
+            </div>
+          </div>
+
+          <div class="mt-3 flex items-end justify-between">
+            <div class="text-3xl font-semibold tabular-nums">${pct}%</div>
+            <div class="text-right">
+              <div class="text-xs text-gray-500">Remaining units</div>
+              <div class="text-sm font-semibold tabular-nums">${fmt(remaining)}</div>
+            </div>
+          </div>
+
+          <div class="mt-3 space-y-2">
+            ${barRow('Applied', totalApplied, totalPlanned, 'var(--ops-green)')}
+            ${barRow('Received (approx)', totalReceived, totalPlanned, 'var(--ops-yellow)')}
+          </div>
+
+          <div class="mt-3 text-[11px] text-gray-500">
+            Use <b>Supplier/Facility</b> for details; this view focuses on the “what to look at first”.
+          </div>
+        </div>
+
+        <div class="rounded-xl border bg-white p-4">
+          <div class="text-sm font-semibold">Where the work is sitting</div>
+          <div class="text-xs text-gray-500">Top remaining (units)</div>
+
+          <div class="mt-3">
+            <div class="text-[11px] font-semibold text-gray-700 mb-2">Top suppliers</div>
+            <div class="space-y-2">
+              ${topSup.map(({k,v})=>barRow(k, v.remaining, Math.max(remaining,1), '#111827')).join('')}
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="text-[11px] font-semibold text-gray-700 mb-2">Top facilities</div>
+            <div class="space-y-2">
+              ${topFac.map(({k,v})=>barRow(k, v.remaining, Math.max(remaining,1), '#111827')).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border bg-white p-4">
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="text-sm font-semibold">Zendesk signals</div>
+              <div class="text-xs text-gray-500">Tickets sized by planned units; remaining drives priority</div>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:var(--ops-green)"></span>On track</span>
+              <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:var(--ops-yellow)"></span>At risk</span>
+              <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:#ef4444"></span>Delayed</span>
+            </div>
+          </div>
+
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            <div class="rounded-lg border p-2">
+              <div class="text-[11px] text-gray-500">On track</div>
+              <div class="text-sm font-semibold tabular-nums">${bandCounts['On track']||0}</div>
+            </div>
+            <div class="rounded-lg border p-2">
+              <div class="text-[11px] text-gray-500">At risk</div>
+              <div class="text-sm font-semibold tabular-nums">${bandCounts['At risk']||0}</div>
+            </div>
+            <div class="rounded-lg border p-2">
+              <div class="text-[11px] text-gray-500">Delayed</div>
+              <div class="text-sm font-semibold tabular-nums">${bandCounts['Delayed']||0}</div>
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <div class="text-[11px] font-semibold text-gray-700 mb-2">Top tickets by remaining</div>
+            <div class="flex flex-wrap gap-2">
+              ${topTickets.map(({k,v})=>{
+                const c = bandColor(v.band);
+                return `<span class="px-2 py-1 rounded-full border bg-white text-[11px] font-semibold tabular-nums" style="border-color:${c};color:${c};">
+                  ${esc(k)} • ${fmt(v.remaining)}
+                </span>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-xl border bg-white p-4">
+          <div class="text-sm font-semibold">Freight mix</div>
+          <div class="text-xs text-gray-500">Planned volume split (helps anticipate handoffs)</div>
+
+          <div class="mt-3 space-y-2">
+            ${barRow('Air', freightMix.Air, mixTotal, 'var(--ops-green)')}
+            ${barRow('Sea', freightMix.Sea, mixTotal, 'var(--ops-yellow)')}
+            ${barRow('Other', freightMix.Other, mixTotal, '#9ca3af')}
+          </div>
+
+          <div class="mt-3 text-[11px] text-gray-600">
+            Air <b>${airPct}%</b> • Sea <b>${seaPct}%</b>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+
+
+
+  const groupKey = (x)=>{
+    if(view==='supplier') return x.supplier;
+    if(view==='facility') return x.facility;
+    if(view==='zendesk') return x.zendesk;
+    if(view==='freight') return x.freight;
+    return '—';
+  };
+
+  // Aggregate by selected dimension (planned/received/applied) + freight split for supplier
+  const agg = new Map(); // key -> {planned, received, applied, air:{...}, sea:{...}}
+  for(const x of poDerived.values()){
+    const key = groupKey(x) || 'Unspecified';
+    const cur = agg.get(key) || {planned:0, received:0, applied:0, freight:{}};
+    cur.planned += x.planned;
+    cur.received += x.received;
+    cur.applied += x.applied;
+    if(view==='supplier'){
+      const f = (x.freight||'Unspecified').toLowerCase();
+      const bucket = f.includes('air') ? 'Air' : (f.includes('sea') ? 'Sea' : 'Other');
+      cur.freight[bucket] = cur.freight[bucket] || {planned:0, received:0, applied:0};
+      cur.freight[bucket].planned += x.planned;
+      cur.freight[bucket].received += x.received;
+      cur.freight[bucket].applied += x.applied;
+    }
+    agg.set(key, cur);
+  }
+
+  const items=[...agg.entries()].map(([k,v])=>{
+    const pct = v.planned>0 ? (100*v.applied/v.planned) : 0;
+    const rem = Math.max(0, v.planned - v.applied);
+    return {k, ...v, pct, rem};
+  }).sort((a,b)=> b.rem - a.rem).slice(0, 12);
+
+  const bar = (label, val, planned, color)=>{
+    const pct = planned>0 ? Math.max(0, Math.min(100, 100*val/planned)) : 0;
+    return `
+      <div class="flex items-center gap-3">
+        <div class="w-20 shrink-0 text-xs text-gray-500">${label}</div>
+        <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+          <div class="h-2 rounded-full" style="width:${pct}%; background:${color};"></div>
+        </div>
+        <div class="w-24 text-right text-xs tabular-nums">${fmtInt(Math.round(val))}</div>
+      </div>
+    `;
+  };
+
+  if(sub){
+    const label = view==='supplier'?'Supplier view':view==='facility'?'Facility view':view==='zendesk'?'Zendesk view':view==='freight'?'Freight view':'—';
+    sub.textContent = label;
+  }
+
+  if(items.length===0){
+    root.innerHTML = `<div class="text-sm text-gray-600">No data for this week.</div>`;
+    return;
+  }
+
+  // Normalized PO-level rows used by multiple insight views
+  // NOTE: Facility view relies on `rows`.
+  const rows = Array.from(poDerived.values());
+
+  
+  // ----- Render -----
+  if(view==='supplier'){
+    // Build PO state counts per supplier
+    const poCounts = new Map(); // supplier -> {total, complete, partial, notSent}
+    for(const [po,x] of poDerived.entries()){
+      const key = x.supplier || 'Unspecified';
+      const cur = poCounts.get(key) || {total:0, complete:0, partial:0, notSent:0};
+      cur.total += 1;
+      const planned = x.planned||0, received = x.received||0, applied = x.applied||0;
+      if(received<=0) cur.notSent += 1;
+      else if(planned>0 && applied>=planned) cur.complete += 1;
+      else cur.partial += 1;
+      poCounts.set(key, cur);
+    }
+
+    const cards = [...agg.entries()].map(([k,v])=>{
+      const planned = v.planned||0, received=v.received||0, applied=v.applied||0;
+      const pct = planned>0 ? (100*applied/planned) : 0;
+      const rem = Math.max(0, planned - applied);
+      const counts = poCounts.get(k) || {total:0, complete:0, partial:0, notSent:0};
+      // Freight split (Air/Sea/Other) completion
+      const freightChips = ['Air','Sea','Other'].map(b=>{
+        const fv=v.freight?.[b];
+        if(!fv || !(fv.planned>0)) return '';
+        const fpct = Math.round(100*(fv.applied||0)/(fv.planned||1));
+        const label = b==='Other' ? 'Other' : b;
+        return `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]">${label} ${fpct}%</span>`;
+      }).join('');
+
+      // status badge
+      const badge =
+        planned<=0 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px] text-gray-600">No plan</span>` :
+        (pct>=90 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:var(--ops-green);color:var(--ops-green);">On track</span>` :
+         pct>=75 ? `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:var(--ops-yellow);color:#b45309;">At risk</span>` :
+                  `<span class="px-2 py-0.5 rounded-full border bg-white text-[11px]" style="border-color:#ef4444;color:#b91c1c;">Delayed</span>`);
+
+      const bar2 = (label, val, denom, color)=>{
+        const p = denom>0 ? Math.max(0, Math.min(100, 100*val/denom)) : 0;
+        return `
+          <div class="flex items-center gap-2">
+            <div class="w-16 text-[11px] text-gray-500">${label}</div>
+            <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div class="h-2 rounded-full" style="width:${p}%; background:${color};"></div>
+            </div>
+            <div class="w-20 text-right text-[11px] tabular-nums text-gray-700">${fmtInt(Math.round(val))}</div>
+          </div>
+        `;
+      };
+
+      return {k, planned, received, applied, pct, rem, counts, freightChips, badge, bar2};
+    }).sort((a,b)=> b.rem - a.rem).slice(0, 20);
+
+    root.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        ${cards.map(it=>{
+          const planned = it.planned||0, received=it.received||0, applied=it.applied||0;
+          const pct = planned>0 ? Math.round(100*applied/planned) : 0;
+          const remaining = Math.round(Math.max(0, planned-applied));
+          const recPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*received/planned))) : 0;
+          const appPct = planned>0 ? Math.max(0, Math.min(100, Math.round(100*applied/planned))) : 0;
+          const fullName = String(it.k||'Unspecified');
+          const shortName = fullName.split(/\s+/).slice(0,2).join(' ') || fullName;
+          return `
+            <div class="rounded-2xl border bg-white p-3 shadow-sm">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div class="text-sm font-semibold truncate" title="${esc(fullName)}">${esc(shortName)}</div>
+                    ${it.badge}
+                  </div>
+                  <div class="text-[11px] text-gray-500 mt-0.5">
+                    Completion <span class="font-medium">${pct}%</span> • Remaining <span class="font-medium">${fmtInt(remaining)}</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-sm font-semibold tabular-nums">${fmtInt(Math.round(applied))}</div>
+                  <div class="text-[11px] text-gray-500 tabular-nums">/ ${fmtInt(Math.round(planned))}</div>
+                </div>
+              </div>
+
+              <!-- Single progress bar: received (light) + applied (solid) over planned baseline -->
+              <div class="mt-3">
+                <div class="relative h-2.5 rounded-full overflow-hidden" style="background:rgba(55,65,81,0.25);">
+                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${recPct}%; background:${OPS_RECEIVED_FG};"></div>
+                  <div class="absolute left-0 top-0 h-2.5 rounded-full" style="width:${appPct}%; background:${APPLIED_COLOR};opacity:.75;"></div>
+                </div>
+                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+                  <div class="flex gap-3">
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${PLANNED_COLOR}"></span>Planned ${fmtInt(Math.round(planned))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec ${fmtInt(Math.round(received))}</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR};opacity:.75"></span>App ${fmtInt(Math.round(applied))}</span>
+                  </div>
+                  <div class="text-gray-600">${pct}%</div>
+                </div>
+              </div>
+
+              <div class="mt-2 flex items-center justify-between gap-3">
+                <div class="text-[11px] text-gray-500">
+                  POs: <span class="font-medium text-gray-700">${it.counts.total}</span>
+                  &nbsp;•&nbsp; <span class="text-gray-700">✓</span> ${it.counts.complete}
+                  &nbsp;<span class="text-gray-700">⚠</span> ${it.counts.partial}
+                  &nbsp;<span class="text-gray-700">⛔</span> ${it.counts.notSent}
+                </div>
+                <div class="flex gap-2 items-center">
+                  ${it.freightChips || ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="text-[11px] text-gray-500 mt-3">Received units are approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0. Complete = applied ≥ planned.</div>
+    `;
+    return;
+  }
+
+  // ----- Facility view (visual lanes) -----
+  if(view==='facility'){
+    // Group PO-derived rows by facility and compute totals + highlights
+    const meta = new Map();
+    for (const r of rows){
+      const fKey = (r.facility || 'Unspecified').toString().trim() || 'Unspecified';
+      let m = meta.get(fKey);
+      if(!m){
+        m = {
+          facility:fKey,
+          planned:0, received:0, applied:0,
+          posTotal:0, posNotSent:0,
+          suppliers:new Set(),
+          zendesks:new Set(),
+          bySup:new Map(),
+          byZend:new Map(),
+          airPlanned:0, seaPlanned:0, otherPlanned:0,
+          airApplied:0, seaApplied:0, otherApplied:0
+        };
+        meta.set(fKey, m);
+      }
+
+      const planned = Number(r.planned)||0;
+      const received = Number(r.received)||0;
+      const applied = Number(r.applied)||0;
+
+      m.planned += planned;
+      m.received += received;
+      m.applied += applied;
+      m.posTotal += 1;
+
+      // Freight split (for facility summary chips)
+      const fr = (r.freight || r.freight_type || '').toString().toLowerCase();
+      const bucket = fr.includes('air') ? 'air' : (fr.includes('sea') ? 'sea' : 'other');
+      if(bucket==='air'){ m.airPlanned += planned; m.airApplied += applied; }
+      else if(bucket==='sea'){ m.seaPlanned += planned; m.seaApplied += applied; }
+      else { m.otherPlanned += planned; m.otherApplied += applied; }
+
+
+      const cartonsIn = Number(r.cartonsIn ?? r.cartons_in ?? 0) || 0;
+      if(cartonsIn <= 0) m.posNotSent += 1;
+
+      const sup = (r.supplier || 'Unspecified').toString().trim() || 'Unspecified';
+      if(sup) m.suppliers.add(sup);
+
+      const zd = (r.zendesk || '').toString().trim();
+      if(zd && zd !== 'Unspecified') { m.zendesks.add(zd); }
+
+      const sr = m.bySup.get(sup) || { key:sup, planned:0, received:0, applied:0 };
+      sr.planned += planned; sr.received += received; sr.applied += applied;
+      m.bySup.set(sup, sr);
+
+      if(zd && zd !== 'Unspecified'){
+        const zr = m.byZend.get(zd) || { key:zd, planned:0, received:0, applied:0 };
+        zr.planned += planned; zr.received += received; zr.applied += applied;
+        m.byZend.set(zd, zr);
+      }
+    }
+
+    const facilities = [...meta.values()]
+      .sort((a,b)=> (b.planned-a.planned) || a.facility.localeCompare(b.facility));
+
+    const pill = (pctDone)=>{
+      if(pctDone>=98) return '<span class="inline-flex items-center rounded-full border border-emerald-200 ops-bg-planned-soft px-2 py-0.5 text-[11px] font-medium text-emerald-700">On track</span>';
+      if(pctDone>=85) return '<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">At risk</span>';
+      return '<span class="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">Delayed</span>';
+    };
+
+    const topChips = (items, icon)=>{
+      return items.map(x=>`<span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[11px]">
+        <span class="mr-1">${icon}</span> ${escapeHtml(x.key)} • <b class="ml-1">${fmt(x.rem)}</b>
+      </span>`).join('');
+    };
+
+    root.innerHTML = `
+      <div class="space-y-3">
+        ${facilities.map(f=>{
+          const pctDone = f.planned>0 ? Math.round((f.applied/f.planned)*100) : 0;
+          const rem = Math.max(0, f.planned - f.applied);
+
+          const topSup = [...f.bySup.values()]
+            .map(s=>({ key:firstTwoWords(s.key), rem: Math.max(0,(s.planned||0)-(s.applied||0)), planned:s.planned||0 }))
+            .filter(x=>x.planned>0)
+            .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
+            .slice(0,4);
+
+          const topZend = [...f.byZend.values()]
+            .map(z=>({ key:z.key, rem: Math.max(0,(z.planned||0)-(z.applied||0)), planned:z.planned||0 }))
+            .filter(x=>x.planned>0)
+            .sort((a,b)=> (b.rem-a.rem) || (b.planned-a.planned))
+            .slice(0,4);
+
+          return `
+            <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <div class="font-semibold text-sm truncate">${escapeHtml(f.facility)}</div>
+                    ${pill(pctDone)}
+                  </div>
+                  <div class="mt-1 text-[12px] text-gray-500">
+                    Completion <b class="text-gray-700">${pctDone}%</b> • Remaining <b class="text-gray-700">${fmt(rem)}</b>
+                    • PO’s not sent <b class="text-gray-700">${fmt(f.posNotSent)}</b>/<b class="text-gray-700">${fmt(f.posTotal)}</b>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2 text-[12px] text-gray-600">
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">👥</span>Suppliers <b class="ml-1">${fmt(f.suppliers.size || 0)}</b></span>
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">🎫</span>Zendesk <b class="ml-1">${fmt(f.zendesks.size || 0)}</b></span>
+                  ${(() => { const p = Number(f.planned)||0; const airPct = p>0 ? Math.round(100*(f.airPlanned||0)/p) : 0; const seaPct = p>0 ? Math.round(100*(f.seaPlanned||0)/p) : 0; const parts=[]; if((f.airPlanned||0)>0) parts.push(`<span class=\"inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5\"><span class=\"mr-1\">✈️</span>Air <b class=\"ml-1\">${airPct}%</b></span>`); if((f.seaPlanned||0)>0) parts.push(`<span class=\"inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5\"><span class=\"mr-1\">🚢</span>Sea <b class=\"ml-1\">${seaPct}%</b></span>`); return parts.join(''); })()}
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">📦</span>Planned <b class="ml-1">${fmt(f.planned)}</b></span>
+                  <span class="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5"><span class="mr-1">✅</span>Applied <b class="ml-1">${fmt(f.applied)}</b></span>
+                </div>
+              </div>
+
+              <div class="mt-3">
+                ${progressBarHtml(f.planned, f.received, f.applied)}
+                <div class="mt-2 flex items-center justify-between text-[11px] text-gray-500 tabular-nums">
+                  <div class="flex gap-3 flex-wrap">
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_PLANNED_FG}"></span>Planned</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${OPS_RECEIVED_FG}"></span>Rec</span>
+                    <span><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${APPLIED_COLOR}; opacity:${OPS_APPLIED_OPACITY}"></span>App</span>
+                  </div>
+                  <div class="text-gray-600">${fmt(f.applied)} / ${fmt(f.planned)}</div>
+                </div>
+              </div>
+
+              ${(topSup.length || topZend.length) ? `
+                <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining tickets</div>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                      ${topZend.length ? topChips(topZend,'🎫') : '<span class="text-[12px] text-gray-400">—</span>'}
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] uppercase tracking-wide text-gray-400">Top remaining suppliers</div>
+                    <div class="mt-1 flex flex-wrap gap-2">
+                      ${topSup.length ? topChips(topSup,'🏭') : '<span class="text-[12px] text-gray-400">—</span>'}
+                    </div>
+                  </div>
+                </div>
+              `:''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="text-[11px] text-gray-500 mt-3">
+        Facility completion is based on applied vs planned units. “Received” is approximated from cartons-in by PO (as in Flow). POs “not sent” = cartons-in = 0.
+      </div>
+    `;
+    return;
+  }
+
+
+  // ----- Freight cards -----
+
+  if(view==='freight'){
+    // Buckets: Air / Sea / Other. Show totals + key ops metrics (no progress bars).
+    const poCartonsOut = new Map();
+    for(const o of (state.records||[])){
+      const po = norm(o?.po || o?.po_number || o?.poNumber);
+      if(!po) continue;
+      poCartonsOut.set(po, toNum(o?.cartons_out || 0));
+    }
+
+    const CBM_PER_CARTON = 0.046;
+
+    const buckets = new Map([
+      ['Air',   {k:'Air',   icon:'✈️', planned:0, applied:0, cartonsIn:0, cartonsReady:0, pos:new Set(), suppliers:new Set()}],
+      ['Sea',   {k:'Sea',   icon:'🚢', planned:0, applied:0, cartonsIn:0, cartonsReady:0, pos:new Set(), suppliers:new Set()}],
+      ['Other', {k:'Other', icon:'📦', planned:0, applied:0, cartonsIn:0, cartonsReady:0, pos:new Set(), suppliers:new Set()}],
+    ]);
+
+    for(const r of rows){
+      const f = (r.freight||'').toString().toLowerCase();
+      const key = f.includes('air') ? 'Air' : (f.includes('sea') ? 'Sea' : 'Other');
+      const b = buckets.get(key);
+
+      const po = norm(r.po_number || r.po || r.poNumber);
+      const planned = toNum(r.planned);
+      const applied = toNum(r.applied);
+      const cartonsIn = toNum(r.cartonsIn);
+
+      b.planned += planned;
+      b.applied += applied;
+      b.cartonsIn += cartonsIn;
+      b.cartonsReady += (poCartonsOut.get(po) || 0);
+
+      if(po) b.pos.add(po);
+      if(r.supplier && r.supplier!=='Unspecified') b.suppliers.add(r.supplier);
+    }
+
+    const arr = [...buckets.values()].sort((a,b)=> (b.planned-a.planned) || a.k.localeCompare(b.k));
+
+    const maxPlanned = Math.max(1, ...arr.map(x=>x.planned||0));
+    const maxApplied = Math.max(1, ...arr.map(x=>x.applied||0));
+    const maxCartons = Math.max(1, ...arr.map(x=>Math.max(x.cartonsIn||0, x.cartonsReady||0)));
+    const maxCbm = Math.max(1, ...arr.map(x=>Math.max((x.cartonsIn||0)*CBM_PER_CARTON, (x.cartonsReady||0)*CBM_PER_CARTON)));
+
+    const barPair = (title, aLabel, aVal, bLabel, bVal, maxVal, fmtFn) => {
+      const aH = Math.round(64 * (maxVal>0 ? (aVal/maxVal) : 0));
+      const bH = Math.round(64 * (maxVal>0 ? (bVal/maxVal) : 0));
+      const aH2 = (aVal>0 && aH<3) ? 3 : aH;
+      const bH2 = (bVal>0 && bH<3) ? 3 : bH;
+      return `
+        <div class="bg-white rounded-xl border p-3">
+          <div class="text-[11px] text-gray-500 mb-2">${title}</div>
+          <div class="flex items-end gap-4 h-[76px]">
+            <div class="flex-1">
+              <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
+                <div style="height:${aH2}px; margin-top:${64-aH2}px; background:var(--ops-green);"></div>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
+                <span>${aLabel}</span><span class="tabular-nums">${fmtFn(aVal)}</span>
+              </div>
+            </div>
+            <div class="flex-1">
+              <div class="w-full bg-gray-100 rounded-lg overflow-hidden" style="height:64px;">
+                <div style="height:${bH2}px; margin-top:${64-bH2}px; background:var(--ops-yellow);"></div>
+              </div>
+              <div class="mt-1 flex items-center justify-between text-[11px] text-gray-600">
+                <span>${bLabel}</span><span class="tabular-nums">${fmtFn(bVal)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    };
+
+    const fmt0 = (v)=> fmtInt(Math.round(v||0));
+    const fmt2 = (v)=> (Number(v||0)).toFixed(2);
+
+    root.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        ${arr.map(b=>{
+          const cbmIn = (b.cartonsIn||0) * CBM_PER_CARTON;
+          const cbmReady = (b.cartonsReady||0) * CBM_PER_CARTON;
+          return `
+            <div class="bg-gray-50 rounded-2xl border p-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <div class="text-xl">${b.icon}</div>
+                  <div>
+                    <div class="text-sm font-semibold">${b.k}</div>
+                    <div class="text-[11px] text-gray-500">Suppliers ${b.suppliers.size} • POs ${b.pos.size}</div>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[11px] text-gray-500">Units</div>
+                  <div class="text-sm font-semibold tabular-nums">${fmt0(b.planned)}</div>
+                </div>
+              </div>
+
+              <div class="mt-3 grid grid-cols-1 gap-2">
+                ${barPair('Units', 'Planned', b.planned, 'Applied', b.applied, Math.max(maxPlanned, maxApplied), fmt0)}
+                ${barPair('Cartons', 'In', b.cartonsIn, 'Ready', b.cartonsReady, maxCartons, fmt0)}
+                ${barPair('CBM', 'In', cbmIn, 'Ready', cbmReady, maxCbm, fmt2)}
+              </div>
+
+              <div class="text-[11px] text-gray-500 mt-2">
+                CBM = 0.046 × cartons. “Ready” uses cartons_out from records summary when available.
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+    return;
+  }
+
+
+  // ----- Zendesk bubble matrix (risk vs volume) -----
+  if(view==='zendesk'){
+    // Build per-ticket aggregates including freight mix
+    const ticketAgg = new Map(); // ticket -> {planned, received, applied, air, sea, other}
+    for(const r of rows){
+      const t = (r.zendesk || 'Unspecified').toString().trim() || 'Unspecified';
+      const cur = ticketAgg.get(t) || {k:t, planned:0, received:0, applied:0, air:0, sea:0, other:0};
+      const p = Number(r.planned||0)||0, rc=Number(r.received||0)||0, ap=Number(r.applied||0)||0;
+      cur.planned += p; cur.received += rc; cur.applied += ap;
+      const f = (r.freight||'').toString().toLowerCase();
+      if(f.includes('air')) cur.air += p;
+      else if(f.includes('sea')) cur.sea += p;
+      else cur.other += p;
+      ticketAgg.set(t, cur);
+    }
+
+    const tickets = [...ticketAgg.values()]
+      .map(t=>{
+        const planned=t.planned||0, applied=t.applied||0, received=t.received||0;
+        const pct = planned>0 ? Math.max(0, Math.min(100, 100*applied/planned)) : 0;
+        const risk = 1 - (pct/100); // higher = worse
+        const rem = Math.max(0, planned - applied);
+        const mode = (t.air>=t.sea && t.air>=t.other) ? 'air' : (t.sea>=t.other ? 'sea' : 'other');
+        return {...t, planned, received, applied, pct, risk, rem, mode};
+      })
+      .filter(t=>t.planned>0 || t.applied>0 || t.received>0)
+      .sort((a,b)=> (b.planned||0) - (a.planned||0))
+      .slice(0, 36); // keep dense but non-scroll
+
+    if(tickets.length===0){
+      root.innerHTML = `<div class="text-sm text-gray-600">No data for this week.</div>`;
+      return;
+    }
+
+    const maxPlanned = Math.max(...tickets.map(t=>t.planned||0), 1);
+    const minPlanned = Math.min(...tickets.map(t=>t.planned||0), maxPlanned);
+
+    // scale helpers (work in SVG viewBox coordinates)
+    const W=1000, H=520;
+    const padL=70, padR=30, padT=30, padB=70;
+    const x0=padL, x1=W-padR, y0=H-padB, y1=padT;
+
+    const scaleX = (v)=>{
+      if(maxPlanned===minPlanned) return (x0+x1)/2;
+      // log scale keeps extremes readable
+      const lv = Math.log10(Math.max(1, v));
+      const lmin = Math.log10(Math.max(1, minPlanned));
+      const lmax = Math.log10(Math.max(1, maxPlanned));
+      const t = (lv - lmin) / (lmax - lmin || 1);
+      return x0 + t*(x1-x0);
+    };
+    const scaleY = (risk)=>{
+      const t = Math.max(0, Math.min(1, risk));
+      return y0 - t*(y0-y1);
+    };
+    const scaleR = (v)=>{
+      const t = Math.sqrt(Math.max(0, v) / maxPlanned);
+      return 18 + t*46; // 18..64
+    };
+
+    // collision-lite: single pass nudging to reduce heavy overlaps
+    const placed = [];
+    const bubbles = tickets.map(t=>{
+      let cx = scaleX(t.planned), cy = scaleY(t.risk), r = scaleR(t.planned);
+      for(let i=0;i<placed.length;i++){
+        const o=placed[i];
+        const dx=cx-o.cx, dy=cy-o.cy;
+        const dist=Math.sqrt(dx*dx+dy*dy) || 1;
+        const minDist = r + o.r + 8;
+        if(dist < minDist){
+          const push = (minDist - dist);
+          cx += (dx/dist)*push*0.6;
+          cy += (dy/dist)*push*0.6;
+        }
+      }
+      // clamp
+      cx = Math.max(x0+r, Math.min(x1-r, cx));
+      cy = Math.max(y1+r, Math.min(y0-r, cy));
+      placed.push({cx,cy,r});
+      return {...t, cx, cy, r};
+    });
+
+    const riskStroke = (pct)=>{
+      if(pct>=90) return 'rgba(var(--ops-green-rgb),0.50)';        // green
+      if(pct>=75) return 'rgba(var(--ops-yellow-rgb),0.60)';        // amber
+      return 'rgba(220,38,38,0.55)';                    // red
+    };
+    const fillFor = (pct)=>{
+      // Light, matte green; intensity tracks completion %
+      const a = 0.12 + 0.33*(pct/100);
+      return `rgba(var(--ops-green-rgb),${a.toFixed(3)})`;
+    };
+    const iconFor = (mode)=>{
+      if(mode==='air') return '✈';
+      if(mode==='sea') return '🚢';
+      return '◻';
+    };
+
+    // Build SVG
+    root.innerHTML = `
+      <div class="relative">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs text-gray-500">X: Volume (planned units) • Y: Risk (1 − completion)</div>
+          <div class="flex items-center gap-3 text-[11px] text-gray-500">
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(var(--ops-green-rgb),0.25)"></span> Complete</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(var(--ops-yellow-rgb),0.30)"></span> At risk</span>
+            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background:rgba(239,68,68,0.25)"></span> Delayed</span>
+          </div>
+        </div>
+
+        <div id="ops-zendesk-tooltip" class="pointer-events-none hidden absolute z-20 bg-white border rounded-lg shadow px-3 py-2 text-xs">
+          <div class="font-semibold" id="ops-ztt-title"></div>
+          <div class="text-gray-600 mt-0.5" id="ops-ztt-body"></div>
+        </div>
+
+        <svg id="ops-zendesk-matrix" class="w-full rounded-xl border bg-white" style="height:520px" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+
+          <!-- axes -->
+          <line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="rgba(148,163,184,0.6)" stroke-width="1"></line>
+          <line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="rgba(148,163,184,0.6)" stroke-width="1"></line>
+
+          <text x="${x0}" y="${y1-10}" font-size="12" fill="rgba(100,116,139,0.9)">Risk ↑</text>
+          <text x="${x1-120}" y="${y0+35}" font-size="12" fill="rgba(100,116,139,0.9)">Volume →</text>
+
+          ${bubbles.map((b,i)=>{
+            const ring = 2.5;
+            const circ = 2*Math.PI*(b.r-ring);
+            const dash = (circ*(b.pct/100)).toFixed(2);
+            const gap = (circ - dash).toFixed(2);
+            return `
+              <g class="ops-zb" data-k="${esc(b.k)}" data-planned="${b.planned}" data-received="${b.received}" data-applied="${b.applied}" data-pct="${b.pct.toFixed(1)}" data-mode="${b.mode}" transform="translate(0,0)">
+                <!-- outer risk ring (pops) -->
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${b.r.toFixed(2)}"
+                  fill="#ffffff" stroke="${riskStroke(b.pct)}" stroke-width="4"
+                  style="filter: drop-shadow(0 2px 6px rgba(15,23,42,0.18));"></circle>
+
+                <!-- base ring -->
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}"
+                  fill="#ffffff" stroke="rgba(100,116,139,0.22)" stroke-width="${ring}"></circle>
+
+                <!-- completion ring (applied color) -->
+                <circle cx="${b.cx.toFixed(2)}" cy="${b.cy.toFixed(2)}" r="${(b.r-ring).toFixed(2)}"
+                  fill="transparent" stroke="var(--ops-green)" stroke-width="${ring}"
+                  stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${b.cx.toFixed(2)} ${b.cy.toFixed(2)})"
+                  stroke-linecap="round"></circle>
+                <text x="${b.cx.toFixed(2)}" y="${(b.cy+4).toFixed(2)}" text-anchor="middle" font-size="${Math.max(14, Math.min(20, b.r/2)).toFixed(0)}" fill="rgba(15,23,42,0.85)">${iconFor(b.mode)}</text>
+                <text x="${b.cx.toFixed(2)}" y="${(b.cy + b.r + 14).toFixed(2)}" text-anchor="middle" font-size="12" fill="rgba(100,116,139,0.9)">${esc(b.k)}</text>
+              </g>
+            `;
+          }).join('')}
+        </svg>
+
+        <div class="text-[11px] text-gray-500 mt-2">
+          Bubble size = total planned units. Fill intensity = % complete. Outline indicates risk band. Hover for details.
+        </div>
+      </div>
+    `;
+
+    // tooltips
+    const tip = document.getElementById('ops-zendesk-tooltip');
+    const tTitle = document.getElementById('ops-ztt-title');
+    const tBody = document.getElementById('ops-ztt-body');
+    const svg = document.getElementById('ops-zendesk-matrix');
+    if(tip && tTitle && tBody && svg){
+      const show = (e, g)=>{
+        const k=g.getAttribute('data-k')||'';
+        const planned=+g.getAttribute('data-planned')||0;
+        const received=+g.getAttribute('data-received')||0;
+        const applied=+g.getAttribute('data-applied')||0;
+        const pct=+g.getAttribute('data-pct')||0;
+        const mode=g.getAttribute('data-mode')||'';
+        tTitle.textContent = `Ticket ${k}  •  ${mode==='air'?'Air':mode==='sea'?'Sea':'Other'}`;
+        tBody.textContent = `Planned ${fmtInt(Math.round(planned))} • Received ${fmtInt(Math.round(received))} • Applied ${fmtInt(Math.round(applied))} • ${pct.toFixed(0)}% complete`;
+        tip.classList.remove('hidden');
+        const rect = root.getBoundingClientRect();
+        const x = (e.clientX - rect.left) + 12;
+        const y = (e.clientY - rect.top) + 12;
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      };
+      const hide = ()=> tip.classList.add('hidden');
+      svg.querySelectorAll('.ops-zb').forEach(g=>{
+        g.style.cursor='default';
+        g.addEventListener('mousemove', (e)=>show(e,g));
+        g.addEventListener('mouseenter', (e)=>show(e,g));
+        g.addEventListener('mouseleave', hide);
+      });
+    }
+    return;
+  }
+
+// Default list view for other dimensions (facility, zendesk, freight)
+  root.innerHTML = `
+    <div class="space-y-3">
+      ${items.map(it=>{
+        const planned = it.planned||0;
+        const received = it.received||0;
+        const applied = it.applied||0;
+        const pct = planned>0 ? Math.round(100*applied/planned) : 0;
+
+        const freightRow = (view==='supplier') ? `
+          <div class="mt-2 text-[11px] text-gray-500 flex gap-3">
+            ${['Air','Sea','Other'].map(b=>{
+              const fv = it.freight?.[b];
+              if(!fv) return '';
+              const fpct = fv.planned>0 ? Math.round(100*fv.applied/fv.planned) : 0;
+              return `<span class="px-2 py-0.5 rounded-full border bg-white">${b}: ${fpct}%</span>`;
+            }).join('')}
+          </div>
+        ` : '';
+
+        return `
+          <div class="rounded-xl border bg-gray-50 p-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-sm font-semibold truncate">${esc(it.k)}</div>
+                <div class="text-xs text-gray-500">Completion: <span class="font-medium">${pct}%</span> &nbsp;•&nbsp; Remaining: <span class="font-medium">${fmtInt(Math.round(Math.max(0, planned-applied)))}</span></div>
+              </div>
+              <div class="text-right text-xs text-gray-500 tabular-nums">
+                <div>${fmtInt(Math.round(applied))} / ${fmtInt(Math.round(planned))}</div>
+              </div>
+            </div>
+            <div class="mt-3 space-y-2">
+              ${bar('Planned', planned, planned||1, OPS_PLANNED_FG)}
+              ${bar('Received', received, planned||1, OPS_RECEIVED_FG)}
+              ${bar('Applied', applied, planned||1, 'rgba(var(--ops-green-rgb),0.72)')}
+            </div>
+            ${freightRow}
+          </div>
+        `;
+      }).join('')}
+      <div class="text-xs text-gray-500">Received units are approximated from cartons-in by PO (as in Flow).</div>
+    </div>
+  `;
+}
+
+
+
+function wireOpsInsights(){
+  const pills = Array.from(document.querySelectorAll('.ops-pill'));
+  if(!pills.length) return;
+
+  pills.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      pills.forEach(b=>b.classList.remove('ops-pill--active'));
+      btn.classList.add('ops-pill--active');
+      const v = (btn.getAttribute('data-opsview') || 'overview').trim();
+      state.opsView = v;
+      try { renderOpsInsights(v); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
+    });
+  });
+
+  // Initial view: respect existing active pill, otherwise keep last state, otherwise default to overview.
+  const active = document.querySelector('.ops-pill--active');
+  const initial = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
+  state.opsView = initial;
+  try { renderOpsInsights(initial); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
+}
+
+// Re-render insights whenever the week data finishes loading (setWeek wrapper dispatches state:ready).
+window.addEventListener('state:ready', () => {
+  try {
+    const active = document.querySelector('.ops-pill--active');
+    const v = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
+    state.opsView = v;
+    renderOpsInsights(v);
+  } catch (e) { console.warn('[OPS] state:ready render failed:', e); }
+});
+
+window.addEventListener('hashchange', () => show(getRouteHash()));
+window.addEventListener('popstate', () => show(getRouteHash()));
+  show(getRouteHash()); // initial render
+  try{ wireOpsDownloads(); }catch{}
+  try{ wireOpsInsights(); }catch{}
 
   // Intake scaffold + checkbox handler
   renderIntake();
@@ -3610,26 +4685,16 @@ syncNav();
 
 document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
 
-  // pulse hearts + metrics (dashboard only)
-  const __route = (location.hash || '#dashboard').replace('#','').trim();
-  const __isDash = (__route === '' || __route === 'dashboard' || __route === 'operations' || __route === 'ops');
-  if (__isDash) {
-    const __big = $('#ops-heart');
-    const __small = $('#ops-heart-small');
-    if (__big && __small) {
-      __big.innerHTML = '';
-      __small.innerHTML = '';
-      __big.appendChild(createHeart(24, BRAND, 40));
-      __small.appendChild(createHeart(18, BRAND, 40));
-      loadOpsMetrics();
-      startSSE();
-    }
-  }
+  // pulse hearts + metrics
+  const _oh = $('#ops-heart');
+  if (_oh) _oh.appendChild(createHeart(24, BRAND, 40));
+  const _ohs = $('#ops-heart-small');
+  if (_ohs) _ohs.appendChild(createHeart(18, BRAND, 40));
+  loadOpsMetrics();
+  startSSE();
 })();
 
   </script>
-
-
 <script>
 (function () {
   function isReady(s) {
@@ -3651,7 +4716,6 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }, 300);
 })();
 </script>
-
 <script>
 (function () {
   // Re-fire state:ready after Ops switches weeks (or re-populates state)
@@ -3666,12 +4730,100 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }
 })();
 </script>
-
-
-   
-</script>
 <script defer="" src="/exec_live_additive.js?v=8"></script>
-<script defer="" src="/receiving_live_additive.js?v=27"></script>
-<script defer="" src="/flow_live_additive.js?v=61"></script>
-</div></div></section></main></body>
+<script defer="" src="/receiving_live_additive.js?v=27">
+// --- Ops: PO progress search (right panel) ---
+(function(){
+  function q(sel){ return document.querySelector(sel); }
+  const input = q('#ops-po-search');
+  const clearBtn = q('#ops-po-clear');
+  const out = q('#ops-po-detail');
+  if(!input || !out) return;
+
+  function fmt(n){
+    const x = Number(n);
+    return (isFinite(x)?Math.trunc(x):0).toLocaleString();
+  }
+
+  function findPlanRow(po){
+    const key = String(po||'').trim().toUpperCase();
+    return (window.state?.plan||[]).find(p => String(p.po_number||'').trim().toUpperCase() === key) || null;
+  }
+
+  function renderPO(po){
+    const key = String(po||'').trim().toUpperCase();
+    if(!key){ out.innerHTML = '<div class="text-xs text-gray-500">Enter a PO to view details.</div>'; return; }
+
+    const planRow = findPlanRow(key);
+    const planned = planRow ? toNum(planRow.target_qty) : 0;
+
+    const sumC = window.state?._summary_complete;
+    const sumR = window.state?._summary_received;
+
+    const applied = Number(sumC?.by_po?.[key]?.units || sumC?.by_po?.[key]?.total_units || 0);
+    const received = Number(sumR?.by_po?.[key]?.units || sumR?.by_po?.[key]?.total_units || 0);
+
+    const pctA = planned>0 ? Math.round(applied*100/planned) : 0;
+    const pctR = planned>0 ? Math.round(received*100/planned) : 0;
+
+    const supplier = planRow?.supplier_name || planRow?.supplier || '';
+    const facility = planRow?.facility || planRow?.facility_code || '';
+    const freight  = planRow?.freight_type || planRow?.freight || '';
+    const zendesk  = planRow?.zendesk_ticket || planRow?.zendesk || '';
+
+    out.innerHTML = `
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-sm font-semibold">${key}</div>
+          <div class="text-xs text-gray-500 mt-0.5">${[supplier, facility, freight, zendesk].filter(Boolean).join(' • ') || '—'}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-gray-500">Planned</div>
+          <div class="text-sm font-semibold tabular-nums">${fmt(planned)}</div>
+        </div>
+      </div>
+
+      <div class="mt-3 space-y-2">
+        <div>
+          <div class="flex items-center justify-between text-xs text-gray-600">
+            <div>Received</div><div class="font-semibold tabular-nums">${fmt(received)} <span class="text-gray-400">(${pctR}%)</span></div>
+          </div>
+          <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
+            <div class="h-full ops-bar-planned" style="width:${Math.min(100,pctR)}%"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between text-xs text-gray-600">
+            <div>Applied</div><div class="font-semibold tabular-nums">${fmt(applied)} <span class="text-gray-400">(${pctA}%)</span></div>
+          </div>
+          <div class="h-2 bg-white rounded-full border overflow-hidden mt-1">
+            <div class="h-full" style="width:${Math.min(100,pctA)}%; background:${APPLIED_COLOR};"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  let t=null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t=setTimeout(()=>renderPO(input.value), 250);
+  });
+  clearBtn?.addEventListener('click', () => { input.value=''; renderPO(''); });
+
+  // re-render on state:ready (week change / plan upload)
+  window.addEventListener('state:ready', () => {
+    if(input.value.trim()) renderPO(input.value);
+  });
+})();
+
+  
+</script>
+<script src="/exec_live_additive.js?v=8" defer></script>
+<script src="/receiving_live_additive.js?v=27" defer></script>
+  <script src="/flow_live_additive.js?v=61" defer></script>
+
+</body>
 </html>
+
