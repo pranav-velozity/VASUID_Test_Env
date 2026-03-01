@@ -1,38 +1,66 @@
 /* intake.js — VelOzity Pinpoint Intake (standalone)
-   Assumptions:
-   - index.html contains the Intake DOM (section#page-intake and its child elements/IDs).
-   - XLSX (SheetJS) is loaded globally (window.XLSX) if you want XLSX parsing.
-   - index.html defines (optional) window.apiBase OR window.API_BASE (no trailing slash). If not, we derive from location.
-   - index.html routing calls window.IntakePage.show() when hash route is "#intake".
+
+   What this file does
+   - Owns ONLY the Intake page behavior (render, edit cells, upload applied UIDs, upload bin manifest, delete).
+   - It does NOT touch Operations/Dashboard logic except an optional callback hook.
+
+   Requirements in index.html
+   - Include the Intake DOM with these IDs:
+       #page-intake
+       #intake-body
+       #btn-add-row
+       #chk-all
+       #btn-delete-selected
+       #btn-export-day
+       #btn-upload-applied
+       #file-upload-applied (type=file)
+       #btn-upload-bins
+       #file-bins (type=file)
+       #btn-delete-uids
+       #uids-to-delete
+       #delete-uids-status
+       #intake-bpm
+       (Optional ribbon IDs if you keep them: #ops-today #ops-hour #ops-rate #ops-drafts #ops-dupes #ops-sync-badges #ops-alerts #ops-last-updated #ops-dot)
+
+   - SheetJS must be loaded globally (window.XLSX) if you want XLSX uploads.
+
+   API wiring expectations (matches your server.js)
+   - PATCH  /records/:id   {field,value}
+   - POST   /records/import   [rows]
+   - POST   /records/delete   [{uid, sku_code?}]   (deletes by UID; server supports sku_code optional)
+   - GET    /records?from=YYYY-MM-DD&to=YYYY-MM-DD&status=draft
+   - PUT    /bins/weeks/:weekStart   [ {mobile_bin,total_units?,weight_kg?,date_local?} ]
+   - GET    /events/scan  (SSE)  -> {ts}
+
+   API base resolution
+   - Prefers <meta name="api-base" content="..."> if present
+   - Else window.apiBase / window.API_BASE
+   - Else falls back to location.origin
 */
+
 (function () {
   'use strict';
 
-  // ---------- Config ----------
-  function deriveApiBase() {
-    // Prefer explicitly set base
-    const explicit = (window.apiBase || window.API_BASE || '').toString().trim();
-    if (explicit) return explicit.replace(/\/+$/, '');
-
-    // Common pattern: backend on same origin but different port during local dev.
-    // In production you'll almost always set API_BASE explicitly.
-    const loc = window.location;
-    // If frontend is served from same server, this works.
-    return (loc.origin || '').replace(/\/+$/, '');
+  // ------------------------
+  // API base
+  // ------------------------
+  function resolveApiBase() {
+    const meta = document.querySelector('meta[name="api-base"]')?.content || '';
+    const explicit = meta || (window.apiBase || window.API_BASE || '');
+    const base = String(explicit).trim() || String(window.location.origin || '').trim();
+    return base.replace(/\/+$/, '');
   }
-  const apiBase = deriveApiBase();
+  const apiBase = resolveApiBase();
 
-  // ---------- Tiny DOM helpers ----------
+  // ------------------------
+  // DOM helpers
+  // ------------------------
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  function showToast(msg) {
-    // Non-intrusive fallback; replace with your app toast if you have one.
-    // eslint-disable-next-line no-alert
-    console.log('[Intake]', msg);
-  }
-
-  // ---------- Date helpers ----------
+  // ------------------------
+  // Date helpers
+  // ------------------------
   function isoYMD(d) {
     const dt = (d instanceof Date) ? d : new Date(d);
     if (Number.isNaN(dt.getTime())) return '';
@@ -40,23 +68,42 @@
   }
 
   function mondayOf(ymd) {
-    const d = new Date(String(ymd).slice(0, 10) + 'T00:00:00Z');
+    const s = String(ymd || '').slice(0, 10);
+    const d = new Date(s + 'T00:00:00Z');
     if (Number.isNaN(d.getTime())) return '';
-    const day = d.getUTCDay(); // 0..6 (Sun..Sat)
+    const day = d.getUTCDay();
     const diff = (day === 0 ? -6 : (1 - day));
     d.setUTCDate(d.getUTCDate() + diff);
     return d.toISOString().slice(0, 10);
   }
 
   function weekEndOf(ws) {
-    const d = new Date(ws + 'T00:00:00Z');
+    const d = new Date(String(ws || '').slice(0, 10) + 'T00:00:00Z');
+    if (Number.isNaN(d.getTime())) return '';
     d.setUTCDate(d.getUTCDate() + 6);
     return d.toISOString().slice(0, 10);
   }
 
-  // ---------- CSV/XLSX parsing ----------
+  function toISODateLoose(v) {
+    if (v == null) return '';
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      // Excel serial date
+      const base = new Date(Date.UTC(1899, 11, 30));
+      const ms = Math.round(v * 86400000);
+      return new Date(base.getTime() + ms).toISOString().slice(0, 10);
+    }
+    const s = String(v).trim();
+    if (!s) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return '';
+  }
+
+  // ------------------------
+  // Minimal CSV parser (quoted fields)
+  // ------------------------
   function parseCSV(text) {
-    // Minimal CSV parser with quoted fields.
     const rows = [];
     let i = 0, field = '', row = [], inQuotes = false;
     function pushField() { row.push(field); field = ''; }
@@ -80,14 +127,15 @@
     pushField();
     if (row.length > 1 || (row.length === 1 && row[0] !== '')) pushRow();
 
-    // Convert to objects using header row
     if (!rows.length) return [];
     const header = rows[0].map(h => String(h || '').trim());
-    return rows.slice(1).filter(r => r.some(x => String(x || '').trim() !== '')).map(r => {
-      const o = {};
-      header.forEach((h, idx) => { if (h) o[h] = r[idx]; });
-      return o;
-    });
+    return rows.slice(1)
+      .filter(r => r.some(x => String(x || '').trim() !== ''))
+      .map(r => {
+        const o = {};
+        header.forEach((h, idx) => { if (h) o[h] = r[idx]; });
+        return o;
+      });
   }
 
   function readXlsx(file) {
@@ -110,7 +158,6 @@
   }
 
   function normalizeKeyedRow(row) {
-    // normalize keys for flexible headers
     const out = {};
     for (const [k, v] of Object.entries(row || {})) {
       out[String(k).toLowerCase().trim()] = v;
@@ -118,7 +165,23 @@
     return out;
   }
 
-  // ---------- API ----------
+  function pickRowValue(norm, ...keys) {
+    for (const k of keys) {
+      const v = norm[String(k).toLowerCase().trim()];
+      if (v != null && String(v).trim() !== '') return v;
+    }
+    return '';
+  }
+
+  function toNumberOrNull(v) {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // ------------------------
+  // API
+  // ------------------------
   async function apiJSON(path, opts) {
     const res = await fetch(apiBase + path, Object.assign({
       headers: { 'Content-Type': 'application/json' }
@@ -151,9 +214,25 @@
     });
   }
 
-  // ---------- Intake state ----------
+  async function deleteUIDs(list) {
+    const items = (list || []).map(x => {
+      if (typeof x === 'string') return { uid: x.trim(), sku_code: '' };
+      return { uid: String(x.uid || '').trim(), sku_code: String(x.sku_code || '').trim() };
+    }).filter(x => x.uid);
+
+    if (!items.length) return null;
+
+    return apiJSON('/records/delete', {
+      method: 'POST',
+      body: JSON.stringify(items)
+    });
+  }
+
+  // ------------------------
+  // Intake state + business rules
+  // ------------------------
   const IntakeState = {
-    rows: [], // draft rows for current week, plus one empty row
+    rows: [],
     weekStart: mondayOf(isoYMD(new Date()))
   };
 
@@ -172,8 +251,6 @@
     };
   }
 
-  function toUI(v) { return String(v || '').slice(0, 10); }
-
   function requiredFilled(r) {
     return Boolean(
       String(r.date_local || '').trim() &&
@@ -184,50 +261,69 @@
     );
   }
 
-  function syncClass(r) {
-    if (r.status === 'complete') return 'bg-emerald-50';
-    if (requiredFilled(r)) return 'bg-amber-50';
-    return '';
+  function ensureTrailingBlankRow() {
+    if (!IntakeState.rows.length) { IntakeState.rows.push(newLocalRow()); return; }
+    const last = IntakeState.rows[IntakeState.rows.length - 1];
+    const isLastBlank = !String(last.mobile_bin || '').trim()
+      && !String(last.po_number || '').trim()
+      && !String(last.sku_code || '').trim()
+      && !String(last.uid || '').trim()
+      && last.status !== 'complete';
+    if (!isLastBlank) IntakeState.rows.push(newLocalRow());
   }
 
-  // ---------- Render ----------
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ------------------------
+  // Render
+  // ------------------------
   function renderIntake() {
     const tb = $('#intake-body');
     if (!tb) return;
 
     tb.innerHTML = '';
-    if (!IntakeState.rows.length) IntakeState.rows.push(newLocalRow());
+    ensureTrailingBlankRow();
 
     let drafts = 0;
-    let synced = 0;
+    let complete = 0;
 
     for (let i = 0; i < IntakeState.rows.length; i++) {
       const r = IntakeState.rows[i];
-      if (r.status !== 'complete') drafts++; else synced++;
+      if (r.status === 'complete') complete++; else drafts++;
 
       const tr = document.createElement('tr');
-      tr.className = (i % 2 ? 'bg-gray-50' : 'bg-white') + ' ' + syncClass(r);
+      tr.className = (i % 2 ? 'bg-gray-50' : 'bg-white');
 
       tr.innerHTML = `
         <td class="border px-2 py-2"><input type="checkbox" ${r.selected ? 'checked' : ''} data-id="${r.id}" data-role="sel"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${toUI(r.date_local)}" data-id="${r.id}" data-f="date_local"/></td>
+        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(String(r.date_local || '').slice(0,10))}" data-id="${r.id}" data-f="date_local"/></td>
         <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.mobile_bin)}" data-id="${r.id}" data-f="mobile_bin"/></td>
         <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.sscc_label || '')}" data-id="${r.id}" data-f="sscc_label"/></td>
         <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.po_number)}" data-id="${r.id}" data-f="po_number"/></td>
         <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.sku_code)}" data-id="${r.id}" data-f="sku_code"/></td>
         <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.uid)}" data-id="${r.id}" data-f="uid"/></td>
         <td class="border px-2 py-2 text-xs text-gray-600">${escapeHtml(r.status || 'draft')}</td>
+        <td class="border px-2 py-2 text-xs text-gray-600">${escapeHtml(r.sync_state || '')}</td>
+        <td class="border px-2 py-2 text-xs text-gray-600">${requiredFilled(r) ? '' : '<span class="text-gray-400">—</span>'}</td>
       `;
       tb.appendChild(tr);
     }
 
-    const elDrafts = $('#ops-drafts');
-    if (elDrafts) elDrafts.textContent = String(drafts);
+    // Optional ribbon badges
+    if ($('#ops-drafts')) $('#ops-drafts').textContent = String(drafts);
+    if ($('#ops-sync-badges')) $('#ops-sync-badges').textContent = `${complete} complete`;
 
     const allChk = $('#chk-all');
     if (allChk) allChk.checked = IntakeState.rows.length > 0 && IntakeState.rows.every(x => x.selected);
 
-    // bind events for rendered inputs
+    // Bind events
     $$('.cell', tb).forEach(inp => {
       inp.addEventListener('change', async (e) => {
         const t = e.currentTarget;
@@ -235,30 +331,25 @@
         const field = t.getAttribute('data-f');
         const val = t.value;
 
-        // update local row immediately
         const row = IntakeState.rows.find(x => x.id === id);
         if (row) row[field] = val;
 
         try {
           const resp = await patchRecord(id, field, val);
-          if (resp && resp.record) {
-            const updated = resp.record;
-            if (row) {
-              row.status = updated.status || row.status;
-              row.sync_state = updated.sync_state || row.sync_state;
-              row.completed_at = updated.completed_at || row.completed_at;
-            }
+          if (resp && resp.record && row) {
+            row.status = resp.record.status || row.status;
+            row.sync_state = resp.record.sync_state || row.sync_state;
+            row.completed_at = resp.record.completed_at || row.completed_at;
           }
         } catch (err) {
           console.error(err);
-          showToast('Patch failed: ' + (err.message || err));
+          alert('Save failed: ' + (err.message || err));
         } finally {
-          // keep one empty row at bottom
           ensureTrailingBlankRow();
           renderIntake();
-          // if app has setWeek(), refresh derived dashboards
-          if (typeof window.setWeek === 'function' && window.state?.weekStart) {
-            try { await window.setWeek(window.state.weekStart); } catch {}
+          // Optional hook: let the rest of the app refresh if it wants
+          if (typeof window.onIntakeChanged === 'function') {
+            try { window.onIntakeChanged(); } catch {}
           }
         }
       });
@@ -274,95 +365,32 @@
         if (all) all.checked = IntakeState.rows.every(x => x.selected);
       });
     });
-
-    if (synced && $('#ops-sync-badges')) {
-      $('#ops-sync-badges').textContent = `${synced} complete`;
-    }
   }
 
-  function escapeHtml(s) {
-    return String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+  // ------------------------
+  // Load drafts for week
+  // ------------------------
+  async function loadWeekDrafts(ws) {
+    const we = weekEndOf(ws);
+    const drafts = await fetchRecords({ from: ws, to: we, status: 'draft', limit: 20000 });
+    IntakeState.rows = drafts.map(r => ({
+      id: r.id,
+      selected: false,
+      date_local: r.date_local,
+      mobile_bin: r.mobile_bin || '',
+      sscc_label: r.sscc_label || '',
+      po_number: r.po_number || '',
+      sku_code: r.sku_code || '',
+      uid: r.uid || '',
+      status: r.status || 'draft',
+      sync_state: r.sync_state || 'unknown'
+    }));
+    ensureTrailingBlankRow();
   }
 
-  function ensureTrailingBlankRow() {
-    if (!IntakeState.rows.length) { IntakeState.rows.push(newLocalRow()); return; }
-    const last = IntakeState.rows[IntakeState.rows.length - 1];
-    const isLastBlank = !String(last.mobile_bin || '').trim()
-      && !String(last.po_number || '').trim()
-      && !String(last.sku_code || '').trim()
-      && !String(last.uid || '').trim()
-      && last.status !== 'complete';
-    if (!isLastBlank) IntakeState.rows.push(newLocalRow());
-  }
-
-  // ---------- Ops ribbon (optional) ----------
-  async function loadOpsMetrics() {
-    try {
-      const m = await apiJSON('/summary/ops', { method: 'GET', headers: {} });
-      if ($('#ops-today')) $('#ops-today').textContent = String(m.scans_today ?? 0);
-      if ($('#ops-hour')) $('#ops-hour').textContent = String(m.last_hour ?? 0);
-      if ($('#ops-rate')) $('#ops-rate').textContent = String(m.last_30m ?? 0);
-      if ($('#ops-dupes')) $('#ops-dupes').textContent = String(m.dupes ?? 0);
-      if ($('#ops-last-updated')) $('#ops-last-updated').textContent = isoYMD(new Date());
-    } catch (e) {
-      // Non-blocking
-      console.warn('Ops metrics failed:', e);
-    }
-  }
-
-  function startSSE() {
-    // Server: GET /events/scan (SSE). Each event = { ts }
-    try {
-      const es = new EventSource(apiBase + '/events/scan');
-      const beats = [];
-      es.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data || '{}');
-          const ts = new Date(msg.ts || Date.now()).getTime();
-          beats.push(ts);
-          // keep last 60s
-          const cutoff = Date.now() - 60000;
-          while (beats.length && beats[0] < cutoff) beats.shift();
-          const bpm = Math.round(beats.length * 60); // events in last minute -> bpm
-          if ($('#intake-bpm')) $('#intake-bpm').textContent = String(bpm);
-        } catch {}
-      };
-      es.onerror = () => { /* ignore */ };
-    } catch (e) {
-      console.warn('SSE not available:', e);
-    }
-  }
-
-  // ---------- Upload UIDs ----------
-  function pickRowValue(norm, ...keys) {
-    for (const k of keys) {
-      const v = norm[String(k).toLowerCase().trim()];
-      if (v != null && String(v).trim() !== '') return v;
-    }
-    return '';
-  }
-
-  function toISODateLoose(v) {
-    if (v == null) return '';
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      // Excel serial date
-      const base = new Date(Date.UTC(1899, 11, 30));
-      const ms = Math.round(v * 86400000);
-      return new Date(base.getTime() + ms).toISOString().slice(0, 10);
-    }
-    const s = String(v).trim();
-    if (!s) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    return '';
-  }
-
+  // ------------------------
+  // Upload Applied UIDs
+  // ------------------------
   function wireUploadUIDs() {
     const btn = $('#btn-upload-applied');
     const inp = $('#file-upload-applied');
@@ -376,11 +404,8 @@
 
       try {
         let rows;
-        if (file.name.toLowerCase().endsWith('.csv')) {
-          rows = parseCSV(await file.text());
-        } else {
-          rows = await readXlsx(file);
-        }
+        if (file.name.toLowerCase().endsWith('.csv')) rows = parseCSV(await file.text());
+        else rows = await readXlsx(file);
 
         const payload = rows.map(r => {
           const n = normalizeKeyedRow(r);
@@ -394,10 +419,7 @@
           };
         }).filter(x => (x.po_number || x.sku_code || x.uid || x.mobile_bin));
 
-        if (!payload.length) {
-          alert('No rows found.');
-          return;
-        }
+        if (!payload.length) { alert('No rows found.'); return; }
 
         const resp = await apiJSON('/records/import', {
           method: 'POST',
@@ -406,10 +428,9 @@
 
         alert(`Upload complete. Inserted: ${resp.inserted ?? 0} / ${resp.total ?? payload.length}. Rejected: ${resp.rejected ?? 0}.`);
 
-        // refresh drafts for current week
         await IntakePage.reload();
-        if (typeof window.setWeek === 'function' && window.state?.weekStart) {
-          try { await window.setWeek(window.state.weekStart); } catch {}
+        if (typeof window.onIntakeChanged === 'function') {
+          try { window.onIntakeChanged(); } catch {}
         }
       } catch (err) {
         console.error(err);
@@ -418,13 +439,9 @@
     });
   }
 
-  // ---------- Upload Bin Manifest ----------
-  function toNumberOrNull(v) {
-    if (v == null || v === '') return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-
+  // ------------------------
+  // Upload Bin Manifest
+  // ------------------------
   function validateBin(row) {
     const mb = String(row.mobile_bin || '').trim();
     if (!mb) return { ok: false, reason: 'missing mobile_bin' };
@@ -451,7 +468,9 @@
         if (file.name.toLowerCase().endsWith('.csv')) rows = parseCSV(await file.text());
         else rows = await readXlsx(file);
 
-        const ws = (window.state && window.state.weekStart) ? window.state.weekStart : IntakeState.weekStart;
+        const ws = (window.state && window.state.weekStart)
+          ? window.state.weekStart
+          : IntakeState.weekStart;
 
         const items = rows.map(r => {
           const n = normalizeKeyedRow(r);
@@ -481,9 +500,8 @@
 
         alert(`Bin manifest uploaded. Upserted: ${resp.upserted ?? 0}. Rejected: ${resp.rejected ?? rejected.length}.`);
 
-        // Refresh week so insights update
-        if (typeof window.setWeek === 'function') {
-          try { await window.setWeek(ws); } catch {}
+        if (typeof window.onIntakeChanged === 'function') {
+          try { window.onIntakeChanged(); } catch {}
         }
       } catch (err) {
         console.error(err);
@@ -492,37 +510,23 @@
     });
   }
 
-  // ---------- Delete ----------
-  async function deleteUIDs(list) {
-    const items = (list || []).map(x => {
-      if (typeof x === 'string') return { uid: x.trim(), sku_code: '' };
-      return { uid: String(x.uid || '').trim(), sku_code: String(x.sku_code || '').trim() };
-    }).filter(x => x.uid);
-
-    if (!items.length) return;
-
-    const resp = await apiJSON('/records/delete', {
-      method: 'POST',
-      body: JSON.stringify(items)
-    });
-    return resp;
-  }
-
+  // ------------------------
+  // Deletes + export
+  // ------------------------
   function wireDeletes() {
     const btnSel = $('#btn-delete-selected');
     if (btnSel) {
       btnSel.addEventListener('click', async () => {
         const selected = IntakeState.rows.filter(r => r.selected && String(r.uid || '').trim());
         if (!selected.length) { alert('No rows selected.'); return; }
-
-        if (!confirm(`Delete ${selected.length} selected UID(s)? This deletes by UID (and SKU if present).`)) return;
+        if (!confirm(`Delete ${selected.length} selected UID(s)?`)) return;
 
         try {
           await deleteUIDs(selected.map(r => ({ uid: r.uid, sku_code: r.sku_code })));
           alert('Deleted.');
           await IntakePage.reload();
-          if (typeof window.setWeek === 'function' && window.state?.weekStart) {
-            try { await window.setWeek(window.state.weekStart); } catch {}
+          if (typeof window.onIntakeChanged === 'function') {
+            try { window.onIntakeChanged(); } catch {}
           }
         } catch (e) {
           console.error(e);
@@ -536,19 +540,20 @@
     const status = $('#delete-uids-status');
     if (btnBulk && txt) {
       btnBulk.addEventListener('click', async () => {
-        const lines = String(txt.value || '')
-          .split(/\r?\n/)
+        const items = String(txt.value || '')
+          .split(/[^A-Za-z0-9\-_;:]+/g)
           .map(s => s.trim())
           .filter(Boolean);
-        if (!lines.length) { alert('Paste UIDs first.'); return; }
 
-        if (!confirm(`Delete ${lines.length} UID(s)?`)) return;
+        if (!items.length) { alert('Paste UIDs first.'); return; }
+        if (!confirm(`Delete ${items.length} UID(s)?`)) return;
+
         try {
-          const resp = await deleteUIDs(lines);
-          if (status) status.textContent = `Deleted: ${resp.total_deleted ?? 0}`;
+          const resp = await deleteUIDs(items);
+          if (status) status.textContent = `Deleted: ${resp?.total_deleted ?? 0}`;
           await IntakePage.reload();
-          if (typeof window.setWeek === 'function' && window.state?.weekStart) {
-            try { await window.setWeek(window.state.weekStart); } catch {}
+          if (typeof window.onIntakeChanged === 'function') {
+            try { window.onIntakeChanged(); } catch {}
           }
         } catch (e) {
           console.error(e);
@@ -558,7 +563,6 @@
     }
   }
 
-  // ---------- Export ----------
   function wireExport() {
     const btn = $('#btn-export-day');
     if (!btn) return;
@@ -568,29 +572,44 @@
     });
   }
 
-  // ---------- Load drafts for week ----------
-  async function loadWeekDrafts(ws) {
-    const we = weekEndOf(ws);
-    const drafts = await fetchRecords({ from: ws, to: we, status: 'draft', limit: 20000 });
-    IntakeState.rows = drafts.map(r => ({
-      id: r.id,
-      selected: false,
-      date_local: r.date_local,
-      mobile_bin: r.mobile_bin || '',
-      sscc_label: r.sscc_label || '',
-      po_number: r.po_number || '',
-      sku_code: r.sku_code || '',
-      uid: r.uid || '',
-      status: r.status || 'draft',
-      sync_state: r.sync_state || 'unknown'
-    }));
-    ensureTrailingBlankRow();
+  // ------------------------
+  // SSE -> BPM
+  // ------------------------
+  function startSSE() {
+    try {
+      const es = new EventSource(apiBase + '/events/scan');
+      const beats = [];
+      es.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data || '{}');
+          const ts = new Date(msg.ts || Date.now()).getTime();
+          beats.push(ts);
+          const cutoff = Date.now() - 60000;
+          while (beats.length && beats[0] < cutoff) beats.shift();
+          const bpm = Math.round(beats.length * 60);
+          if ($('#intake-bpm')) $('#intake-bpm').textContent = String(bpm);
+          if ($('#ops-dot')) $('#ops-dot').className = 'w-2 h-2 rounded-full bg-emerald-500';
+          if ($('#ops-last-updated')) $('#ops-last-updated').textContent = isoYMD(new Date());
+        } catch {}
+      };
+      es.onerror = () => {
+        if ($('#ops-dot')) $('#ops-dot').className = 'w-2 h-2 rounded-full bg-gray-300';
+      };
+    } catch (e) {
+      // Ignore
+    }
   }
 
-  // ---------- Public API ----------
+  // ------------------------
+  // Public page API
+  // ------------------------
   const IntakePage = {
+    _wired: false,
+
     async init() {
-      // one-time wiring
+      if (this._wired) return;
+      this._wired = true;
+
       wireUploadUIDs();
       wireUploadBins();
       wireDeletes();
@@ -608,13 +627,9 @@
       const add = $('#btn-add-row');
       if (add) add.addEventListener('click', () => { IntakeState.rows.push(newLocalRow()); renderIntake(); });
 
-      // start SSE pulse if intake exists
       if ($('#page-intake')) startSSE();
 
-      // initial load uses current global weekStart if present
       await this.reload();
-      renderIntake();
-      await loadOpsMetrics();
     },
 
     async reload() {
@@ -622,12 +637,12 @@
       IntakeState.weekStart = ws || IntakeState.weekStart;
       await loadWeekDrafts(IntakeState.weekStart);
       renderIntake();
-      await loadOpsMetrics();
     },
 
     async show() {
       const sec = $('#page-intake');
       if (sec) sec.classList.remove('hidden');
+      await this.init();
       await this.reload();
     },
 
@@ -638,11 +653,4 @@
   };
 
   window.IntakePage = IntakePage;
-
-  // Auto-init on DOM ready (safe even if routing doesn't show intake yet)
-  document.addEventListener('DOMContentLoaded', () => {
-    // Only init if the intake section exists in DOM
-    if (!$('#page-intake')) return;
-    IntakePage.init().catch(err => console.error('Intake init failed:', err));
-  });
 })();
