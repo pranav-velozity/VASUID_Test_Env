@@ -1,656 +1,664 @@
-/* intake.js — VelOzity Pinpoint Intake (standalone)
-
-   What this file does
-   - Owns ONLY the Intake page behavior (render, edit cells, upload applied UIDs, upload bin manifest, delete).
-   - It does NOT touch Operations/Dashboard logic except an optional callback hook.
-
-   Requirements in index.html
-   - Include the Intake DOM with these IDs:
-       #page-intake
-       #intake-body
-       #btn-add-row
-       #chk-all
-       #btn-delete-selected
-       #btn-export-day
-       #btn-upload-applied
-       #file-upload-applied (type=file)
-       #btn-upload-bins
-       #file-bins (type=file)
-       #btn-delete-uids
-       #uids-to-delete
-       #delete-uids-status
-       #intake-bpm
-       (Optional ribbon IDs if you keep them: #ops-today #ops-hour #ops-rate #ops-drafts #ops-dupes #ops-sync-badges #ops-alerts #ops-last-updated #ops-dot)
-
-   - SheetJS must be loaded globally (window.XLSX) if you want XLSX uploads.
-
-   API wiring expectations (matches your server.js)
-   - PATCH  /records/:id   {field,value}
-   - POST   /records/import   [rows]
-   - POST   /records/delete   [{uid, sku_code?}]   (deletes by UID; server supports sku_code optional)
-   - GET    /records?from=YYYY-MM-DD&to=YYYY-MM-DD&status=draft
-   - PUT    /bins/weeks/:weekStart   [ {mobile_bin,total_units?,weight_kg?,date_local?} ]
-   - GET    /events/scan  (SSE)  -> {ts}
-
-   API base resolution
-   - Prefers <meta name="api-base" content="..."> if present
-   - Else window.apiBase / window.API_BASE
-   - Else falls back to location.origin
-*/
-
-(function () {
+// =============================================================================
+// intake.js  —  VelOzity Pinpoint UID Intake (additive module)
+//
+// Load with:  <script src="/intake.js?v=1" defer></script>
+//
+// EXPECTS these globals from the main <script> block:
+//   BRAND, apiBase, $, iso, fmtInt, toNum, toUI,
+//   BUSINESS_TZ, ymdInTZ, todayInTZ, dayOfWeekInTZ, mondayOfInTZ,
+//   createHeart, state, toISODate, todayISO
+// =============================================================================
+(function intakeModule() {
   'use strict';
 
-  // ------------------------
-  // API base
-  // ------------------------
-  function resolveApiBase() {
-    const meta = document.querySelector('meta[name="api-base"]')?.content || '';
-    const explicit = meta || (window.apiBase || window.API_BASE || '');
-    const base = String(explicit).trim() || String(window.location.origin || '').trim();
-    return base.replace(/\/+$/, '');
-  }
-  const apiBase = resolveApiBase();
-
-  // ------------------------
-  // DOM helpers
-  // ------------------------
-  const $ = (sel, root) => (root || document).querySelector(sel);
-  const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
-
-  // ------------------------
-  // Date helpers
-  // ------------------------
-  function isoYMD(d) {
-    const dt = (d instanceof Date) ? d : new Date(d);
-    if (Number.isNaN(dt.getTime())) return '';
-    return dt.toISOString().slice(0, 10);
+  // ---- Guard: wait for globals ----
+  if (typeof apiBase === 'undefined' || typeof $ === 'undefined') {
+    console.warn('[intake] Globals not ready, retrying in 200ms…');
+    return setTimeout(intakeModule, 200);
   }
 
-  function mondayOf(ymd) {
-    const s = String(ymd || '').slice(0, 10);
-    const d = new Date(s + 'T00:00:00Z');
-    if (Number.isNaN(d.getTime())) return '';
-    const day = d.getUTCDay();
-    const diff = (day === 0 ? -6 : (1 - day));
-    d.setUTCDate(d.getUTCDate() + diff);
-    return d.toISOString().slice(0, 10);
-  }
-
-  function weekEndOf(ws) {
-    const d = new Date(String(ws || '').slice(0, 10) + 'T00:00:00Z');
-    if (Number.isNaN(d.getTime())) return '';
-    d.setUTCDate(d.getUTCDate() + 6);
-    return d.toISOString().slice(0, 10);
-  }
-
-  function toISODateLoose(v) {
-    if (v == null) return '';
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      // Excel serial date
-      const base = new Date(Date.UTC(1899, 11, 30));
-      const ms = Math.round(v * 86400000);
-      return new Date(base.getTime() + ms).toISOString().slice(0, 10);
-    }
-    const s = String(v).trim();
-    if (!s) return '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    return '';
-  }
-
-  // ------------------------
-  // Minimal CSV parser (quoted fields)
-  // ------------------------
-  function parseCSV(text) {
-    const rows = [];
-    let i = 0, field = '', row = [], inQuotes = false;
-    function pushField() { row.push(field); field = ''; }
-    function pushRow() { rows.push(row); row = []; }
-
-    while (i < text.length) {
-      const c = text[i++];
-      if (inQuotes) {
-        if (c === '"') {
-          if (text[i] === '"') { field += '"'; i++; }
-          else inQuotes = false;
-        } else field += c;
-      } else {
-        if (c === '"') inQuotes = true;
-        else if (c === ',') pushField();
-        else if (c === '\r') { /* ignore */ }
-        else if (c === '\n') { pushField(); pushRow(); }
-        else field += c;
-      }
-    }
-    pushField();
-    if (row.length > 1 || (row.length === 1 && row[0] !== '')) pushRow();
-
-    if (!rows.length) return [];
-    const header = rows[0].map(h => String(h || '').trim());
-    return rows.slice(1)
-      .filter(r => r.some(x => String(x || '').trim() !== ''))
-      .map(r => {
-        const o = {};
-        header.forEach((h, idx) => { if (h) o[h] = r[idx]; });
-        return o;
-      });
-  }
-
-  function readXlsx(file) {
-    return new Promise((resolve, reject) => {
-      if (!window.XLSX) return reject(new Error('XLSX library not loaded (window.XLSX missing).'));
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Failed to read file.'));
-      reader.onload = () => {
-        try {
-          const data = new Uint8Array(reader.result);
-          const wb = window.XLSX.read(data, { type: 'array' });
-          const wsName = wb.SheetNames[0];
-          const sheet = wb.Sheets[wsName];
-          const rows = window.XLSX.utils.sheet_to_json(sheet, { defval: '' });
-          resolve(rows);
-        } catch (e) { reject(e); }
-      };
-      reader.readAsArrayBuffer(file);
+  // ---- Private api() helper (mirrors the main script's closure-local api()) ----
+  async function api(path, opts = {}) {
+    const r = await fetch(`${apiBase}${path}`, {
+      method: opts.method || 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
     });
+    if (!r.ok) throw new Error(await r.text());
+    const ct = r.headers.get('content-type') || '';
+    return ct.includes('json') ? r.json() : r.text();
   }
 
-  function normalizeKeyedRow(row) {
-    const out = {};
-    for (const [k, v] of Object.entries(row || {})) {
-      out[String(k).toLowerCase().trim()] = v;
-    }
-    return out;
-  }
+  // ====================================================================
+  // Intake row model
+  // ====================================================================
+  const intakeRows = [];
 
-  function pickRowValue(norm, ...keys) {
-    for (const k of keys) {
-      const v = norm[String(k).toLowerCase().trim()];
-      if (v != null && String(v).trim() !== '') return v;
-    }
-    return '';
-  }
-
-  function toNumberOrNull(v) {
-    if (v == null || v === '') return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
-
-  // ------------------------
-  // API
-  // ------------------------
-  async function apiJSON(path, opts) {
-    const res = await fetch(apiBase + path, Object.assign({
-      headers: { 'Content-Type': 'application/json' }
-    }, opts || {}));
-    if (!res.ok) {
-      const t = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status} ${res.statusText}: ${t}`.trim());
-    }
-    const ct = res.headers.get('content-type') || '';
-    if (ct.includes('application/json')) return res.json();
-    return res.text();
-  }
-
-  async function fetchRecords({ from, to, status, limit }) {
-    const u = new URL(apiBase + '/records');
-    if (from) u.searchParams.set('from', from);
-    if (to) u.searchParams.set('to', to);
-    if (status) u.searchParams.set('status', status);
-    if (limit) u.searchParams.set('limit', String(limit));
-    const res = await fetch(u.toString());
-    if (!res.ok) throw new Error(`Failed /records: ${res.status}`);
-    const j = await res.json();
-    return Array.isArray(j.records) ? j.records : [];
-  }
-
-  async function patchRecord(id, field, value) {
-    return apiJSON(`/records/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ field, value })
-    });
-  }
-
-  async function deleteUIDs(list) {
-    const items = (list || []).map(x => {
-      if (typeof x === 'string') return { uid: x.trim(), sku_code: '' };
-      return { uid: String(x.uid || '').trim(), sku_code: String(x.sku_code || '').trim() };
-    }).filter(x => x.uid);
-
-    if (!items.length) return null;
-
-    return apiJSON('/records/delete', {
-      method: 'POST',
-      body: JSON.stringify(items)
-    });
-  }
-
-  // ------------------------
-  // Intake state + business rules
-  // ------------------------
-  const IntakeState = {
-    rows: [],
-    weekStart: mondayOf(isoYMD(new Date()))
-  };
-
-  function newLocalRow() {
+  function newRow() {
     return {
-      id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2),
+      id: crypto.randomUUID(),
       selected: false,
-      date_local: isoYMD(new Date()),
+      date_local: iso(new Date()),
       mobile_bin: '',
       sscc_label: '',
       po_number: '',
       sku_code: '',
       uid: '',
       status: 'draft',
-      sync_state: 'pending'
+      sync: 'pending',
+      _pending: {}
     };
   }
 
   function requiredFilled(r) {
-    return Boolean(
-      String(r.date_local || '').trim() &&
-      String(r.mobile_bin || '').trim() &&
-      String(r.po_number || '').trim() &&
-      String(r.sku_code || '').trim() &&
-      String(r.uid || '').trim()
-    );
+    return r.date_local && r.mobile_bin && r.po_number && r.sku_code && r.uid;
   }
 
-  function ensureTrailingBlankRow() {
-    if (!IntakeState.rows.length) { IntakeState.rows.push(newLocalRow()); return; }
-    const last = IntakeState.rows[IntakeState.rows.length - 1];
-    const isLastBlank = !String(last.mobile_bin || '').trim()
-      && !String(last.po_number || '').trim()
-      && !String(last.sku_code || '').trim()
-      && !String(last.uid || '').trim()
-      && last.status !== 'complete';
-    if (!isLastBlank) IntakeState.rows.push(newLocalRow());
+  function syncClass(s) {
+    return s === 'synced' ? 'ops-bar-planned' : (s === 'pending' ? 'bg-amber-500' : 'bg-gray-400');
   }
 
-  function escapeHtml(s) {
-    return String(s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  // ------------------------
-  // Render
-  // ------------------------
-  function renderIntake() {
-    const tb = $('#intake-body');
-    if (!tb) return;
-
-    tb.innerHTML = '';
-    ensureTrailingBlankRow();
-
-    let drafts = 0;
-    let complete = 0;
-
-    for (let i = 0; i < IntakeState.rows.length; i++) {
-      const r = IntakeState.rows[i];
-      if (r.status === 'complete') complete++; else drafts++;
-
-      const tr = document.createElement('tr');
-      tr.className = (i % 2 ? 'bg-gray-50' : 'bg-white');
-
-      tr.innerHTML = `
-        <td class="border px-2 py-2"><input type="checkbox" ${r.selected ? 'checked' : ''} data-id="${r.id}" data-role="sel"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(String(r.date_local || '').slice(0,10))}" data-id="${r.id}" data-f="date_local"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.mobile_bin)}" data-id="${r.id}" data-f="mobile_bin"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.sscc_label || '')}" data-id="${r.id}" data-f="sscc_label"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.po_number)}" data-id="${r.id}" data-f="po_number"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.sku_code)}" data-id="${r.id}" data-f="sku_code"/></td>
-        <td class="border px-2 py-2"><input class="cell w-full" value="${escapeHtml(r.uid)}" data-id="${r.id}" data-f="uid"/></td>
-        <td class="border px-2 py-2 text-xs text-gray-600">${escapeHtml(r.status || 'draft')}</td>
-        <td class="border px-2 py-2 text-xs text-gray-600">${escapeHtml(r.sync_state || '')}</td>
-        <td class="border px-2 py-2 text-xs text-gray-600">${requiredFilled(r) ? '' : '<span class="text-gray-400">—</span>'}</td>
-      `;
-      tb.appendChild(tr);
-    }
-
-    // Optional ribbon badges
-    if ($('#ops-drafts')) $('#ops-drafts').textContent = String(drafts);
-    if ($('#ops-sync-badges')) $('#ops-sync-badges').textContent = `${complete} complete`;
-
-    const allChk = $('#chk-all');
-    if (allChk) allChk.checked = IntakeState.rows.length > 0 && IntakeState.rows.every(x => x.selected);
-
-    // Bind events
-    $$('.cell', tb).forEach(inp => {
-      inp.addEventListener('change', async (e) => {
-        const t = e.currentTarget;
-        const id = t.getAttribute('data-id');
-        const field = t.getAttribute('data-f');
-        const val = t.value;
-
-        const row = IntakeState.rows.find(x => x.id === id);
-        if (row) row[field] = val;
-
-        try {
-          const resp = await patchRecord(id, field, val);
-          if (resp && resp.record && row) {
-            row.status = resp.record.status || row.status;
-            row.sync_state = resp.record.sync_state || row.sync_state;
-            row.completed_at = resp.record.completed_at || row.completed_at;
-          }
-        } catch (err) {
-          console.error(err);
-          alert('Save failed: ' + (err.message || err));
-        } finally {
-          ensureTrailingBlankRow();
-          renderIntake();
-          // Optional hook: let the rest of the app refresh if it wants
-          if (typeof window.onIntakeChanged === 'function') {
-            try { window.onIntakeChanged(); } catch {}
-          }
-        }
-      });
-    });
-
-    $$('input[data-role="sel"]', tb).forEach(cb => {
-      cb.addEventListener('change', (e) => {
-        const t = e.currentTarget;
-        const id = t.getAttribute('data-id');
-        const row = IntakeState.rows.find(x => x.id === id);
-        if (row) row.selected = t.checked;
-        const all = $('#chk-all');
-        if (all) all.checked = IntakeState.rows.every(x => x.selected);
-      });
-    });
-  }
-
-  // ------------------------
-  // Load drafts for week
-  // ------------------------
-  async function loadWeekDrafts(ws) {
-    const we = weekEndOf(ws);
-    const drafts = await fetchRecords({ from: ws, to: we, status: 'draft', limit: 20000 });
-    IntakeState.rows = drafts.map(r => ({
+  function toIntakeRow(r) {
+    return {
       id: r.id,
       selected: false,
-      date_local: r.date_local,
+      date_local: r.date_local || iso(new Date()),
       mobile_bin: r.mobile_bin || '',
       sscc_label: r.sscc_label || '',
       po_number: r.po_number || '',
       sku_code: r.sku_code || '',
-      uid: r.uid || '',
-      status: r.status || 'draft',
-      sync_state: r.sync_state || 'unknown'
-    }));
-    ensureTrailingBlankRow();
+      uid: r.uid ?? '',
+      status: r.status || 'complete',
+      sync: 'synced',
+      _pending: {}
+    };
   }
 
-  // ------------------------
-  // Upload Applied UIDs
-  // ------------------------
-  function wireUploadUIDs() {
-    const btn = $('#btn-upload-applied');
-    const inp = $('#file-upload-applied');
-    if (!btn || !inp) return;
+  // ====================================================================
+  // Render the intake table
+  // ====================================================================
+  function renderIntake() {
+    const tb = $('#intake-body');
+    if (!tb) return; // Intake DOM not present on this page
+    tb.innerHTML = '';
+    if (!intakeRows.length) intakeRows.push(newRow());
+    let drafts = 0, synced = 0;
 
-    btn.addEventListener('click', () => inp.click());
-    inp.addEventListener('change', async () => {
-      const file = inp.files && inp.files[0];
-      inp.value = '';
-      if (!file) return;
-
-      try {
-        let rows;
-        if (file.name.toLowerCase().endsWith('.csv')) rows = parseCSV(await file.text());
-        else rows = await readXlsx(file);
-
-        const payload = rows.map(r => {
-          const n = normalizeKeyedRow(r);
-          return {
-            date_local: toISODateLoose(pickRowValue(n, 'date_local', 'date')),
-            mobile_bin: String(pickRowValue(n, 'mobile_bin', 'mobile bin (box)', 'mobile bin', 'bin') || ''),
-            sscc_label: String(pickRowValue(n, 'sscc_label', 'sscc label (box)', 'sscc', 'sscc label') || ''),
-            po_number:  String(pickRowValue(n, 'po_number', 'po', 'po#', 'po number') || ''),
-            sku_code:   String(pickRowValue(n, 'sku_code', 'sku', 'sku code') || ''),
-            uid:        String(pickRowValue(n, 'uid', 'u_id', 'u id') || '')
-          };
-        }).filter(x => (x.po_number || x.sku_code || x.uid || x.mobile_bin));
-
-        if (!payload.length) { alert('No rows found.'); return; }
-
-        const resp = await apiJSON('/records/import', {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-
-        alert(`Upload complete. Inserted: ${resp.inserted ?? 0} / ${resp.total ?? payload.length}. Rejected: ${resp.rejected ?? 0}.`);
-
-        await IntakePage.reload();
-        if (typeof window.onIntakeChanged === 'function') {
-          try { window.onIntakeChanged(); } catch {}
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Upload failed: ' + (err.message || err));
-      }
+    intakeRows.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.className = i % 2 ? 'bg-gray-50' : 'bg-white';
+      if (r.status !== 'complete') drafts++; else synced++;
+      tr.innerHTML = `
+        <td class="border px-2 py-2"><input type="checkbox" ${r.selected ? 'checked' : ''} data-id="${r.id}" data-role="sel"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${toUI(r.date_local)}" data-id="${r.id}" data-f="date_local"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.mobile_bin}" data-id="${r.id}" data-f="mobile_bin"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.sscc_label}" data-id="${r.id}" data-f="sscc_label" placeholder="(optional)"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.po_number}" data-id="${r.id}" data-f="po_number"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.sku_code}" data-id="${r.id}" data-f="sku_code"/></td>
+        <td class="border px-2 py-2"><input class="cell" value="${r.uid}" data-id="${r.id}" data-f="uid" data-last="1"/></td>
+        <td class="border px-2 py-2 text-center"><span class="dot ${syncClass(r.sync)}"></span></td>`;
+      tb.appendChild(tr);
     });
-  }
 
-  // ------------------------
-  // Upload Bin Manifest
-  // ------------------------
-  function validateBin(row) {
-    const mb = String(row.mobile_bin || '').trim();
-    if (!mb) return { ok: false, reason: 'missing mobile_bin' };
-    const u = row.total_units;
-    if (u != null && (!Number.isFinite(u) || u < 0)) return { ok: false, reason: 'invalid total_units' };
-    const w = row.weight_kg;
-    if (w != null && (!Number.isFinite(w) || w < 0)) return { ok: false, reason: 'invalid weight_kg' };
-    return { ok: true };
-  }
-
-  function wireUploadBins() {
-    const btn = $('#btn-upload-bins');
-    const inp = $('#file-bins');
-    if (!btn || !inp) return;
-
-    btn.addEventListener('click', () => inp.click());
-    inp.addEventListener('change', async () => {
-      const file = inp.files && inp.files[0];
-      inp.value = '';
-      if (!file) return;
-
-      try {
-        let rows;
-        if (file.name.toLowerCase().endsWith('.csv')) rows = parseCSV(await file.text());
-        else rows = await readXlsx(file);
-
-        const ws = (window.state && window.state.weekStart)
-          ? window.state.weekStart
-          : IntakeState.weekStart;
-
-        const items = rows.map(r => {
-          const n = normalizeKeyedRow(r);
-          return {
-            mobile_bin: String(pickRowValue(n, 'mobile_bin', 'mobile bin', 'bin') || '').trim(),
-            total_units: toNumberOrNull(pickRowValue(n, 'total_units', 'total units', 'units')),
-            weight_kg: toNumberOrNull(pickRowValue(n, 'weight_kg', 'weight', 'weight (kg)', 'gross weight')),
-            date_local: toISODateLoose(pickRowValue(n, 'date_local', 'date')) || ws
-          };
-        }).filter(x => x.mobile_bin);
-
-        if (!items.length) { alert('No rows found in manifest.'); return; }
-
-        const rejected = [];
-        const clean = [];
-        for (const it of items) {
-          const v = validateBin(it);
-          if (!v.ok) rejected.push({ row: it, reason: v.reason });
-          else clean.push(it);
-        }
-        if (!clean.length) { alert('All rows invalid.'); return; }
-
-        const resp = await apiJSON(`/bins/weeks/${encodeURIComponent(ws)}`, {
-          method: 'PUT',
-          body: JSON.stringify(clean)
-        });
-
-        alert(`Bin manifest uploaded. Upserted: ${resp.upserted ?? 0}. Rejected: ${resp.rejected ?? rejected.length}.`);
-
-        if (typeof window.onIntakeChanged === 'function') {
-          try { window.onIntakeChanged(); } catch {}
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Upload failed: ' + (err.message || err));
-      }
-    });
-  }
-
-  // ------------------------
-  // Deletes + export
-  // ------------------------
-  function wireDeletes() {
-    const btnSel = $('#btn-delete-selected');
-    if (btnSel) {
-      btnSel.addEventListener('click', async () => {
-        const selected = IntakeState.rows.filter(r => r.selected && String(r.uid || '').trim());
-        if (!selected.length) { alert('No rows selected.'); return; }
-        if (!confirm(`Delete ${selected.length} selected UID(s)?`)) return;
-
-        try {
-          await deleteUIDs(selected.map(r => ({ uid: r.uid, sku_code: r.sku_code })));
-          alert('Deleted.');
-          await IntakePage.reload();
-          if (typeof window.onIntakeChanged === 'function') {
-            try { window.onIntakeChanged(); } catch {}
-          }
-        } catch (e) {
-          console.error(e);
-          alert('Delete failed: ' + (e.message || e));
-        }
+    // Wire checkbox handlers
+    tb.querySelectorAll('input[data-role="sel"]').forEach(chk => {
+      chk.addEventListener('change', e => {
+        const id = e.target.dataset.id;
+        const row = intakeRows.find(x => x.id === id);
+        if (row) { row.selected = e.target.checked; }
+        $('#chk-all').checked = intakeRows.length && intakeRows.every(r => r.selected);
       });
-    }
-
-    const btnBulk = $('#btn-delete-uids');
-    const txt = $('#uids-to-delete');
-    const status = $('#delete-uids-status');
-    if (btnBulk && txt) {
-      btnBulk.addEventListener('click', async () => {
-        const items = String(txt.value || '')
-          .split(/[^A-Za-z0-9\-_;:]+/g)
-          .map(s => s.trim())
-          .filter(Boolean);
-
-        if (!items.length) { alert('Paste UIDs first.'); return; }
-        if (!confirm(`Delete ${items.length} UID(s)?`)) return;
-
-        try {
-          const resp = await deleteUIDs(items);
-          if (status) status.textContent = `Deleted: ${resp?.total_deleted ?? 0}`;
-          await IntakePage.reload();
-          if (typeof window.onIntakeChanged === 'function') {
-            try { window.onIntakeChanged(); } catch {}
-          }
-        } catch (e) {
-          console.error(e);
-          alert('Delete failed: ' + (e.message || e));
-        }
-      });
-    }
-  }
-
-  function wireExport() {
-    const btn = $('#btn-export-day');
-    if (!btn) return;
-    btn.addEventListener('click', () => {
-      const date = isoYMD(new Date());
-      window.open(`${apiBase}/export/xlsx?date=${encodeURIComponent(date)}`, '_blank', 'noopener');
     });
-  }
 
-  // ------------------------
-  // SSE -> BPM
-  // ------------------------
-  function startSSE() {
-    try {
-      const es = new EventSource(apiBase + '/events/scan');
-      const beats = [];
-      es.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data || '{}');
-          const ts = new Date(msg.ts || Date.now()).getTime();
-          beats.push(ts);
-          const cutoff = Date.now() - 60000;
-          while (beats.length && beats[0] < cutoff) beats.shift();
-          const bpm = Math.round(beats.length * 60);
-          if ($('#intake-bpm')) $('#intake-bpm').textContent = String(bpm);
-          if ($('#ops-dot')) $('#ops-dot').className = 'w-2 h-2 rounded-full bg-emerald-500';
-          if ($('#ops-last-updated')) $('#ops-last-updated').textContent = isoYMD(new Date());
-        } catch {}
-      };
-      es.onerror = () => {
-        if ($('#ops-dot')) $('#ops-dot').className = 'w-2 h-2 rounded-full bg-gray-300';
-      };
-    } catch (e) {
-      // Ignore
-    }
-  }
+    // Wire field input / change handlers
+    tb.querySelectorAll('input[data-f]').forEach(inp => {
+      const id = inp.dataset.id, f = inp.dataset.f;
 
-  // ------------------------
-  // Public page API
-  // ------------------------
-  const IntakePage = {
-    _wired: false,
-
-    async init() {
-      if (this._wired) return;
-      this._wired = true;
-
-      wireUploadUIDs();
-      wireUploadBins();
-      wireDeletes();
-      wireExport();
-
-      const all = $('#chk-all');
-      if (all) {
-        all.addEventListener('change', () => {
-          const v = all.checked;
-          IntakeState.rows.forEach(r => { r.selected = v; });
-          renderIntake();
+      // Tab on last UID field → auto-add row
+      if (f === 'uid') {
+        inp.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Tab' && !ev.shiftKey) {
+            const idx = intakeRows.findIndex(x => x.id === id);
+            if (idx === intakeRows.length - 1) {
+              setTimeout(() => { intakeRows.push(newRow()); renderIntake(); }, 0);
+            }
+          }
         });
       }
 
-      const add = $('#btn-add-row');
-      if (add) add.addEventListener('click', () => { IntakeState.rows.push(newLocalRow()); renderIntake(); });
+      inp.addEventListener('input', e => {
+        const row = intakeRows.find(x => x.id === id); if (!row) return;
+        if (f === 'uid') {
+          row[f] = String(e.target.value ?? '');         // UID verbatim
+        } else if (f === 'date_local') {
+          row[f] = toISODate(String(e.target.value || '').trim());
+        } else {
+          row[f] = String(e.target.value || '').trim();
+        }
+        row.status = requiredFilled(row) ? 'complete' : 'draft';
+        row.sync = 'pending';
+      });
 
-      if ($('#page-intake')) startSSE();
+      inp.addEventListener('change', async e => {
+        const row = intakeRows.find(x => x.id === id); if (!row) return;
+        if (!apiBase || !requiredFilled(row)) { renderIntake(); return; }
+        try {
+          const res = await fetch(`${apiBase}/records`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: row.id, date_local: row.date_local, mobile_bin: row.mobile_bin,
+              sscc_label: row.sscc_label, po_number: row.po_number,
+              sku_code: row.sku_code, uid: row.uid
+            })
+          });
+          const j = await res.json().catch(() => ({}));
+          if (res.ok && j.ok) { row.status = 'complete'; row.sync = 'synced'; }
+          else { row.sync = 'pending'; }
+        } catch { row.sync = 'pending'; }
+        renderIntake();
+        await loadOpsMetrics();
+        await safeSetWeek();
+      });
+    });
 
-      await this.reload();
-    },
-
-    async reload() {
-      const ws = (window.state && window.state.weekStart) ? window.state.weekStart : IntakeState.weekStart;
-      IntakeState.weekStart = ws || IntakeState.weekStart;
-      await loadWeekDrafts(IntakeState.weekStart);
-      renderIntake();
-    },
-
-    async show() {
-      const sec = $('#page-intake');
-      if (sec) sec.classList.remove('hidden');
-      await this.init();
-      await this.reload();
-    },
-
-    hide() {
-      const sec = $('#page-intake');
-      if (sec) sec.classList.add('hidden');
+    // ribbon quick badges (guarded: these elements may not exist on every page)
+    const elDrafts = $('#ops-drafts');
+    if (elDrafts) elDrafts.textContent = drafts;
+    const elBadges = $('#ops-sync-badges');
+    if (elBadges) {
+      elBadges.innerHTML =
+        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-green-200 ops-bg-planned-soft text-green-700">synced: ${synced}</span>
+         <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] border-amber-200 bg-amber-50 text-amber-700">pending: ${drafts}</span>`;
     }
+  }
+
+  async function safeSetWeek() {
+    try { if (typeof window.setWeek === 'function') await window.setWeek(state.weekStart); } catch {}
+  }
+  async function safeRefreshDashboard() {
+    try { if (typeof window.refreshDashboardTotals === 'function') await window.refreshDashboardTotals(); } catch {}
+  }
+
+  // ====================================================================
+  // Button handlers
+  // ====================================================================
+
+  // Add Row
+  const __btnAddRow = $('#btn-add-row');
+  if (__btnAddRow) __btnAddRow.onclick = () => { intakeRows.push(newRow()); renderIntake(); };
+
+  // Delete Selected
+  const __btnDelSel = $('#btn-delete-selected');
+  if (__btnDelSel) __btnDelSel.onclick = async () => {
+    const selected = intakeRows.filter(r => r.selected);
+    if (!selected.length) return alert('Select at least one row.');
+    if (!confirm(`Delete ${selected.length} row(s)?`)) return;
+
+    if (apiBase) {
+      const pairs = selected.filter(r => r.uid && r.sku_code).map(r => ({ uid: r.uid, sku_code: r.sku_code }));
+      if (pairs.length) {
+        try {
+          await fetch(`${apiBase}/records/delete`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(pairs)
+          });
+        } catch (e) { console.warn('Server delete error', e); }
+      }
+    }
+    for (let i = intakeRows.length - 1; i >= 0; i--) {
+      if (intakeRows[i].selected) intakeRows.splice(i, 1);
+    }
+    if (!intakeRows.length) intakeRows.push(newRow());
+    renderIntake();
+    await loadOpsMetrics();
+    await safeRefreshDashboard();
   };
 
-  window.IntakePage = IntakePage;
+  // Export XLSX
+  const __btnExportDay = $('#btn-export-day');
+  if (__btnExportDay) __btnExportDay.onclick = () => {
+    if (!apiBase) return;
+    const d = iso(new Date());
+    window.location = `${apiBase}/export/xlsx?date=${d}`;
+  };
+
+  // ====================================================================
+  // Upload UIDs (XLSX / CSV → intake table → POST /records/import)
+  // ====================================================================
+  (function wireUploadUIDs() {
+    const btn = $('#btn-upload-applied'), file = $('#file-upload-applied');
+    if (!btn || !file) return;
+    btn.onclick = () => file.click();
+
+    file.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0]; e.target.value = ''; if (!f) return;
+      try {
+        let rows = [];
+        if (/\.xlsx?$/i.test(f.name)) {
+          const buf = await f.arrayBuffer();
+          const wb = XLSX.read(buf, { type: 'array' });
+          const ws = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+          rows = ws;
+        } else {
+          const text = await f.text();
+          const lines = text.split(/\r?\n/).filter(Boolean);
+          const hdr = lines.shift().split(',').map(s => s.trim());
+          rows = lines.map(l => l.split(',')).map(c => {
+            const o = {}; hdr.forEach((h, i) => o[h] = c[i] ?? ''); return o;
+          });
+        }
+
+        const normRow = (r) => {
+          const n = {};
+          for (const k in r) {
+            const key = k.trim().toLowerCase().replace(/\s+/g, '_');
+            n[key] = r[k];
+          }
+          const pick = (...a) => {
+            for (const x of a) { const v = n[x]; if (v != null && String(v).trim() !== '') return String(v).trim(); }
+            return '';
+          };
+          const pickRaw = (...a) => {
+            for (const x of a) { if (x in n) return String(n[x] ?? ''); }
+            return '';
+          };
+          return {
+            date_local: toISODate(pick('date_local', 'date')),
+            mobile_bin: pick('mobile_bin', 'mobile_bin_(box)', 'mobile_bin (box)'),
+            sscc_label: pick('sscc_label', 'sscc', 'sscc_label (box)'),
+            po_number:  pick('po_number', 'po', 'po#'),
+            sku_code:   pick('sku_code', 'sku'),
+            uid:        pickRaw('uid', 'u_id', 'u id')
+          };
+        };
+
+        const items = rows.map(normRow).filter(r => r.po_number && r.sku_code && (r.uid !== ''));
+        if (!items.length) return alert('No valid rows found (need PO_Number, SKU_Code, UID).');
+
+        const payload = [];
+        for (const r of items) {
+          const ui = newRow();
+          ui.date_local  = r.date_local || iso(new Date());
+          ui.mobile_bin  = r.mobile_bin || '';
+          ui.sscc_label  = r.sscc_label || '';
+          ui.po_number   = r.po_number;
+          ui.sku_code    = r.sku_code;
+          ui.uid         = r.uid;
+          ui.status      = requiredFilled(ui) ? 'complete' : 'draft';
+          ui.sync        = 'pending';
+          intakeRows.push(ui);
+
+          payload.push({
+            date_local: ui.date_local,
+            mobile_bin: ui.mobile_bin,
+            sscc_label: ui.sscc_label,
+            po_number:  ui.po_number,
+            sku_code:   ui.sku_code,
+            uid:        ui.uid
+          });
+        }
+
+        if (apiBase && payload.length) {
+          try {
+            const res = await fetch(`${apiBase}/records/import`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const j = await res.json().catch(() => ({}));
+
+            if (res.ok && j.ok) {
+              const insertedCount = j.inserted ?? payload.length;
+              const rejectedCount = j.rejected ?? 0;
+              const newlyAdded = intakeRows.slice(-items.length);
+
+              for (const ui of newlyAdded) {
+                if (requiredFilled(ui)) {
+                  ui.sync   = 'synced';
+                  ui.status = 'complete';
+                }
+              }
+
+              if (rejectedCount) {
+                console.warn('Some rows were rejected by the server', j.errors || []);
+                alert(`Upload finished.\nInserted: ${insertedCount}\nRejected: ${rejectedCount}`);
+              }
+            } else {
+              alert('Upload failed on server.');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('Upload failed: ' + (err?.message || err));
+          }
+        }
+
+        renderIntake();
+        await loadOpsMetrics();
+        await safeRefreshDashboard();
+
+      } catch (err) { console.error(err); alert('Upload failed: ' + (err?.message || err)); }
+    });
+  })();
+
+  // ====================================================================
+  // Upload Bin Manifest (XLSX / CSV → PUT /bins/weeks/:ws)
+  // ====================================================================
+  (function wireUploadBins() {
+    const btn  = document.getElementById('btn-upload-bins');
+    const file = document.getElementById('file-bins');
+    if (!btn || !file) return;
+
+    btn.onclick = () => file.click();
+
+    function toNumberOrNull(v) {
+      const n = Number(String(v ?? '').toString().replace(/,/g, '').trim());
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function normalizeRow(r) {
+      const n = {};
+      for (const k in r) n[k.toLowerCase().replace(/\s+/g, '_')] = r[k];
+      const pick = (...keys) => {
+        for (const k of keys) {
+          const v = n[k];
+          if (v != null && String(v).trim() !== '') return String(v).trim();
+        }
+        return '';
+      };
+      const id       = pick('mobile_bin', 'bin_id', 'bin', 'bin_no', 'bin_number');
+      const unitsRaw = pick('total_units', 'units', 'qty', 'quantity');
+      const weightRaw= pick('weight_kg', 'weight', 'kg');
+      const dateRaw  = pick('date', 'date_local', 'created_at');
+
+      return {
+        mobile_bin:  id,
+        total_units: toNumberOrNull(unitsRaw),
+        weight_kg:   toNumberOrNull(weightRaw),
+        date_local:  toISODate(dateRaw) || todayInTZ()
+      };
+    }
+
+    function validateBin(b) {
+      const errs = [];
+      if (!b.mobile_bin) errs.push('Missing mobile_bin');
+      if (b.total_units != null && b.total_units < 0) errs.push('total_units < 0');
+      if (b.weight_kg  != null && b.weight_kg  < 0) errs.push('weight_kg < 0');
+      if (b.total_units != null && b.weight_kg != null) {
+        const perUnit = b.weight_kg / Math.max(1, b.total_units);
+        if (perUnit < 0.001 || perUnit > 10) b._suspicious = true;
+      }
+      return errs;
+    }
+
+    file.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      e.target.value = '';
+      if (!f || !apiBase) return;
+
+      try {
+        let rows = [];
+        if (/\.xlsx?$/i.test(f.name)) {
+          const buf = await f.arrayBuffer();
+          const wb  = XLSX.read(buf, { type: 'array' });
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        } else {
+          const buf = await f.arrayBuffer();
+          const wb  = XLSX.read(new Uint8Array(buf), { type: 'array' });
+          rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+        }
+
+        if (!rows.length) { alert('No rows found in manifest.'); return; }
+
+        const ws = state.weekStart;
+        const items = rows.map(normalizeRow).filter(r => r.mobile_bin);
+
+        const rejected = [];
+        for (const it of items) {
+          const errs = validateBin(it);
+          if (errs.length) rejected.push({ it, errs });
+        }
+        const valid = items.filter(it => !rejected.find(x => x.it === it));
+
+        if (!valid.length) { alert('No valid bin rows to upload.'); return; }
+
+        const resp = await fetch(`${apiBase}/bins/weeks/${ws}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(valid)
+        });
+        if (!resp.ok) {
+          const msg = await resp.text().catch(() => 'Upload failed');
+          alert(msg);
+          return;
+        }
+
+        const summary = await resp.json().catch(() => ({}));
+        const ok = summary?.ok ?? true;
+        alert(ok
+          ? `Bin manifest uploaded: ${valid.length} row(s).${rejected.length ? `  Rejected: ${rejected.length}` : ''}`
+          : `Upload finished with warnings. Accepted: ${valid.length}${rejected.length ? `, Rejected: ${rejected.length}` : ''}`
+        );
+
+        // Refresh week so bin QA & insights update
+        await safeSetWeek();
+      } catch (err) {
+        console.error(err);
+        alert('Upload failed: ' + (err?.message || err));
+      }
+    });
+  })();
+
+  // ====================================================================
+  // Delete Applied UIDs (quick utility)
+  // ====================================================================
+  async function deleteUIDs() {
+    const ta = document.getElementById('uids-to-delete');
+    const status = document.getElementById('delete-uids-status');
+    if (!ta) return;
+    const raw = ta.value.trim();
+    if (!raw) { alert('Please enter at least one UID.'); return; }
+
+    const list = raw.split(/[\s,]+/).filter(Boolean);
+    if (!list.length) return alert('No valid UIDs found.');
+    if (!confirm(`Delete ${list.length} UID record(s)?`)) return;
+
+    status.textContent = 'Deleting...';
+
+    try {
+      const res = await fetch(`${apiBase}/records/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(list.map(uid => ({ uid })))
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      const body = await res.json().catch(() => ({}));
+      const n = typeof body.total_deleted === 'number' ? body.total_deleted : list.length;
+      status.textContent = `Deleted ${n} UID(s) successfully.`;
+      if (Array.isArray(body.results) && body.results.length) {
+        const lines = body.results.map(r =>
+          `${r.uid}${r.sku_code ? ` (${r.sku_code})` : ''}: ${r.deleted}`
+        );
+        status.textContent += `  [ ${lines.join(' · ')} ]`;
+      }
+      ta.value = '';
+
+      await loadOpsMetrics();
+      await safeSetWeek();
+      await safeRefreshDashboard();
+    } catch (e) {
+      console.error(e);
+      status.textContent = 'Error deleting: ' + (e.message || e);
+    }
+  }
+
+  document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs);
+
+  // ====================================================================
+  // Ops metrics & Ops Pulse — uses /summary/ops server endpoint
+  // ====================================================================
+  async function loadOpsMetrics() {
+    if (!apiBase) return;
+    try {
+      const stats = await api('/summary/ops');
+      const scansToday = Number(stats?.scans_today || 0);
+      const lastHour   = Number(stats?.last_hour || 0);
+      const rate30m    = Number(stats?.last_30m || 0);
+      const drafts     = Number(stats?.drafts || 0);
+      const dupes      = Number(stats?.dupes || 0);
+      const syncCounts = (stats && typeof stats.sync_counts === 'object' && stats.sync_counts) ? stats.sync_counts : {};
+
+      const __el_ops_today = document.getElementById('ops-today'); if (__el_ops_today) __el_ops_today.textContent = scansToday.toLocaleString();
+      const __el_ops_hour = document.getElementById('ops-hour'); if (__el_ops_hour) __el_ops_hour.textContent = lastHour.toLocaleString();
+      const __el_ops_rate = document.getElementById('ops-rate'); if (__el_ops_rate) __el_ops_rate.textContent = (rate30m * 2).toLocaleString();
+      const __el_ops_drafts = document.getElementById('ops-drafts'); if (__el_ops_drafts) __el_ops_drafts.textContent = drafts.toLocaleString();
+      const __el_ops_dupes = document.getElementById('ops-dupes'); if (__el_ops_dupes) __el_ops_dupes.textContent = dupes.toLocaleString();
+      const __el_ops_last_updated = document.getElementById('ops-last-updated'); if (__el_ops_last_updated) __el_ops_last_updated.textContent = new Date().toLocaleTimeString();
+
+      const bpm = Math.max(40, Math.min(200, rate30m * 2));
+      const __el_intake_bpm = document.getElementById('intake-bpm'); if (__el_intake_bpm) __el_intake_bpm.textContent = bpm;
+
+      const small = $('#ops-heart-small');
+      if (small) {
+        small.innerHTML = '';
+        small.appendChild(createHeart(18, BRAND, bpm));
+      }
+
+      const big = $('#ops-heart');
+      if (big) {
+        big.innerHTML = '';
+        big.appendChild(createHeart(24, BRAND, bpm));
+        const __el_ops_bpm = document.getElementById('ops-bpm'); if (__el_ops_bpm) __el_ops_bpm.textContent = bpm;
+        const delta = bpm - 40;
+        const __el_ops_extra = document.getElementById('ops-extra'); if (__el_ops_extra) __el_ops_extra.textContent = `${delta >= 0 ? '+' : ''}${delta} over 40`;
+      }
+
+      const wrap = $('#ops-sync-badges');
+      if (wrap) {
+        wrap.innerHTML = '';
+        Object.entries(syncCounts)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([name, count]) => {
+            const span = document.createElement('span');
+            span.className =
+              'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] ' +
+              (name === 'synced'
+                ? 'border-green-200 ops-bg-planned-soft text-green-700'
+                : name === 'pending'
+                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                : 'border-gray-200 bg-gray-50 text-gray-700');
+            span.textContent = `${name}: ${count}`;
+            wrap.appendChild(span);
+          });
+      }
+
+      const alerts = [];
+      if (drafts > 0)
+        alerts.push(`There ${drafts === 1 ? 'is' : 'are'} ${drafts} draft${drafts === 1 ? '' : 's'} to complete.`);
+      if (dupes > 0)
+        alerts.push(`${dupes} duplicate UID${dupes === 1 ? '' : 's'} detected today.`);
+
+      const __opsAlertsEl = $('#ops-alerts');
+      if (__opsAlertsEl) {
+        __opsAlertsEl.innerHTML = alerts.length
+          ? alerts.map((t) => '<li>' + t + '</li>').join('')
+          : '<li class="text-gray-400">No alerts.</li>';
+      }
+    } catch (e) {
+      console.warn('Ops ribbon metrics load failed:', e);
+    }
+  }
+
+  // ====================================================================
+  // SSE — coalesced to avoid UI hangs
+  // ====================================================================
+  let __opsRefreshTimer   = null;
+  let __opsRefreshRunning = false;
+  let __opsRefreshPending = false;
+  let __opsRefreshLast    = 0;
+
+  function scheduleOpsRefresh() {
+    if (!apiBase) return;
+    if (document.hidden) return;
+    __opsRefreshPending = true;
+
+    if (__opsRefreshTimer) return;
+    const minGapMs = 1500;
+    const wait = Math.max(0, minGapMs - (Date.now() - __opsRefreshLast));
+
+    __opsRefreshTimer = setTimeout(runOpsRefresh, wait);
+  }
+
+  async function runOpsRefresh() {
+    __opsRefreshTimer = null;
+
+    if (__opsRefreshRunning) {
+      __opsRefreshPending = true;
+      return;
+    }
+
+    if (!__opsRefreshPending) return;
+    __opsRefreshPending = false;
+
+    __opsRefreshRunning = true;
+    __opsRefreshLast = Date.now();
+
+    try {
+      await new Promise((r) => setTimeout(r, 0));
+      await loadOpsMetrics();
+      await safeRefreshDashboard();
+    } catch (e) {
+      console.warn('Ops refresh failed:', e);
+    } finally {
+      __opsRefreshRunning = false;
+      if (__opsRefreshPending) scheduleOpsRefresh();
+    }
+  }
+
+  function startSSE() {
+    if (!apiBase) return;
+    try {
+      const ev = new EventSource(`${apiBase}/events/scan`);
+      $('#ops-dot')?.classList.replace('bg-gray-300', 'ops-bar-planned');
+      ev.onmessage = () => { scheduleOpsRefresh(); };
+      ev.onerror = () => {
+        try { ev.close(); } catch {}
+        $('#ops-dot')?.classList.replace('ops-bar-planned', 'bg-amber-500');
+        setTimeout(startSSE, 3000);
+      };
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) scheduleOpsRefresh();
+      });
+    } catch (e) { console.error('[OPS refreshDashboardTotals] week totals error', e); }
+  }
+
+  // ====================================================================
+  // Expose on window for routing / main script
+  // ====================================================================
+  window.renderIntake    = renderIntake;
+  window.loadOpsMetrics  = loadOpsMetrics;
+  window.startSSE        = startSSE;
+  window.intakeRows      = intakeRows;
+
+  // ====================================================================
+  // INIT
+  // ====================================================================
+  renderIntake();
+  document.getElementById('chk-all')?.addEventListener('change', (e) => {
+    const on = e.target.checked;
+    intakeRows.forEach(r => r.selected = on);
+    renderIntake();
+    document.getElementById('chk-all').checked = on;
+  });
+
+  const _oh = $('#ops-heart');
+  if (_oh) _oh.appendChild(createHeart(24, BRAND, 40));
+  const _ohs = $('#ops-heart-small');
+  if (_ohs) _ohs.appendChild(createHeart(18, BRAND, 40));
+
+  loadOpsMetrics();
+  startSSE();
+
+  console.log('[intake] intake.js loaded ✓');
 })();
