@@ -8,7 +8,7 @@
 <meta content="Asia/Shanghai" name="business-tz"/>
 <title>VelOzity Pinpoint Test Env</title>
 
-   <!-- Tailwind -->
+<!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -102,7 +102,211 @@
 /* icon sizing */
 .cmd svg{ width:16px; height:16px; opacity:.85; }
 
-  </style>
+  
+
+/* --- Ops Dashboard styles (from new ops file) --- */
+
+
+/* OPS explicit palette classes (guaranteed) */
+.ops-bar-planned{ background: var(--ops-green) !important; }
+.ops-bar-applied{ background: var(--ops-yellow) !important; }
+.ops-bg-planned-soft{ background: rgba(var(--ops-green-rgb),0.20) !important; }
+.ops-bg-applied-soft{ background: rgba(var(--ops-yellow-rgb),0.20) !important; }
+.ops-dot-planned{ background: var(--ops-green) !important; }
+.ops-dot-applied{ background: var(--ops-yellow) !important; }
+
+
+/* OPS palette: force Tailwind green/emerald bars used in Supplier/Facility/PO progress to match ops palette */
+#ops-insights-content .ops-bar-planned,
+#ops-insights-content .ops-bar-planned,
+#ops-po-progress .ops-bar-planned,
+#ops-po-progress .ops-bar-planned{
+  background: var(--ops-green) !important;
+}
+#ops-insights-content .ops-bg-planned-soft,
+#ops-insights-content .ops-bg-planned-soft,
+#ops-po-progress .ops-bg-planned-soft,
+#ops-po-progress .ops-bg-planned-soft{
+  background: rgba(var(--ops-green-rgb),0.20) !important;
+}
+#ops-insights-content .ops-bg-planned-soft,
+#ops-po-progress .ops-bg-planned-soft{
+  background: rgba(var(--ops-green-rgb),0.28) !important;
+}
+
+
+/* OPS chart palette overrides */
+#opsRoot .ops-bar-planned{ background: var(--ops-green) !important; }
+#opsRoot .ops-bg-planned-soft{ background: rgba(var(--ops-green-rgb),0.20) !important; }
+#opsRoot .ops-bg-planned-soft{ background: rgba(var(--ops-green-rgb),0.28) !important; }
+
+
+:root{
+  --ops-green:#D1E231; /* planned / in */
+  --ops-yellow:#F0D731; /* applied / ready */
+  --ops-green-rgb:209,226,49;
+  --ops-yellow-rgb:240,215,49;
+}
+
+
+/* OPS: keep view buttons neutral (black text), independent of chart palette */
+.insights-view-btn,
+.insightsViewBtn,
+.insights-tabs button,
+.insights-tab-btn,
+.viewBtn,
+.view-btn{
+  color:#111 !important;
+  background:#fff !important;
+  border-color:#e5e7eb !important;
+}
+.insights-view-btn.active,
+.insightsViewBtn.active,
+.insights-tabs button.active,
+.insights-tab-btn.active,
+.viewBtn.active,
+.view-btn.active{
+  color:#111 !important;
+  background:#fff !important;
+  border-color:#11182733 !important;
+  box-shadow: 0 0 0 2px rgba(17,24,39,0.08) !important;
+}
+.insights-view-btn:hover,
+.insightsViewBtn:hover,
+.insights-tabs button:hover,
+.insights-tab-btn:hover,
+.viewBtn:hover,
+.view-btn:hover{
+  color:#111 !important;
+  background:#f9fafb !important;
+}
+
+
+:root{
+  --ops-green:#D1E231; /* planned / in */
+  --ops-yellow:#F0D731; /* applied / ready */
+  --ops-ink:#111827;
+}
+/* Keep view buttons neutral (black text), do NOT tint with ops colors */
+.insights-view-btn, .insightsViewBtn, .insights-tabs button, .insights-tab-btn, .viewBtn, .view-btn{
+  color: var(--ops-ink) !important;
+}
+.insights-view-btn.active, .insightsViewBtn.active, .insights-tabs button.active, .insights-tab-btn.active, .viewBtn.active, .view-btn.active{
+  color: var(--ops-ink) !important;
+}
+
+    body{background:#f8fafc;color:#111827}
+    .vo-nav{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #eee}
+    .vo-wrap{
+  max-width:none;
+  width:min(96vw,1920px);
+  margin:0 auto;
+  padding:16px 24px;
+  box-sizing:border-box;
+}
+#page-dashboard .cmdbar, #capsules{ min-width:0; flex-wrap:wrap; }
+
+    .dot{width:.6rem;height:.6rem;border-radius:9999px;display:inline-block}
+    .heartbeat{animation:heartbeat 1.2s ease-in-out infinite;transform-origin:center}
+    @keyframes heartbeat{0%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.12)}60%{transform:scale(1)}100%{transform:scale(1)}}
+    .cell{width:100%;padding:.4rem .5rem;border:0;outline:none}
+    .cell:focus{box-shadow:0 0 0 3px rgba(59,130,246,.25)}
+    .th{font-size:.75rem;font-weight:600;color:#F0D731}
+    /* Shorter week capsule */
+    .wkcap{border-radius:12px;border:1px solid rgba(0,0,0,.12);padding:.55rem .75rem;width:86px}
+    .wkcap .m{font-size:10px}
+    .wkcap .d{font-size:16px;font-weight:700;line-height:1.1}
+    .wkcap .t{font-size:11px;margin-top:2px;color:#990033}
+    .wkcap .bar{height:6px;border-radius:9999px;background:#e5e7eb;overflow:hidden;margin-top:4px}
+    .wkcap .bar>div{height:6px;border-radius:9999px;background:#990033;width:0%}
+
+/* Respect .hidden; only style when visible */
+#page-dashboard:not(.hidden){ display:block; }
+#page-dashboard:not(.hidden) > *{
+  position:relative;
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin-bottom:.75rem;
+}
+
+/* segmented toggle visuals (neutral) */
+.seg { color:#303030; }
+.seg.active {
+  background:#fff;
+  color:#303030;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.1);
+}
+.seg:not(.active):hover { background: rgba(0,0,0,.06); }
+
+
+/* --- Command Bar (visual only) --- */
+.cmdbar{
+  display:flex; flex-wrap:wrap; gap:.25rem;
+  padding:.25rem; border-radius:12px;
+  background:#fff; border:1px solid #e5e7eb;
+  box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.08);
+}
+.cmd{
+  display:inline-flex; align-items:center; gap:.5rem;
+  font-size:.875rem; line-height:1;
+  padding:.5rem .75rem; border-radius:10px;
+  border:1px solid transparent; background:transparent; color:#111827;
+  transition:background .15s ease, border-color .15s ease, transform .05s ease;
+}
+.cmd:hover{ background:#f9fafb; border-color:#e5e7eb; }
+.cmd:active{ transform:translateY(1px); }
+.cmd:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(153,0,51,.15); }
+
+/* variants */
+.cmd--primary{ background:#990033; color:#fff; }
+.cmd--primary:hover{ filter:brightness(.98); }
+.cmd--danger{ color:#991b1b; background:#fff5f5; border-color:#fecaca; }
+.cmd--ghost{ background:transparent; }
+
+/* Override colors for Upload/Zero buttons ONLY */
+#btn-upload-plan,
+#btn-zero-plan {
+  background: #E2E2E2 !important;
+  color: #303030 !important;
+  border-color: #e5e7eb !important;
+}
+
+#btn-upload-plan:hover,
+#btn-zero-plan:hover {
+  background: #d9d9d9 !important; /* subtle hover */
+}
+
+
+
+/* icon sizing */
+.cmd svg{ width:16px; height:16px; opacity:.75; }
+
+  
+/* Ops insights pills */
+.ops-pill{
+  display:inline-flex; align-items:center; justify-content:flex-start; gap:8px;
+  padding:0 10px;
+  min-width:96px; height:30px;
+  border:1px solid rgba(17,24,39,.12);
+  border-radius:9999px;
+  background:transparent;
+  font-size:11px;
+  font-weight:600;
+  color:#111827;
+  transition: all .12s ease;
+}
+.ops-pill svg{ width:14px; height:14px; }
+.ops-pill:hover{ background:#f9fafb; border-color: rgba(17,24,39,.18); }
+.ops-pill--active{
+  background:#fff;
+  border-color: rgba(153,0,51,.45);
+  box-shadow: 0 0 0 3px rgba(153,0,51,.08);
+  color:#111827;
+}
+
+</style>
 </head>
 <body class="bg-gray-50 min-h-screen">
   <!-- Top Nav -->
@@ -1974,7 +2178,28 @@ function inWeekByCompletedAt(r, ws){
   return ymd && ymd >= ws && ymd <= we;
 }
 
-  // ---------- setWeek ----------
+  function wireOpsInsights(){
+  const pills = Array.from(document.querySelectorAll('.ops-pill'));
+  if(!pills.length) return;
+
+  pills.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      pills.forEach(b=>b.classList.remove('ops-pill--active'));
+      btn.classList.add('ops-pill--active');
+      const v = (btn.getAttribute('data-opsview') || 'overview').trim();
+      state.opsView = v;
+      try { renderOpsInsights(v); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
+    });
+  });
+
+  // Initial view: respect existing active pill, otherwise keep last state, otherwise default to overview.
+  const active = document.querySelector('.ops-pill--active');
+  const initial = (state.opsView || active?.getAttribute('data-opsview') || 'overview').trim();
+  state.opsView = initial;
+  try { renderOpsInsights(initial); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
+}
+
+// ---------- setWeek ----------
   async function setWeek(ws){
     state.weekStart=ws; $('#week-start').value=ws;
     const weDate=new Date(ws); weDate.setDate(weDate.getDate() + 6); const we=iso(weDate);
@@ -3416,8 +3641,10 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
     };
   }
 })();
+</script>
 
-  
+
+   
 </script>
 <script defer="" src="/exec_live_additive.js?v=8"></script>
 <script defer="" src="/receiving_live_additive.js?v=27"></script>
