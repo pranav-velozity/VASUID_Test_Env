@@ -8,7 +8,7 @@
 <meta name="business-tz" content="Asia/Shanghai"/>
   <title>VelOzity Pinpoint Test Env</title>
 
-<!-- Tailwind -->
+  <!-- Tailwind -->
 <script src="https://cdn.tailwindcss.com"></script>
 <!-- SheetJS -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -3461,10 +3461,10 @@ function getRouteHash(){
   const p = (location.pathname || '').toLowerCase();
   if (p.endsWith('/intake')) return '#intake';
   if (p.endsWith('/receiving')) return '#receiving';
-  if (p.endsWith('/operations')) return '#ops';
+  if (p.endsWith('/operations')) return '#dashboard';
   if (p.endsWith('/flow')) return '#flow';
   // Default route (ops dashboard)
-  return '#ops';
+  return '#dashboard';
 }
 
 function show(hash){
@@ -3472,7 +3472,7 @@ function show(hash){
   let h = (hash || '').trim();
   if (h === '#') h = '';
   if (h.startsWith('#/')) h = '#' + h.slice(2);
-  if (!h) h = '#operations';
+  if (!h) h = '#dashboard';
 
   // Hide all pages first
   ['page-dashboard','page-intake','page-exec','page-receiving','page-flow'].forEach(id => {
@@ -3502,8 +3502,15 @@ if (h === '#intake') {
   } else if (h === '#exec') {
     const el = document.getElementById('page-exec');
     el && el.classList.remove('hidden');
+
+  } else if (h === '#dashboard' || h === '#operations' || h === '#ops') {
+    const el = document.getElementById('page-dashboard');
+    el && el.classList.remove('hidden');
+    if (typeof window.renderDashboard === 'function') {
+      try { window.renderDashboard(); } catch(e) { console.warn('renderDashboard failed', e); }
+    }
   } else {
-    // default ops
+    // fallback
     const el = document.getElementById('page-dashboard');
     el && el.classList.remove('hidden');
     if (typeof window.renderDashboard === 'function') {
@@ -4840,7 +4847,8 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
   <script src="/flow_live_additive.js?v=61" defer></script>
-  <script src="/intake_live_additive.js?v=1" defer></script>
+  <script src="./intake.js" defer></script>
+
 
 </body>
 </html>
