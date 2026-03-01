@@ -8,7 +8,7 @@
 <meta content="Asia/Shanghai" name="business-tz"/>
 <title>VelOzity Pinpoint Test Env</title>
 
-  <!-- Tailwind -->
+ <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- SheetJS -->
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
@@ -2199,6 +2199,17 @@ function inWeekByCompletedAt(r, ws){
   try { renderOpsInsights(initial); } catch (e) { console.warn('[OPS] renderOpsInsights failed:', e); }
 }
 
+  // Dashboard init should ONLY run when dashboard is visible.
+  // This prevents route-leak crashes and ensures Insights pills are wired.
+  let __dashboardWired = false;
+  function initDashboardOnce(){
+    if(__dashboardWired) return;
+    __dashboardWired = true;
+    try { wireOpsInsights(); } catch(e){ console.warn('wireOpsInsights failed', e); }
+  }
+
+
+
 // ---------- setWeek ----------
   async function setWeek(ws){
     state.weekStart=ws; $('#week-start').value=ws;
@@ -3565,6 +3576,7 @@ if (hash === '#receiving') {
   document.getElementById('page-receiving')?.classList.remove('hidden');
 } else if (hash === '#intake') {
   document.getElementById('page-intake')?.classList.remove('hidden');
+  try { renderIntake(); } catch(e){ console.warn('renderIntake failed', e); }
 } else if (hash === '#exec') {
   document.getElementById('page-exec')?.classList.remove('hidden');
   try {
@@ -3578,7 +3590,9 @@ if (hash === '#receiving') {
   document.getElementById('page-flow')?.classList.remove('hidden');
 } else {
   document.getElementById('page-dashboard')?.classList.remove('hidden');
+  initDashboardOnce();
 }
+
 syncNav();
 }
 
@@ -3652,6 +3666,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
   }
 })();
 </script>
+
 
    
 </script>
