@@ -443,61 +443,71 @@
 </div>
 </div>
 
-<!-- ================= Intake ================= -->
-<section class="hidden" id="page-intake">
-  <div class="flex items-center justify-between mb-3">
-    <div>
-      <div class="text-2xl font-semibold">Intake</div>
-      <div class="text-sm text-gray-500">Create / review UID records and manage deletes</div>
+<!-- ================= UID Intake ================= -->
+<section id="page-intake" class="hidden">
+  <div class="flex items-center justify-between">
+    <div class="flex items-center gap-5">
+      <div class="text-2xl font-semibold">UID Intake (Table Mode)</div>
+
+      <div class="flex items-center gap-2 bg-white border rounded-xl px-3 py-2">
+        <div class="text-sm"><span class="font-semibold">Ops</span> • <span id="intake-bpm">0</span> bpm</div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button id="btn-export-day" class="px-3 py-2 rounded-lg text-sm border" aria-label="Export XLSX">Export XLSX</button>
+
+      <button id="btn-upload-applied" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload UIDs">Upload UIDs</button>
+      <input id="file-upload-applied" type="file" accept=".xlsx,.csv" class="hidden"/>
+
+      <button id="btn-upload-bins" class="px-3 py-2 rounded-lg text-sm border" aria-label="Upload Bin Manifest">Upload Bin Manifest</button>
+      <input id="file-bins" type="file" accept=".xlsx,.csv" class="hidden"/>
+
+      <button id="btn-delete-selected" class="px-3 py-2 rounded-lg text-sm border border-rose-700 text-rose-700" aria-label="Delete Selected">
+        Delete Selected
+      </button>
     </div>
   </div>
 
-  <div class="vo-card p-4">
-    <div class="flex flex-wrap items-center gap-2 mb-3">
-      <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Add row</button>
-      <button id="btn-delete-selected" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete selected</button>
-      <button id="btn-export-day" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Export day CSV</button>
-      <div class="ml-auto text-xs text-gray-500">Tip: use the checkbox column to select multiple rows.</div>
-    </div>
+  <!-- Intake Table -->
+  <div class="mt-3 overflow-auto">
+    <table class="w-full min-w-[1100px] border-collapse border">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="border px-2 py-1 text-left w-8"><input type="checkbox" id="chk-all"/></th>
+          <th class="border px-2 py-1 text-left">Date</th>
+          <th class="border px-2 py-1 text-left">Mobile Bin (BOX)</th>
+          <th class="border px-2 py-1 text-left">SSCC Label (BOX)</th>
+          <th class="border px-2 py-1 text-left">PO_Number</th>
+          <th class="border px-2 py-1 text-left">SKU_Code</th>
+          <th class="border px-2 py-1 text-left">UID</th>
+          <th class="border px-2 py-1 text-left">Status</th>
+          <th class="border px-2 py-1 text-left">Sync</th>
+          <th class="border px-2 py-1 text-left">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="intake-body"></tbody>
+    </table>
+  </div>
 
-    <div class="overflow-auto border rounded-xl">
-      <table class="min-w-[1100px] w-full text-sm">
-        <thead class="bg-gray-50 text-gray-600">
-          <tr>
-            <th class="p-2 text-left w-10"><input id="chk-all" type="checkbox" /></th>
-            <th class="p-2 text-left">Date</th>
-            <th class="p-2 text-left">Mobile Bin</th>
-            <th class="p-2 text-left">SSCC</th>
-            <th class="p-2 text-left">PO</th>
-            <th class="p-2 text-left">SKU</th>
-            <th class="p-2 text-left">UID</th>
-            <th class="p-2 text-left">Status</th>
-            <th class="p-2 text-left">Sync</th>
-            <th class="p-2 text-left">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="intake-body" class="bg-white"></tbody>
-      </table>
-    </div>
+  <div class="mt-3">
+    <button id="btn-add-row" class="px-3 py-2 rounded-lg border text-sm">Add Row</button>
+  </div>
 
-    <div class="grid md:grid-cols-2 gap-4 mt-4">
-      <div class="border rounded-xl p-3 bg-white">
-        <div class="font-semibold mb-2">Delete UIDs</div>
-        <textarea id="uids-to-delete" class="w-full border rounded-lg p-2 text-sm h-28" placeholder="Paste UID(s) to delete (comma, space, or newline separated)"></textarea>
-        <div class="flex items-center gap-2 mt-2">
-          <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border text-sm font-medium bg-white hover:bg-gray-50">Delete</button>
-          <span id="delete-uids-status" class="text-sm text-gray-600"></span>
-        </div>
-      </div>
-
-      <div class="border rounded-xl p-3 bg-white">
-        <div class="font-semibold mb-2">Intake BPM</div>
-        <div id="intake-bpm" class="text-3xl font-semibold tabular-nums">—</div>
-        <div class="text-xs text-gray-500 mt-1">Calculated from recent intake activity.</div>
-      </div>
+  <!-- Quick Delete by UID -->
+  <div class="mt-4 bg-white rounded-2xl border shadow p-4">
+    <div class="text-base font-semibold mb-2">Delete Applied UID(s)</div>
+    <p class="text-xs text-gray-500 mb-2">
+      Enter one or more UIDs (comma, space, or line separated). The system will remove matching records.
+    </p>
+    <textarea id="uids-to-delete" rows="3" placeholder="Paste UIDs here…" class="w-full border rounded-md px-3 py-2 text-sm outline-none focus:ring-2"></textarea>
+    <div class="mt-2 flex items-center gap-2">
+      <button id="btn-delete-uids" class="px-3 py-2 rounded-lg border border-rose-700 text-rose-700">Delete UID(s)</button>
+      <span id="delete-uids-status" class="text-xs text-gray-500"></span>
     </div>
   </div>
 </section>
+  
 <script>
     // ---------------------------
     // ---------------------------
@@ -3472,12 +3482,17 @@ function show(hash){
   });
 
   // Show target page + render hooks
-  if (h === '#intake') {
-    const el = document.getElementById('page-intake');
-    el && el.classList.remove('hidden');
-    if (typeof window.renderIntake === 'function') {
-      try { window.renderIntake(); } catch(e) { console.warn('renderIntake failed', e); }
-    }
+if (h === '#intake') {
+  const el = document.getElementById('page-intake');
+  el && el.classList.remove('hidden');
+
+  // New: Intake module entrypoint
+  if (window.IntakePage && typeof window.IntakePage.show === 'function') {
+    try { window.IntakePage.show(); } catch (e) { console.warn('IntakePage.show failed', e); }
+  } else if (typeof window.renderIntake === 'function') {
+    // Backward compatibility (optional)
+    try { window.renderIntake(); } catch (e) { console.warn('renderIntake failed', e); }
+  }
   } else if (h === '#receiving') {
     const el = document.getElementById('page-receiving');
     el && el.classList.remove('hidden');
@@ -3506,13 +3521,15 @@ function show(hash){
   // Nav highlight helper (different baselines use different function names).
   try {
     if (typeof syncNavActive === 'function') syncNavActive(h);
-    else if (typeof syncNav === 'function') syncNav(h);
+    else if (typeof syncNav === 'function') syncNav();
   } catch (e) {
     // Never break routing due to nav highlighting.
   }
+  // New: ensure Intake cleans up when leaving the route
+if (h !== '#intake' && window.IntakePage && typeof window.IntakePage.hide === 'function') {
+  try { window.IntakePage.hide(); } catch (e) { /* never break routing */ }
 }
-
-
+}
   
 /* ================= Ops right panel wiring (downloads + insights) ================= */
 function wireOpsDownloads(){
@@ -4823,6 +4840,7 @@ document.getElementById('btn-delete-uids')?.addEventListener('click', deleteUIDs
 <script src="/exec_live_additive.js?v=8" defer></script>
 <script src="/receiving_live_additive.js?v=27" defer></script>
   <script src="/flow_live_additive.js?v=61" defer></script>
+  <script src="/intake.js" defer></script>
 
 </body>
 </html>
